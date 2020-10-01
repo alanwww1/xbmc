@@ -1,27 +1,18 @@
 /*
- *      Copyright (C) 2012-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2012-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "HTTPImageHandler.h"
+
 #include "URL.h"
 #include "filesystem/ImageFile.h"
 #include "network/WebServer.h"
+#include "utils/FileUtils.h"
+
 
 CHTTPImageHandler::CHTTPImageHandler(const HTTPRequest &request)
   : CHTTPFileHandler(request)
@@ -30,14 +21,22 @@ CHTTPImageHandler::CHTTPImageHandler(const HTTPRequest &request)
   int responseStatus = MHD_HTTP_BAD_REQUEST;
 
   // resolve the URL into a file path and a HTTP response status
-  if (m_request.url.size() > 7)
+  if (m_request.pathUrl.size() > 7)
   {
-    file = m_request.url.substr(7);
+    file = m_request.pathUrl.substr(7);
 
     XFILE::CImageFile imageFile;
     const CURL pathToUrl(file);
-    if (imageFile.Exists(pathToUrl))
+    if (imageFile.Exists(pathToUrl) && CFileUtils::CheckFileAccessAllowed(file))
+    {
       responseStatus = MHD_HTTP_OK;
+      struct __stat64 statBuffer;
+      if (imageFile.Stat(pathToUrl, &statBuffer) == 0)
+      {
+        SetLastModifiedDate(&statBuffer);
+        SetCanBeCached(true);
+      }
+    }
     else
       responseStatus = MHD_HTTP_NOT_FOUND;
   }
@@ -46,7 +45,7 @@ CHTTPImageHandler::CHTTPImageHandler(const HTTPRequest &request)
   SetFile(file, responseStatus);
 }
 
-bool CHTTPImageHandler::CanHandleRequest(const HTTPRequest &request)
+bool CHTTPImageHandler::CanHandleRequest(const HTTPRequest &request) const
 {
-  return request.url.find("/image/") == 0;
+  return request.pathUrl.find("/image/") == 0;
 }

@@ -1,51 +1,44 @@
 /*
- *      Copyright (C) 2012-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2012-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
-#include <Platinum/Source/Platinum/Platinum.h>
-
-#include "network/Network.h"
 #include "UPnPRenderer.h"
-#include "UPnP.h"
-#include "UPnPInternal.h"
+
 #include "Application.h"
-#include "ApplicationMessenger.h"
 #include "FileItem.h"
-#include "filesystem/SpecialProtocol.h"
 #include "GUIInfoManager.h"
-#include "guilib/GUIWindowManager.h"
-#include "guilib/Key.h"
-#include "pictures/GUIWindowSlideShow.h"
-#include "pictures/PictureInfoTag.h"
-#include "interfaces/AnnouncementManager.h"
-#include "settings/Settings.h"
+#include "GUIUserMessages.h"
+#include "PlayListPlayer.h"
+#include "ServiceBroker.h"
 #include "TextureDatabase.h"
 #include "ThumbLoader.h"
+#include "UPnP.h"
+#include "UPnPInternal.h"
 #include "URL.h"
+#include "filesystem/SpecialProtocol.h"
+#include "guilib/GUIComponent.h"
+#include "guilib/GUIWindowManager.h"
+#include "guilib/guiinfo/GUIInfoLabels.h"
+#include "input/Key.h"
+#include "interfaces/AnnouncementManager.h"
+#include "messaging/ApplicationMessenger.h"
+#include "network/Network.h"
+#include "pictures/GUIWindowSlideShow.h"
+#include "pictures/PictureInfoTag.h"
+#include "utils/StringUtils.h"
 #include "utils/URIUtils.h"
 #include "utils/Variant.h"
-#include "utils/StringUtils.h"
-#include "playlists/PlayList.h"
-#include "GUIUserMessages.h"
+
+#include <inttypes.h>
+
+#include <Platinum/Source/Platinum/Platinum.h>
 
 NPT_SET_LOCAL_LOGGER("xbmc.upnp.renderer")
 
-using namespace ANNOUNCEMENT;
+using namespace KODI::MESSAGING;
 
 namespace UPNP
 {
@@ -57,7 +50,7 @@ CUPnPRenderer::CUPnPRenderer(const char* friendly_name, bool show_ip /*= false*/
                              const char* uuid /*= NULL*/, unsigned int port /*= 0*/)
     : PLT_MediaRenderer(friendly_name, show_ip, uuid, port)
 {
-    CAnnouncementManager::Get().AddAnnouncer(this);
+    CServiceBroker::GetAnnouncementManager()->AddAnnouncer(this);
 }
 
 /*----------------------------------------------------------------------
@@ -65,7 +58,7 @@ CUPnPRenderer::CUPnPRenderer(const char* friendly_name, bool show_ip /*= false*/
 +---------------------------------------------------------------------*/
 CUPnPRenderer::~CUPnPRenderer()
 {
-    CAnnouncementManager::Get().RemoveAnnouncer(this);
+    CServiceBroker::GetAnnouncementManager()->RemoveAnnouncer(this);
 }
 
 /*----------------------------------------------------------------------
@@ -237,7 +230,7 @@ CUPnPRenderer::ProcessHttpGetRequest(NPT_HttpRequest&              request,
 |   CUPnPRenderer::Announce
 +---------------------------------------------------------------------*/
 void
-CUPnPRenderer::Announce(AnnouncementFlag flag, const char *sender, const char *message, const CVariant &data)
+CUPnPRenderer::Announce(ANNOUNCEMENT::AnnouncementFlag flag, const char *sender, const char *message, const CVariant &data)
 {
     if (strcmp(sender, "xbmc") != 0)
       return;
@@ -245,10 +238,10 @@ CUPnPRenderer::Announce(AnnouncementFlag flag, const char *sender, const char *m
     NPT_AutoLock lock(m_state);
     PLT_Service *avt, *rct;
 
-    if (flag == Player) {
+    if (flag == ANNOUNCEMENT::Player) {
         if (NPT_FAILED(FindServiceByType("urn:schemas-upnp-org:service:AVTransport:1", avt)))
             return;
-        if (strcmp(message, "OnPlay") == 0) {
+        if (strcmp(message, "OnPlay") == 0 || strcmp(message, "OnResume") == 0 ) {
             avt->SetStateVariable("AVTransportURI", g_application.CurrentFile().c_str());
             avt->SetStateVariable("CurrentTrackURI", g_application.CurrentFile().c_str());
 
@@ -258,7 +251,7 @@ CUPnPRenderer::Announce(AnnouncementFlag flag, const char *sender, const char *m
                 avt->SetStateVariable("AVTransportURIMetaData", meta);
             }
 
-            avt->SetStateVariable("TransportPlaySpeed", NPT_String::FromInteger(data["speed"].asInteger()));
+            avt->SetStateVariable("TransportPlaySpeed", NPT_String::FromInteger(data["player"]["speed"].asInteger()));
             avt->SetStateVariable("TransportState", "PLAYING");
 
             /* this could be a transition to next track, so clear next */
@@ -266,14 +259,15 @@ CUPnPRenderer::Announce(AnnouncementFlag flag, const char *sender, const char *m
             avt->SetStateVariable("NextAVTransportURIMetaData", "");
         }
         else if (strcmp(message, "OnPause") == 0) {
-            avt->SetStateVariable("TransportPlaySpeed", NPT_String::FromInteger(data["speed"].asInteger()));
+            int64_t speed = data["player"]["speed"].asInteger();
+            avt->SetStateVariable("TransportPlaySpeed", NPT_String::FromInteger(speed != 0 ? speed : 1));
             avt->SetStateVariable("TransportState", "PAUSED_PLAYBACK");
         }
         else if (strcmp(message, "OnSpeedChanged") == 0) {
-            avt->SetStateVariable("TransportPlaySpeed", NPT_String::FromInteger(data["speed"].asInteger()));
+            avt->SetStateVariable("TransportPlaySpeed", NPT_String::FromInteger(data["player"]["speed"].asInteger()));
         }
     }
-    else if (flag == Application && strcmp(message, "OnVolumeChanged") == 0) {
+    else if (flag == ANNOUNCEMENT::Application && strcmp(message, "OnVolumeChanged") == 0) {
         if (NPT_FAILED(FindServiceByType("urn:schemas-upnp-org:service:RenderingControl:1", rct)))
             return;
 
@@ -310,15 +304,17 @@ CUPnPRenderer::UpdateState()
 
     avt->SetStateVariable("TransportStatus", "OK");
 
-    if (g_application.m_pPlayer->IsPlaying() || g_application.m_pPlayer->IsPausedPlayback()) {
+    if (g_application.GetAppPlayer().IsPlaying() || g_application.GetAppPlayer().IsPausedPlayback()) {
         avt->SetStateVariable("NumberOfTracks", "1");
         avt->SetStateVariable("CurrentTrack", "1");
 
-        std::string buffer = g_infoManager.GetCurrentPlayTime(TIME_FORMAT_HH_MM_SS);
+        // get elapsed time
+        std::string buffer = StringUtils::SecondsToTimeString(std::lrint(g_application.GetTime()), TIME_FORMAT_HH_MM_SS);
         avt->SetStateVariable("RelativeTimePosition", buffer.c_str());
         avt->SetStateVariable("AbsoluteTimePosition", buffer.c_str());
 
-        buffer = g_infoManager.GetDuration(TIME_FORMAT_HH_MM_SS);
+        // get duration
+        buffer = StringUtils::SecondsToTimeString(std::lrint(g_application.GetTotalTime()), TIME_FORMAT_HH_MM_SS);
         if (buffer.length() > 0) {
           avt->SetStateVariable("CurrentTrackDuration", buffer.c_str());
           avt->SetStateVariable("CurrentMediaDuration", buffer.c_str());
@@ -327,14 +323,15 @@ CUPnPRenderer::UpdateState()
           avt->SetStateVariable("CurrentMediaDuration", "00:00:00");
         }
 
-    } else if (g_windowManager.GetActiveWindow() == WINDOW_SLIDESHOW) {
+    } else if (CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow() == WINDOW_SLIDESHOW) {
         avt->SetStateVariable("TransportState", "PLAYING");
 
-        avt->SetStateVariable("AVTransportURI" , g_infoManager.GetPictureLabel(SLIDE_FILE_PATH).c_str());
-        avt->SetStateVariable("CurrentTrackURI", g_infoManager.GetPictureLabel(SLIDE_FILE_PATH).c_str());
+        const std::string filePath = CServiceBroker::GetGUI()->GetInfoManager().GetLabel(SLIDESHOW_FILE_PATH);
+        avt->SetStateVariable("AVTransportURI" , filePath.c_str());
+        avt->SetStateVariable("CurrentTrackURI", filePath.c_str());
         avt->SetStateVariable("TransportPlaySpeed", "1");
 
-        CGUIWindowSlideShow *slideshow = (CGUIWindowSlideShow *)g_windowManager.GetWindow(WINDOW_SLIDESHOW);
+        CGUIWindowSlideShow *slideshow = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIWindowSlideShow>(WINDOW_SLIDESHOW);
         if (slideshow)
         {
           std::string index;
@@ -400,20 +397,20 @@ CUPnPRenderer::GetMetadata(NPT_String& meta)
     // we pass an empty CThumbLoader reference, as it can't be used
     // without CUPnPServer enabled
     NPT_Reference<CThumbLoader> thumb_loader;
-    PLT_MediaObject* object = BuildObject(item, file_path, false, thumb_loader);
+    PLT_MediaObject* object = BuildObject(item, file_path, false, thumb_loader, NULL, NULL, UPnPRenderer);
     if (object) {
         // fetch the item's artwork
         std::string thumb;
         if (object->m_ObjectClass.type == "object.item.audioItem.musicTrack")
-            thumb = g_infoManager.GetImage(MUSICPLAYER_COVER, -1);
+            thumb = CServiceBroker::GetGUI()->GetInfoManager().GetImage(MUSICPLAYER_COVER, -1);
         else
-            thumb = g_infoManager.GetImage(VIDEOPLAYER_COVER, -1);
+            thumb = CServiceBroker::GetGUI()->GetInfoManager().GetImage(VIDEOPLAYER_COVER, -1);
 
         thumb = CTextureUtils::GetWrappedImageURL(thumb);
 
         NPT_String ip;
-        if (g_application.getNetwork().GetFirstConnectedInterface()) {
-            ip = g_application.getNetwork().GetFirstConnectedInterface()->GetCurrentIPAddress().c_str();
+        if (CServiceBroker::GetNetwork().GetFirstConnectedInterface()) {
+            ip = CServiceBroker::GetNetwork().GetFirstConnectedInterface()->GetCurrentIPAddress().c_str();
         }
         // build url, use the internal device http server to serv the image
         NPT_HttpUrlQuery query;
@@ -445,11 +442,10 @@ CUPnPRenderer::GetMetadata(NPT_String& meta)
 NPT_Result
 CUPnPRenderer::OnNext(PLT_ActionReference& action)
 {
-    if (g_windowManager.GetActiveWindow() == WINDOW_SLIDESHOW) {
-        CAction action(ACTION_NEXT_PICTURE);
-        CApplicationMessenger::Get().SendAction(action, WINDOW_SLIDESHOW);
+    if (CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow() == WINDOW_SLIDESHOW) {
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_GUI_ACTION, WINDOW_SLIDESHOW, -1, static_cast<void*>(new CAction(ACTION_NEXT_PICTURE)));
     } else {
-        CApplicationMessenger::Get().PlayListPlayerNext();
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_PLAYLISTPLAYER_NEXT);
     }
     return NPT_SUCCESS;
 }
@@ -460,11 +456,10 @@ CUPnPRenderer::OnNext(PLT_ActionReference& action)
 NPT_Result
 CUPnPRenderer::OnPause(PLT_ActionReference& action)
 {
-    if (g_windowManager.GetActiveWindow() == WINDOW_SLIDESHOW) {
-        CAction action(ACTION_PAUSE);
-        CApplicationMessenger::Get().SendAction(action, WINDOW_SLIDESHOW);
-    } else if (!g_application.m_pPlayer->IsPausedPlayback())
-      CApplicationMessenger::Get().MediaPause();
+    if (CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow() == WINDOW_SLIDESHOW) {
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_GUI_ACTION, WINDOW_SLIDESHOW, -1, static_cast<void*>(new CAction(ACTION_NEXT_PICTURE)));
+    } else if (!g_application.GetAppPlayer().IsPausedPlayback())
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_MEDIA_PAUSE);
     return NPT_SUCCESS;
 }
 
@@ -474,11 +469,11 @@ CUPnPRenderer::OnPause(PLT_ActionReference& action)
 NPT_Result
 CUPnPRenderer::OnPlay(PLT_ActionReference& action)
 {
-    if (g_windowManager.GetActiveWindow() == WINDOW_SLIDESHOW) {
+    if (CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow() == WINDOW_SLIDESHOW) {
         return NPT_SUCCESS;
-    } else if (g_application.m_pPlayer->IsPausedPlayback()) {
-      CApplicationMessenger::Get().MediaPause();
-    } else if (!g_application.m_pPlayer->IsPlaying()) {
+    } else if (g_application.GetAppPlayer().IsPausedPlayback()) {
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_MEDIA_PAUSE);
+    } else if (!g_application.GetAppPlayer().IsPlaying()) {
         NPT_String uri, meta;
         PLT_Service* service;
         // look for value set previously by SetAVTransportURI
@@ -498,11 +493,10 @@ CUPnPRenderer::OnPlay(PLT_ActionReference& action)
 NPT_Result
 CUPnPRenderer::OnPrevious(PLT_ActionReference& action)
 {
-    if (g_windowManager.GetActiveWindow() == WINDOW_SLIDESHOW) {
-        CAction action(ACTION_PREV_PICTURE);
-        CApplicationMessenger::Get().SendAction(action, WINDOW_SLIDESHOW);
+    if (CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow() == WINDOW_SLIDESHOW) {
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_GUI_ACTION, WINDOW_SLIDESHOW, -1, static_cast<void*>(new CAction(ACTION_PREV_PICTURE)));
     } else {
-        CApplicationMessenger::Get().PlayListPlayerPrevious();
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_PLAYLISTPLAYER_PREV);
     }
     return NPT_SUCCESS;
 }
@@ -513,11 +507,10 @@ CUPnPRenderer::OnPrevious(PLT_ActionReference& action)
 NPT_Result
 CUPnPRenderer::OnStop(PLT_ActionReference& action)
 {
-    if (g_windowManager.GetActiveWindow() == WINDOW_SLIDESHOW) {
-        CAction action(ACTION_STOP);
-        CApplicationMessenger::Get().SendAction(action, WINDOW_SLIDESHOW);
+    if (CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow() == WINDOW_SLIDESHOW) {
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_GUI_ACTION, WINDOW_SLIDESHOW, -1, static_cast<void*>(new CAction(ACTION_NEXT_PICTURE)));
     } else {
-        CApplicationMessenger::Get().MediaStop();
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_MEDIA_STOP);
     }
     return NPT_SUCCESS;
 }
@@ -537,7 +530,7 @@ CUPnPRenderer::OnSetAVTransportURI(PLT_ActionReference& action)
 
     // if not playing already, just keep around uri & metadata
     // and wait for play command
-    if (!g_application.m_pPlayer->IsPlaying() && g_windowManager.GetActiveWindow() != WINDOW_SLIDESHOW) {
+    if (!g_application.GetAppPlayer().IsPlaying() && CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow() != WINDOW_SLIDESHOW) {
         service->SetStateVariable("TransportState", "STOPPED");
         service->SetStateVariable("TransportStatus", "OK");
         service->SetStateVariable("TransportPlaySpeed", "1");
@@ -571,22 +564,22 @@ CUPnPRenderer::OnSetNextAVTransportURI(PLT_ActionReference& action)
         return NPT_FAILURE;
     }
 
-    if (g_application.m_pPlayer->IsPlaying()) {
+    if (g_application.GetAppPlayer().IsPlaying()) {
 
         int playlist = PLAYLIST_MUSIC;
         if(item->IsVideo())
           playlist = PLAYLIST_VIDEO;
 
-        {   CSingleLock lock(g_graphicsContext);
-            g_playlistPlayer.ClearPlaylist(playlist);
-            g_playlistPlayer.Add(playlist, item);
+        {   CSingleLock lock(CServiceBroker::GetWinSystem()->GetGfxContext());
+            CServiceBroker::GetPlaylistPlayer().ClearPlaylist(playlist);
+            CServiceBroker::GetPlaylistPlayer().Add(playlist, item);
 
-            g_playlistPlayer.SetCurrentSong(-1);
-            g_playlistPlayer.SetCurrentPlaylist(playlist);
+            CServiceBroker::GetPlaylistPlayer().SetCurrentSong(-1);
+            CServiceBroker::GetPlaylistPlayer().SetCurrentPlaylist(playlist);
         }
 
         CGUIMessage msg(GUI_MSG_PLAYLIST_CHANGED, 0, 0);
-        g_windowManager.SendThreadMessage(msg);
+        CServiceBroker::GetGUI()->GetWindowManager().SendThreadMessage(msg);
 
 
         service->SetStateVariable("NextAVTransportURI", uri);
@@ -596,7 +589,7 @@ CUPnPRenderer::OnSetNextAVTransportURI(PLT_ActionReference& action)
 
         return NPT_SUCCESS;
 
-  } else if (g_windowManager.GetActiveWindow() == WINDOW_SLIDESHOW) {
+  } else if (CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow() == WINDOW_SLIDESHOW) {
         return NPT_FAILURE;
   } else {
         return NPT_FAILURE;
@@ -623,22 +616,19 @@ CUPnPRenderer::PlayMedia(const NPT_String& uri, const NPT_String& meta, PLT_Acti
     }
 
     if (item->IsPicture()) {
-        CApplicationMessenger::Get().PictureShow(item->GetPath());
+      CApplicationMessenger::GetInstance().PostMsg(TMSG_PICTURE_SHOW, -1, -1, nullptr, item->GetPath());
     } else {
-        CApplicationMessenger::Get().MediaPlay(*item, false);
+      CFileItemList *l = new CFileItemList; //don't delete,
+      l->Add(std::make_shared<CFileItem>(*item));
+      CApplicationMessenger::GetInstance().PostMsg(TMSG_MEDIA_PLAY, -1, -1, static_cast<void*>(l));
     }
 
-    if (g_application.m_pPlayer->IsPlaying() || g_windowManager.GetActiveWindow() == WINDOW_SLIDESHOW) {
-        NPT_AutoLock lock(m_state);
-        service->SetStateVariable("TransportState", "PLAYING");
-        service->SetStateVariable("TransportStatus", "OK");
-        service->SetStateVariable("AVTransportURI", uri);
-        service->SetStateVariable("AVTransportURIMetaData", meta);
-    } else {
-        NPT_AutoLock lock(m_state);
-        service->SetStateVariable("TransportState", "STOPPED");
-        service->SetStateVariable("TransportStatus", "ERROR_OCCURRED");
-    }
+    // just return success because the play actions are asynchronous
+    NPT_AutoLock lock(m_state);
+    service->SetStateVariable("TransportState", "PLAYING");
+    service->SetStateVariable("TransportStatus", "OK");
+    service->SetStateVariable("AVTransportURI", uri);
+    service->SetStateVariable("AVTransportURIMetaData", meta);
 
     service->SetStateVariable("NextAVTransportURI", "");
     service->SetStateVariable("NextAVTransportURIMetaData", "");
@@ -680,7 +670,7 @@ CUPnPRenderer::OnSetMute(PLT_ActionReference& action)
 NPT_Result
 CUPnPRenderer::OnSeek(PLT_ActionReference& action)
 {
-    if (!g_application.m_pPlayer->IsPlaying()) return NPT_ERROR_INVALID_STATE;
+    if (!g_application.GetAppPlayer().IsPlaying()) return NPT_ERROR_INVALID_STATE;
 
     NPT_String unit, target;
     NPT_CHECK_SEVERE(action->GetArgumentValue("Unit", unit));

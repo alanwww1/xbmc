@@ -1,3 +1,85 @@
+[B]5.1.6&5.1.7[/B]
+- changed: fixes for Chinese language 
+
+[B]5.1.5[/B]
+- changed: update language directory structure
+- added: website tag in addon.xml
+- added: assets tag in addon.xml
+
+[B]5.1.1[/B]
+- changed: more cleanup and fixes
+
+[B]5.1.0[/B]
+- changed: major code clean-up of tmdb common scraper library
+
+[B]5.0.3[/B]
+- changed: made imdb uniqueid default when available
+
+[B]5.0.2[/B]
+- changed: made tmdb uniqueid consistent with documentation
+
+[B]5.0.1[/B]
+- changed: simplified ratings code
+
+[B]5.0.0[/B]
+Version bump for Krypton
+
+[B]4.0.3[/B]
+- changed: split zh-cn and zh-tw
+
+[B]4.0.1[/B]
+- switched API queries to https
+
+[B]4.0.0[/B]
+- added: multiple ratings and uniqueid support (requires Kodi v17) -thanks phate89
+- added: premiered date (requires Kodi v17) -thanks phate89
+
+[B]3.9.4[/B]
+- Fixed after API layout changes
+
+[B]3.9.3[/B]
+- Update
+
+[B]3.9.2[/B]
+- added: some new languages
+
+[B]3.9.1[/B]
+- added: premiered tag with full release date
+
+[B]3.9.0[/B]
+- Update
+
+[B]3.8.8[/B]
+- Update author name
+
+[B]3.8.7[/B]
+- fixed: caching
+
+[B]3.8.6[/B]
+- fixed: broken search results due to API changes
+
+[B]3.8.4[/B]
+- removed: option to scrape trailers from hd-trailers.net (it was broken)
+
+[B]3.8.3[/B]
+- fixed: further fixes to the broken search results due to API changes
+
+[B]3.8.2[/B]
+- fixed: further fixes to the broken search results due to API changes
+
+[B]3.8.1[/B]
+- fixed: broken search results due to API changes
+
+[B]3.8.0[/B]
+- added extra languages for selection
+- changed language to a selection list
+
+[B]3.7.13[/B]
+- fixed: movie certification won't scrape
+
+[B]3.7.12[/B]
+- cache api response when using imdb based lookups
+
 [B]3.7.11[/B]
 - updated language files from Transifex
 

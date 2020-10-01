@@ -1,28 +1,16 @@
 /*
- *      Copyright (C) 2011-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2011-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "CoreAudioChannelLayout.h"
 
 #include <AudioToolbox/AudioToolbox.h>
 
-#define MAX_CHANNEL_LABEL 15
+#define MAX_CHANNEL_LABEL 45
 
 const char* g_ChannelLabels[] =
 {
@@ -39,9 +27,32 @@ const char* g_ChannelLabels[] =
   "Back Left",        // kAudioChannelLabel_LeftSurroundDirect
   "Back Right",       // kAudioChannelLabel_RightSurroundDirect
   "Top Center",       // kAudioChannelLabel_TopCenterSurround
+  "Vertical Back Left",    // kAudioChannelLabel_VerticalHeightLeft
+  "Vertical Back Center",  // kAudioChannelLabel_VerticalHeightCenter
+  "Vertical Back Right",   // kAudioChannelLabel_VerticalHeightRight
   "Top Back Left",    // kAudioChannelLabel_VerticalHeightLeft
   "Top Back Center",  // kAudioChannelLabel_VerticalHeightCenter
   "Top Back Right",   // kAudioChannelLabel_VerticalHeightRight
+
+  // gap
+
+  "unused19",  "unused20",  "unused21",  "unused22",  "unused23",  "unused24",  "unused25",
+  "unused26",  "unused27",  "unused28",  "unused29",  "unused30",  "unused31",  "unused32",
+
+  "Rear Left",        // kAudioChannelLabel_RearSurroundLeft
+  "Rear Right",       // kAudioChannelLabel_RearSurroundRight
+  "Left Wide",        // kAudioChannelLabel_LeftWide
+  "Right Wide",       // kAudioChannelLabel_RightWide
+  "LFE2",             // kAudioChannelLabel_LFE2
+  "Left Total",       // kAudioChannelLabel_LeftTotal
+  "Right Total",      // kAudioChannelLabel_RightTotal
+  "HearingImpaired",  // kAudioChannelLabel_HearingImpaired
+  "Narration",        // kAudioChannelLabel_Narration
+  "Mono",             // kAudioChannelLabel_Mono
+  "DialogCentricMix", // kAudioChannelLabel_DialogCentricMix
+  "CenterSurroundDirect", // kAudioChannelLabel_CenterSurroundDirect
+  "Haptic",           // kAudioChannelLabel_Haptic
+
 };
 
 CCoreAudioChannelLayout::CCoreAudioChannelLayout() :
@@ -110,13 +121,13 @@ bool CCoreAudioChannelLayout::CopyLayoutForStereo(UInt32 layout[2])
   enum {
     kVariableLengthArray_deprecated = 1
   };
-  
+
   free(m_pLayout);
   m_pLayout = NULL;
-  
+
   UInt32 channels = 2;
   UInt32 size = sizeof(AudioChannelLayout) + (channels - kVariableLengthArray_deprecated) * sizeof(AudioChannelDescription);
-  
+
   m_pLayout = (AudioChannelLayout*)malloc(size);
   m_pLayout->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
   m_pLayout->mNumberChannelDescriptions = 2;//stereo
@@ -188,7 +199,7 @@ const char* CCoreAudioChannelLayout::ChannelLayoutToString(AudioChannelLayout& l
   }
   else
   {
-    // Predefinied layout 'tag'
+    // Predefined layout 'tag'
     UInt32 propSize = 0;
     AudioFormatGetPropertyInfo(kAudioFormatProperty_ChannelLayoutForTag,
       sizeof(layout.mChannelLayoutTag), &layout.mChannelLayoutTag, &propSize);
@@ -201,6 +212,10 @@ const char* CCoreAudioChannelLayout::ChannelLayoutToString(AudioChannelLayout& l
   {
     str += "[";
     str += ChannelLabelToString(pLayout->mChannelDescriptions[c].mChannelLabel);
+    if (pLayout->mChannelDescriptions[c].mChannelLabel > MAX_CHANNEL_LABEL)
+    {
+      str += "(" + std::to_string(pLayout->mChannelDescriptions[c].mChannelLabel) + ")";
+    }
     str += "] ";
   }
 
@@ -233,7 +248,7 @@ bool CCoreAudioChannelLayout::AllChannelUnknown()
   }
   else
   {
-    // Predefinied layout 'tag'
+    // Predefined layout 'tag'
     UInt32 propSize = 0;
     AudioFormatGetPropertyInfo(kAudioFormatProperty_ChannelLayoutForTag,
       sizeof(m_pLayout->mChannelLayoutTag), &m_pLayout->mChannelLayoutTag, &propSize);

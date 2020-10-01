@@ -1,40 +1,31 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "ModuleXbmcvfs.h"
+
 #include "LanguageHook.h"
-#include "filesystem/File.h"
+#include "URL.h"
+#include "Util.h"
 #include "filesystem/Directory.h"
+#include "filesystem/File.h"
+#include "filesystem/SpecialProtocol.h"
 #include "utils/FileUtils.h"
 #include "utils/URIUtils.h"
-#include "Util.h"
 
 namespace XBMCAddon
 {
 
   namespace xbmcvfs
   {
-    bool copy(const String& strSource, const String& strDestnation)
+    bool copy(const String& strSource, const String& strDestination)
     {
       DelayedCallGuard dg;
-      return XFILE::CFile::Copy(strSource, strDestnation);
+      return XFILE::CFile::Copy(strSource, strDestination);
     }
 
     // delete a file
@@ -49,23 +40,44 @@ namespace XBMCAddon
     {
       DelayedCallGuard dg;
       return XFILE::CFile::Rename(file,newFile);
-    }  
+    }
 
-    // check for a file or folder existance, mimics Pythons os.path.exists()
+    // check for a file or folder existence, mimics Pythons os.path.exists()
     bool exists(const String& path)
     {
       DelayedCallGuard dg;
       if (URIUtils::HasSlashAtEnd(path, true))
-        return XFILE::CDirectory::Exists(path);
+        return XFILE::CDirectory::Exists(path, false);
       return XFILE::CFile::Exists(path, false);
-    }      
+    }
+
+    // make legal file name
+    String makeLegalFilename(const String& filename)
+    {
+      XBMC_TRACE;
+      return CUtil::MakeLegalPath(filename);
+    }
+
+    // translate path
+    String translatePath(const String& path)
+    {
+      XBMC_TRACE;
+      return CSpecialProtocol::TranslatePath(path);
+    }
+
+    // validate path
+    String validatePath(const String& path)
+    {
+      XBMC_TRACE;
+      return CUtil::ValidatePath(path, true);
+    }
 
     // make a directory
     bool mkdir(const String& path)
     {
       DelayedCallGuard dg;
       return XFILE::CDirectory::Create(path);
-    }      
+    }
 
     // make all directories along the path
     bool mkdirs(const String& path)
@@ -77,11 +89,16 @@ namespace XBMCAddon
     bool rmdir(const String& path, bool force)
     {
       DelayedCallGuard dg;
-      return (force ? CFileUtils::DeleteItem(path,force) : XFILE::CDirectory::Remove(path));
-    }      
+
+      if (force)
+        return CFileUtils::DeleteItem(path);
+      else
+        return XFILE::CDirectory::Remove(path);
+    }
 
     Tuple<std::vector<String>, std::vector<String> > listdir(const String& path)
     {
+      DelayedCallGuard dg;
       CFileItemList items;
       std::string strSource;
       strSource = path;
@@ -94,11 +111,16 @@ namespace XBMCAddon
       for (int i=0; i < items.Size(); i++)
       {
         std::string itemPath = items[i]->GetPath();
-        
+
         if (URIUtils::HasSlashAtEnd(itemPath)) // folder
         {
           URIUtils::RemoveSlashAtEnd(itemPath);
           std::string strFileName = URIUtils::GetFileName(itemPath);
+          if (strFileName.empty())
+          {
+            CURL url(itemPath);
+            strFileName = url.GetHostName();
+          }
           ret.first().push_back(strFileName);
         }
         else // file

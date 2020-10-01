@@ -1,31 +1,19 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "GUIImage.h"
-#include "TextureManager.h"
+
+#include "GUIMessage.h"
 #include "utils/log.h"
-#include "utils/TimeUtils.h"
 
 #include <cassert>
 
-using namespace std;
+using namespace KODI::GUILIB;
 
 CGUIImage::CGUIImage(int parentID, int controlID, float posX, float posY, float width, float height, const CTextureInfo& texture)
     : CGUIControl(parentID, controlID, posX, posY, width, height)
@@ -39,7 +27,7 @@ CGUIImage::CGUIImage(int parentID, int controlID, float posX, float posY, float 
 }
 
 CGUIImage::CGUIImage(const CGUIImage &left)
-  : CGUIControl(left), 
+  : CGUIControl(left),
   m_image(left.m_image),
   m_info(left.m_info),
   m_texture(left.m_texture),
@@ -55,10 +43,7 @@ CGUIImage::CGUIImage(const CGUIImage &left)
   m_bDynamicResourceAlloc=false;
 }
 
-CGUIImage::~CGUIImage(void)
-{
-
-}
+CGUIImage::~CGUIImage(void) = default;
 
 void CGUIImage::UpdateVisibility(const CGUIListItem *item)
 {
@@ -120,11 +105,13 @@ void CGUIImage::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions
     unsigned int frameTime = 0;
     if (m_lastRenderTime)
       frameTime = currentTime - m_lastRenderTime;
+    if (!frameTime)
+      frameTime = (unsigned int)(1000 / CServiceBroker::GetWinSystem()->GetGfxContext().GetFPS());
     m_lastRenderTime = currentTime;
 
     if (m_fadingTextures.size())  // have some fading images
     { // anything other than the last old texture needs to be faded out as per usual
-      for (vector<CFadingTexture *>::iterator i = m_fadingTextures.begin(); i != m_fadingTextures.end() - 1;)
+      for (std::vector<CFadingTexture *>::iterator i = m_fadingTextures.begin(); i != m_fadingTextures.end() - 1;)
       {
         if (!ProcessFading(*i, frameTime, currentTime))
           i = m_fadingTextures.erase(i);
@@ -176,8 +163,8 @@ void CGUIImage::Render()
 {
   if (!IsVisible()) return;
 
-  for (vector<CFadingTexture *>::iterator itr = m_fadingTextures.begin(); itr != m_fadingTextures.end(); ++itr)
-    (*itr)->m_texture->Render();
+  for (auto& itr : m_fadingTextures)
+    itr->m_texture->Render();
 
   m_texture.Render();
 
@@ -299,8 +286,8 @@ CRect CGUIImage::CalcRenderRegion() const
 {
   CRect region = m_texture.GetRenderRect();
 
-  for (vector<CFadingTexture *>::const_iterator itr = m_fadingTextures.begin(); itr != m_fadingTextures.end(); ++itr)
-    region.Union( (*itr)->m_texture->GetRenderRect() );
+  for (const auto& itr : m_fadingTextures)
+    region.Union(itr->m_texture->GetRenderRect());
 
   return CGUIControl::CalcRenderRegion().Intersect(region);
 }
@@ -384,7 +371,7 @@ void CGUIImage::SetPosition(float posX, float posY)
   CGUIControl::SetPosition(posX, posY);
 }
 
-void CGUIImage::SetInfo(const CGUIInfoLabel &info)
+void CGUIImage::SetInfo(const GUIINFO::CGUIInfoLabel &info)
 {
   m_info = info;
   // a constant image never needs updating

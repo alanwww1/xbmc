@@ -1,7 +1,7 @@
 # Kodi Media Center language file
 # Addon Name: Version Check
 # Addon id: service.xbmc.versioncheck
-# Addon Provider: XBMC Foundation
+# Addon Provider: Team Kodi
 msgid ""
 msgstr ""
 "Project-Id-Version: XBMC Addons\n"
@@ -27,6 +27,10 @@ msgstr "Besøk Kodi.tv for mer informasjon"
 msgctxt "#32009"
 msgid "Would you like to remove this reminder?"
 msgstr "Ønsker du å fjerne denne påminnelsen?"
+
+msgctxt "#32010"
+msgid "You can enable/disable it through add-on settings."
+msgstr "Du kan aktivere/deaktivere det gjennom utvidelsesinnstillingene."
 
 msgctxt "#32011"
 msgid "Use your package manager(apt) to upgrade."
@@ -71,3 +75,27 @@ msgstr "Linux: Oppgrader hele systemet"
 msgctxt "#32024"
 msgid "Linux: Upgrade using apt"
 msgstr "Linux: Oppgrader med apt"
+
+msgctxt "#32030"
+msgid "A new stable version of Kodi is available."
+msgstr "En ny stabil versjon av Kodi er tilgjengelig."
+
+msgctxt "#32031"
+msgid "Visit http://kodi.tv for more information."
+msgstr "Se http://kodi.tv for mer informasjon."
+
+msgctxt "#32032"
+msgid "A new stable version of Kodi is available."
+msgstr "En ny stabil versjon av Kodi er tilgjengelig."
+
+msgctxt "#32033"
+msgid "Visit http://kodi.tv for more information."
+msgstr "Se http://kodi.tv for mer informasjon."
+
+msgctxt "#32034"
+msgid "Using %s while %s is available."
+msgstr "Bruker %s mens %s er tilgjengelig."
+
+msgctxt "#32035"
+msgid "It is recommended that you to upgrade to a newer version."
+msgstr "Det er anbefalt å oppgradere til en nyere versjon."

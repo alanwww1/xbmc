@@ -1,30 +1,18 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "BackgroundInfoLoader.h"
-#include "FileItem.h"
-#include "settings/AdvancedSettings.h"
-#include "threads/SingleLock.h"
-#include "utils/log.h"
 
-using namespace std;
+#include "FileItem.h"
+#include "URL.h"
+#include "threads/SingleLock.h"
+#include "threads/Thread.h"
+#include "utils/log.h"
 
 CBackgroundInfoLoader::CBackgroundInfoLoader() : m_thread (NULL)
 {
@@ -44,12 +32,12 @@ void CBackgroundInfoLoader::Run()
 {
   try
   {
-    if (m_vecItems.size() > 0)
+    if (!m_vecItems.empty())
     {
       OnLoaderStart();
 
       // Stage 1: All "fast" stuff we have already cached
-      for (vector<CFileItemPtr>::const_iterator iter = m_vecItems.begin(); iter != m_vecItems.end(); ++iter)
+      for (std::vector<CFileItemPtr>::const_iterator iter = m_vecItems.begin(); iter != m_vecItems.end(); ++iter)
       {
         CFileItemPtr pItem = *iter;
 
@@ -64,12 +52,12 @@ void CBackgroundInfoLoader::Run()
         }
         catch (...)
         {
-          CLog::Log(LOGERROR, "CBackgroundInfoLoader::LoadItemCached - Unhandled exception for item %s", pItem->GetPath().c_str());
+          CLog::Log(LOGERROR, "CBackgroundInfoLoader::LoadItemCached - Unhandled exception for item %s", CURL::GetRedacted(pItem->GetPath()).c_str());
         }
       }
 
       // Stage 2: All "slow" stuff that we need to lookup
-      for (vector<CFileItemPtr>::const_iterator iter = m_vecItems.begin(); iter != m_vecItems.end(); ++iter)
+      for (std::vector<CFileItemPtr>::const_iterator iter = m_vecItems.begin(); iter != m_vecItems.end(); ++iter)
       {
         CFileItemPtr pItem = *iter;
 
@@ -84,7 +72,7 @@ void CBackgroundInfoLoader::Run()
         }
         catch (...)
         {
-          CLog::Log(LOGERROR, "CBackgroundInfoLoader::LoadItemLookup - Unhandled exception for item %s", pItem->GetPath().c_str());
+          CLog::Log(LOGERROR, "CBackgroundInfoLoader::LoadItemLookup - Unhandled exception for item %s", CURL::GetRedacted(pItem->GetPath()).c_str());
         }
       }
     }
@@ -103,7 +91,7 @@ void CBackgroundInfoLoader::Load(CFileItemList& items)
 {
   StopThread();
 
-  if (items.Size() == 0)
+  if (items.IsEmpty())
     return;
 
   CSingleLock lock(m_lock);
@@ -117,9 +105,7 @@ void CBackgroundInfoLoader::Load(CFileItemList& items)
 
   m_thread = new CThread(this, "BackgroundLoader");
   m_thread->Create();
-#ifndef TARGET_POSIX
   m_thread->SetPriority(THREAD_PRIORITY_BELOW_NORMAL);
-#endif
 }
 
 void CBackgroundInfoLoader::StopAsync()

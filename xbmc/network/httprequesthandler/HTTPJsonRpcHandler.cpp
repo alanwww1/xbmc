@@ -1,51 +1,45 @@
 /*
- *      Copyright (C) 2011-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2011-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "HTTPJsonRpcHandler.h"
+
+#include "ServiceBroker.h"
+#include "URL.h"
+#include "filesystem/File.h"
 #include "interfaces/json-rpc/JSONRPC.h"
 #include "interfaces/json-rpc/JSONServiceDescription.h"
 #include "interfaces/json-rpc/JSONUtils.h"
 #include "network/WebServer.h"
+#include "network/httprequesthandler/HTTPRequestHandlerUtils.h"
 #include "utils/JSONVariantWriter.h"
+#include "utils/Variant.h"
 #include "utils/log.h"
 
-#define MAX_STRING_POST_SIZE 20000
+#define MAX_HTTP_POST_SIZE 65536
 
-bool CHTTPJsonRpcHandler::CanHandleRequest(const HTTPRequest &request)
+bool CHTTPJsonRpcHandler::CanHandleRequest(const HTTPRequest &request) const
 {
-  return (request.url.compare("/jsonrpc") == 0);
+  return (request.pathUrl.compare("/jsonrpc") == 0);
 }
 
-int CHTTPJsonRpcHandler::HandleRequest()
+MHD_RESULT CHTTPJsonRpcHandler::HandleRequest()
 {
-  CHTTPClient client;
+  CHTTPClient client(m_request.method);
   bool isRequest = false;
   std::string jsonpCallback;
 
   // get all query arguments
   std::map<std::string, std::string> arguments;
-  CWebServer::GetRequestHeaderValues(m_request.connection, MHD_GET_ARGUMENT_KIND, arguments);
+  HTTPRequestHandlerUtils::GetRequestHeaderValues(m_request.connection, MHD_GET_ARGUMENT_KIND, arguments);
 
   if (m_request.method == POST)
   {
-    std::string contentType = CWebServer::GetRequestHeaderValue(m_request.connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_TYPE);
+    std::string contentType = HTTPRequestHandlerUtils::GetRequestHeaderValue(m_request.connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_TYPE);
     // If the content-type of the m_request was specified, it must be application/json-rpc, application/json, or application/jsonrequest
     // http://www.jsonrpc.org/historical/json-rpc-over-http.html
     if (!contentType.empty() && contentType.compare("application/json-rpc") != 0 &&
@@ -80,7 +74,7 @@ int CHTTPJsonRpcHandler::HandleRequest()
 
   if (isRequest)
   {
-    m_responseData = JSONRPC::CJSONRPC::MethodCall(m_requestData, m_request.webserver, &client);
+    m_responseData = JSONRPC::CJSONRPC::MethodCall(m_requestData, &m_transportLayer, &client);
 
     if (!jsonpCallback.empty())
       m_responseData = jsonpCallback + "(" + m_responseData + ");";
@@ -89,8 +83,14 @@ int CHTTPJsonRpcHandler::HandleRequest()
   {
     // get the whole output of JSONRPC.Introspect
     CVariant result;
-    JSONRPC::CJSONServiceDescription::Print(result, m_request.webserver, &client);
-    m_responseData = CJSONVariantWriter::Write(result, false);
+    JSONRPC::CJSONServiceDescription::Print(result, &m_transportLayer, &client);
+    if (!CJSONVariantWriter::Write(result, m_responseData, false))
+    {
+      m_response.type = HTTPError;
+      m_response.status = MHD_HTTP_INTERNAL_SERVER_ERROR;
+
+      return MHD_YES;
+    }
   }
   else
   {
@@ -120,15 +120,14 @@ HttpResponseRanges CHTTPJsonRpcHandler::GetResponseData() const
   return ranges;
 }
 
-#if (MHD_VERSION >= 0x00040001)
 bool CHTTPJsonRpcHandler::appendPostData(const char *data, size_t size)
-#else
-bool CHTTPJsonRpcHandler::appendPostData(const char *data, unsigned int size)
-#endif
 {
-  if (m_requestData.size() + size > MAX_STRING_POST_SIZE)
+  if (m_requestData.size() + size > MAX_HTTP_POST_SIZE)
   {
-    CLog::Log(LOGERROR, "WebServer: Stopped uploading post since it exceeded size limitations");
+    CServiceBroker::GetLogging()
+        .GetLogger("CHTTPJsonRpcHandler")
+        ->error("Stopped uploading POST data since it exceeded size limitations ({})",
+                MAX_HTTP_POST_SIZE);
     return false;
   }
 
@@ -137,9 +136,41 @@ bool CHTTPJsonRpcHandler::appendPostData(const char *data, unsigned int size)
   return true;
 }
 
-int CHTTPJsonRpcHandler::CHTTPClient::GetPermissionFlags()
+bool CHTTPJsonRpcHandler::CHTTPTransportLayer::PrepareDownload(const char *path, CVariant &details, std::string &protocol)
 {
-  return JSONRPC::OPERATION_PERMISSION_ALL;
+  if (!XFILE::CFile::Exists(path))
+    return false;
+
+  protocol = "http";
+  std::string url;
+  std::string strPath = path;
+  if (StringUtils::StartsWith(strPath, "image://") ||
+    (StringUtils::StartsWith(strPath, "special://") && StringUtils::EndsWith(strPath, ".tbn")))
+    url = "image/";
+  else
+    url = "vfs/";
+  url += CURL::Encode(strPath);
+  details["path"] = url;
+
+  return true;
+}
+
+bool CHTTPJsonRpcHandler::CHTTPTransportLayer::Download(const char *path, CVariant &result)
+{
+  return false;
+}
+
+int CHTTPJsonRpcHandler::CHTTPTransportLayer::GetCapabilities()
+{
+  return JSONRPC::Response | JSONRPC::FileDownloadRedirect;
+}
+
+CHTTPJsonRpcHandler::CHTTPClient::CHTTPClient(HTTPMethod method)
+  : m_permissionFlags(JSONRPC::ReadData)
+{
+  // with a HTTP POST request everything is allowed
+  if (method == POST)
+    m_permissionFlags = JSONRPC::OPERATION_PERMISSION_ALL;
 }
 
 int CHTTPJsonRpcHandler::CHTTPClient::GetAnnouncementFlags()

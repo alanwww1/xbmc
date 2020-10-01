@@ -1,40 +1,25 @@
-/**********************************************************************
- * Copyright (c) 2004, Leo Seib, Hannover
+/*
+ *  Copyright (C) 2004, Leo Seib, Hannover
  *
- * Project: C++ Dynamic Library
- * Module: Dataset abstraction layer realisation file
- * Author: Leo Seib      E-Mail: leoseib@web.de
- * Begin: 5/04/2002
+ *  Project: C++ Dynamic Library
+ *  Module: Dataset abstraction layer realisation file
+ *  Author: Leo Seib      E-Mail: leoseib@web.de
+ *  Begin: 5/04/2002
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- **********************************************************************/
+ *  SPDX-License-Identifier: MIT
+ *  See LICENSES/README.md for more information.
+ */
 
 #include "dataset.h"
+
 #include "utils/log.h"
+
+#include <algorithm>
 #include <cstring>
 
 #ifndef __GNUC__
 #pragma warning (disable:4800)
 #endif
-
-using namespace std;
 
 namespace dbiplus {
 //************* Database implementation ***************
@@ -49,14 +34,16 @@ Database::Database():
   sequence_table("db_sequence")
 {
   active = false;	// No connection yet
+  compression = false;
 }
 
 Database::~Database() {
   disconnect();		// Disconnect if connected to database
 }
 
-int Database::connectFull(const char *newHost, const char *newPort, const char *newDb, const char *newLogin, const char *newPasswd,
-                        const char *newKey, const char *newCert, const char *newCA, const char *newCApath, const char *newCiphers) {
+int Database::connectFull(const char *newHost, const char *newPort, const char *newDb, const char *newLogin,
+                          const char *newPasswd, const char *newKey, const char *newCert, const char *newCA,
+                          const char *newCApath, const char *newCiphers, bool newCompression) {
   host = newHost;
   port = newPort;
   db = newDb;
@@ -67,14 +54,15 @@ int Database::connectFull(const char *newHost, const char *newPort, const char *
   ca = newCA;
   capath = newCApath;
   ciphers = newCiphers;
+  compression = newCompression;
   return connect(true);
 }
 
-string Database::prepare(const char *format, ...)
+std::string Database::prepare(const char *format, ...)
 {
   va_list args;
   va_start(args, format);
-  string result = vprepare(format, args);
+  std::string result = vprepare(format, args);
   va_end(args);
 
   return result;
@@ -91,6 +79,7 @@ Dataset::Dataset():
   frecno = 0;
   fbof = feof = true;
   autocommit = true;
+  fieldIndexMapID = ~0;
 
   fields_object = new Fields();
 
@@ -108,6 +97,7 @@ Dataset::Dataset(Database *newDb):
   frecno = 0;
   fbof = feof = true;
   autocommit = true;
+  fieldIndexMapID = ~0;
 
   fields_object = new Fields();
 
@@ -161,13 +151,13 @@ void Dataset::set_select_sql(const char *sel_sql) {
  select_sql = sel_sql;
 }
 
-void Dataset::set_select_sql(const string &sel_sql) {
+void Dataset::set_select_sql(const std::string &sel_sql) {
  select_sql = sel_sql;
 }
 
 
-void Dataset::parse_sql(string &sql) {
-  string fpattern,by_what;
+void Dataset::parse_sql(std::string &sql) {
+  std::string fpattern,by_what;
   for (unsigned int i=0;i< fields_object->size();i++) {
     fpattern = ":OLD_"+(*fields_object)[i].props.name;
     by_what = "'"+(*fields_object)[i].val.get_asString()+"'";
@@ -178,7 +168,7 @@ void Dataset::parse_sql(string &sql) {
 			       if(isalnum(sql[next_idx])  || sql[next_idx]=='_') {
 			       	   continue;
 			       	}
-			      sql.replace(idx,fpattern.size(),by_what); 	
+			      sql.replace(idx,fpattern.size(),by_what);
 		}//while
     }//for
 
@@ -192,8 +182,8 @@ void Dataset::parse_sql(string &sql) {
 			       if(isalnum(sql[next_idx]) || sql[next_idx]=='_') {
 			       	   continue;
 			       	}
-			      sql.replace(idx,fpattern.size(),by_what); 	
-			}//while  
+			      sql.replace(idx,fpattern.size(),by_what);
+			}//while
   } //for
 }
 
@@ -203,6 +193,10 @@ void Dataset::close(void) {
   frecno = 0;
   fbof = feof = true;
   active = false;
+
+  fieldIndexMap_Entries.clear();
+  fieldIndexMap_Sorter.clear();
+  fieldIndexMapID = ~0;
 }
 
 
@@ -221,7 +215,7 @@ void Dataset::refresh() {
     open();
     seek(row);
   }
-  else open();		
+  else open();
 }
 
 
@@ -287,7 +281,7 @@ void Dataset::edit() {
   edit_object->resize(field_count());
   for (unsigned int i=0; i<fields_object->size(); i++) {
        (*edit_object)[i].props = (*fields_object)[i].props;
-       (*edit_object)[i].val = (*fields_object)[i].val; 
+       (*edit_object)[i].val = (*fields_object)[i].val;
   }
   ds_state = dsEdit;
 }
@@ -299,15 +293,23 @@ void Dataset::post() {
 }
 
 
-void Dataset::deletion() {
-  if (ds_state == dsSelect) make_deletion();
+void Dataset::del()
+{
+  ds_state = dsDelete;
+}
+
+
+void Dataset::deletion()
+{
+  if (ds_state == dsDelete)
+    make_deletion();
 }
 
 
 bool Dataset::set_field_value(const char *f_name, const field_value &value) {
   bool found = false;
   if ((ds_state == dsInsert) || (ds_state == dsEdit)) {
-      for (unsigned int i=0; i < fields_object->size(); i++) 
+      for (unsigned int i=0; i < fields_object->size(); i++)
 	if (str_compare((*edit_object)[i].props.name.c_str(), f_name)==0) {
 			     (*edit_object)[i].val = value;
 			     found = true;
@@ -319,25 +321,64 @@ bool Dataset::set_field_value(const char *f_name, const field_value &value) {
   //  return false;
 }
 
+/********* INDEXMAP SECTION START *********/
+bool Dataset::get_index_map_entry(const char *f_name) {
+  if (~fieldIndexMapID)
+  {
+    unsigned int next(fieldIndexMapID+1 >= fieldIndexMap_Entries.size() ? 0 : fieldIndexMapID + 1);
+    if (fieldIndexMap_Entries[next].strName == f_name) //Yes, our assumption hits.
+    {
+      fieldIndexMapID = next;
+      return true;
+    }
+  }
+  // indexMap not found on the expected way, either first row strange retrieval order
+  FieldIndexMapEntry tmp(f_name);
+  std::vector<unsigned int>::iterator ins(lower_bound(fieldIndexMap_Sorter.begin(), fieldIndexMap_Sorter.end(), tmp, FieldIndexMapComparator(fieldIndexMap_Entries)));
+  if (ins == fieldIndexMap_Sorter.end() || (tmp <  fieldIndexMap_Entries[*ins])) //new entry
+  {
+    //Insert the new item just behind last retrieved item
+    //In general this should be always end(), but could be different
+    fieldIndexMap_Sorter.insert(ins, ++fieldIndexMapID);
+    fieldIndexMap_Entries.insert(fieldIndexMap_Entries.begin() + fieldIndexMapID, tmp);
+  }
+  else //entry already existing!
+  {
+    fieldIndexMapID = *ins;
+    return true;
+  }
+  return false; //invalid
+}
+/********* INDEXMAP SECTION END *********/
 
 const field_value Dataset::get_field_value(const char *f_name) {
-  const char* name=strstr(f_name, ".");
-  if (name) name++;
-  if (ds_state != dsInactive) {
+  if (ds_state != dsInactive)
+  {
     if (ds_state == dsEdit || ds_state == dsInsert){
       for (unsigned int i=0; i < edit_object->size(); i++)
-		if (str_compare((*edit_object)[i].props.name.c_str(), f_name)==0) {
-	  		return (*edit_object)[i].val;
-			}
+        if (str_compare((*edit_object)[i].props.name.c_str(), f_name)==0) {
+          return (*edit_object)[i].val;
+        }
       throw DbErrors("Field not found: %s",f_name);
-       }
+    }
     else
-      for (unsigned int i=0; i < fields_object->size(); i++) 
-			if (str_compare((*fields_object)[i].props.name.c_str(), f_name)==0 || (name && str_compare((*fields_object)[i].props.name.c_str(), name)==0)) {
-	  			return (*fields_object)[i].val;
-			}
-      throw DbErrors("Field not found: %s",f_name);
-       }
+    {
+      //Lets try to reuse a string ->index conversation
+      if (get_index_map_entry(f_name))
+        return get_field_value(static_cast<int>(fieldIndexMap_Entries[fieldIndexMapID].fieldIndex));
+
+      const char* name=strstr(f_name, ".");
+      if (name)
+        name++;
+
+      for (unsigned int i=0; i < fields_object->size(); i++)
+        if (str_compare((*fields_object)[i].props.name.c_str(), f_name) == 0 || (name && str_compare((*fields_object)[i].props.name.c_str(), name) == 0)) {
+          fieldIndexMap_Entries[fieldIndexMapID].fieldIndex = i;
+          return (*fields_object)[i].val;
+        }
+    }
+    throw DbErrors("Field not found: %s",f_name);
+  }
   throw DbErrors("Dataset state is Inactive");
   //field_value fv;
   //return fv;
@@ -346,25 +387,25 @@ const field_value Dataset::get_field_value(const char *f_name) {
 const field_value Dataset::get_field_value(int index) {
   if (ds_state != dsInactive) {
     if (ds_state == dsEdit || ds_state == dsInsert){
-      if (index <0 || index >field_count())
+      if (index < 0 || index >= field_count())
         throw DbErrors("Field index not found: %d",index);
 
       return (*edit_object)[index].val;
     }
     else
-      if (index <0 || index >field_count())
+    {
+      if (index < 0 || index >= field_count())
         throw DbErrors("Field index not found: %d",index);
 
       return (*fields_object)[index].val;
+    }
   }
   throw DbErrors("Dataset state is Inactive");
-  //field_value fv;
-  //return fv;
 }
 
-const sql_record* const Dataset::get_sql_record()
+const sql_record* Dataset::get_sql_record()
 {
-  if (result.records.size() == 0 || frecno >= (int)result.records.size())
+  if (result.records.empty() || frecno >= (int)result.records.size())
     return NULL;
 
   return result.records[frecno];
@@ -372,7 +413,7 @@ const sql_record* const Dataset::get_sql_record()
 
 const field_value Dataset::f_old(const char *f_name) {
   if (ds_state != dsInactive)
-    for (int unsigned i=0; i < fields_object->size(); i++) 
+    for (int unsigned i=0; i < fields_object->size(); i++)
       if ((*fields_object)[i].props.name == f_name)
 	return (*fields_object)[i].val;
   field_value fv;
@@ -380,16 +421,16 @@ const field_value Dataset::f_old(const char *f_name) {
 }
 
 int Dataset::str_compare(const char * s1, const char * s2) {
- 	string ts1 = s1; 
- 	string ts2 = s2;
- 	string::const_iterator p = ts1.begin();
- 	string::const_iterator p2 = ts2.begin();
+ 	std::string ts1 = s1;
+ 	std::string ts2 = s2;
+ 	std::string::const_iterator p = ts1.begin();
+ 	std::string::const_iterator p2 = ts2.begin();
  	while (p!=ts1.end() && p2 != ts2.end()) {
- 	if (toupper(*p)!=toupper(*p2))
- 		return (toupper(*p)<toupper(*p2)) ? -1 : 1;
+ 		if (toupper(*p)!=toupper(*p2))
+ 			return (toupper(*p)<toupper(*p2)) ? -1 : 1;
  		++p;
- 		++p2;		
- 	}	
+ 		++p2;
+ 	}
  	return (ts2.size() == ts1.size())? 0:
  		(ts1.size()<ts2.size())? -1 : 1;
  }
@@ -404,7 +445,7 @@ bool Dataset::locate(){
   bool result;
   if (plist.empty()) return false;
 
-  std::map<string,field_value>::const_iterator i;
+  std::map<std::string, field_value>::const_iterator i;
   first();
   while (!eof()) {
     result = true;
@@ -428,7 +469,7 @@ bool Dataset::findNext(void) {
   bool result;
   if (plist.empty()) return false;
 
-  std::map<string,field_value>::const_iterator i;
+  std::map<std::string, field_value>::const_iterator i;
   while (!eof()) {
     result = true;
     for (i=plist.begin();i!=plist.end();++i)
@@ -444,32 +485,32 @@ bool Dataset::findNext(void) {
 
 
 void Dataset::add_update_sql(const char *upd_sql){
-  string s = upd_sql;
+  std::string s = upd_sql;
   update_sql.push_back(s);
 }
 
 
-void Dataset::add_update_sql(const string &upd_sql){
+void Dataset::add_update_sql(const std::string &upd_sql){
   update_sql.push_back(upd_sql);
 }
 
 void Dataset::add_insert_sql(const char *ins_sql){
-  string s = ins_sql;
+  std::string s = ins_sql;
   insert_sql.push_back(s);
 }
 
 
-void Dataset::add_insert_sql(const string &ins_sql){
+void Dataset::add_insert_sql(const std::string &ins_sql){
   insert_sql.push_back(ins_sql);
 }
 
 void Dataset::add_delete_sql(const char *del_sql){
-  string s = del_sql;
+  std::string s = del_sql;
   delete_sql.push_back(s);
 }
 
 
-void Dataset::add_delete_sql(const string &del_sql){
+void Dataset::add_delete_sql(const std::string &del_sql){
   delete_sql.push_back(del_sql);
 }
 
@@ -483,6 +524,16 @@ void Dataset::clear_insert_sql(){
 
 void Dataset::clear_delete_sql(){
   delete_sql.clear();
+}
+
+size_t Dataset::insert_sql_count()
+{
+  return insert_sql.size();
+}
+
+size_t Dataset::delete_sql_count()
+{
+  return delete_sql.size();
 }
 
 int Dataset::field_count() { return fields_object->size();}
@@ -537,7 +588,7 @@ DbErrors::DbErrors(const char *msg, ...) {
 
 const char * DbErrors::getMsg() {
 	return msg_.c_str();
-	
+
 }
 
 }// namespace

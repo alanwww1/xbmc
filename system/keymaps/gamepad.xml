@@ -1,40 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- This file contains the mapping of keys (gamepad, remote, and keyboard) to actions within XBMC -->
-<!-- The <global> section is a fall through - they will only be used if the button is not          -->
-<!-- used in the current window's section.  Note that there is only handling                       -->
-<!-- for a single action per button at this stage.                                                 -->
-<!-- For joystick/gamepad configuration under linux/win32, see below as it differs from xbox       -->
-<!-- gamepads.                                                                                     -->
-
-<!-- The format is:                      -->
-<!--    <device>                         -->
-<!--      <button>action</button>        -->
-<!--    </device>                        -->
-
-<!-- To map keys from other remotes using the RCA protocol, you may add <universalremote> blocks -->
-<!-- In this case, the tags used are <obc#> where # is the original button code (OBC) of the key -->
-<!-- You set it up by adding a <universalremote> block to the window or <global> section:       -->
-<!--    <universalremote>             -->
-<!--       <obc45>Stop</obc45>         -->
-<!--    </universalremote>            -->
-
-<!-- Note that the action can be a built-in function.                 -->
-<!--  eg <B>ActivateWindow(MyMusic)</B>                         -->
-<!-- would automatically go to My Music on the press of the B button. -->
-
-<!-- Joysticks / Gamepads:                                                                    -->
-<!--   See the sample PS3 controller configuration below for the format.                      -->
-<!--                                                                                          -->
-<!--  Joystick Name:                                                                          -->
-<!--   Do 'cat /proc/bus/input/devices' or see your xbmc log file  to find the names of       -->
-<!--   detected joysticks. The name used in the configuration should match the detected name. -->
-<!--                                                                                          -->
-<!--  Button Ids:                                                                             -->
-<!--   'id' is the button ID used by SDL. Joystick button ids of connected joysticks appear   -->
-<!--   in xbmc.log when they are pressed. Use your log to map custom buttons to actions.      -->
-<!--                                                                                          -->
-<!--  Axis Ids / Analog Controls                                                              -->
-<!--   Coming soon.                                                                           -->
+<!-- This file contains the mapping of EventServer "gamepad" keys to actions within Kodi. -->
+<!--                                                                                      -->
+<!-- The format is:                                                                       -->
+<!--  <window>                                                                            -->
+<!--    <device>                                                                          -->
+<!--      <button>action</button>                                                         -->
+<!--    </device>                                                                         -->
+<!--  </window>                                                                           -->
+<!--                                                                                      -->
+<!-- The <global> section is a fall through - they will only be used if the button is     -->
+<!-- not used in the current window's section.                                            -->
+<!--                                                                                      -->
+<!-- Actions can be built-in functions.                                                   -->
+<!--  eg <B>ActivateWindow(Music)</B>                                                     -->
+<!-- would automatically go to Music on the press of the B button.                        -->
+<!--                                                                                      -->
+<!--                                                                                      -->
+<!-- An empty action removes the corresponding mapping from default and parent keymaps.   -->
+<!-- This is different from a "noop" action, which disables a button.                     -->
+<!--                                                                                      -->
+<!-- More documentation on keymaps can be found on http://kodi.wiki/view/keymaps          -->
 <keymap>
   <global>
     <gamepad>
@@ -60,47 +45,36 @@
       <rightthumbstickdown>VolumeDown</rightthumbstickdown>
     </gamepad>
   </global>
-  <Home>
-    <gamepad>
-      <black>Skin.ToggleSetting(HomeViewToggle)</black>
-    </gamepad>
-  </Home>
-  <MyFiles>
+  <FileManager>
     <gamepad>
       <Y>Highlight</Y>
     </gamepad>
-  </MyFiles>
-  <MyMusicPlaylist>
+  </FileManager>
+  <MusicPlaylist>
     <gamepad>
       <Y>Delete</Y>
       <black>Back</black>
     </gamepad>
-  </MyMusicPlaylist>
-  <MyMusicPlaylistEditor>
+  </MusicPlaylist>
+  <MusicPlaylistEditor>
     <gamepad>
       <Y>Queue</Y>
     </gamepad>
-  </MyMusicPlaylistEditor>
-  <MyMusicFiles>
-    <gamepad>
-      <Y>Queue</Y>
-      <black>Playlist</black>
-    </gamepad>
-  </MyMusicFiles>
-  <MyMusicLibrary>
+  </MusicPlaylistEditor>
+  <Music>
     <gamepad>
       <Y>Queue</Y>
       <black>Playlist</black>
     </gamepad>
-  </MyMusicLibrary>
+  </Music>
   <FullscreenVideo>
     <gamepad>
       <A>Pause</A>
       <B>Stop</B>
       <Y>AspectRatio</Y>
-      <black>CodecInfo</black>
+      <black>PlayerProcessInfo</black>
       <white>Info</white>
-      <back>SmallStepBack</back>
+      <back>Seek(-7)</back><!-- Replaces smallstepback -->
       <start>OSD</start>
       <leftanalogtrigger>AnalogRewind</leftanalogtrigger>
       <rightanalogtrigger>AnalogFastForward</rightanalogtrigger>
@@ -110,6 +84,21 @@
       <dpaddown>ChapterOrBigStepBack</dpaddown>
     </gamepad>
   </FullscreenVideo>
+  <FullscreenGame>
+    <gamepad>
+      <A>Pause</A>
+      <B>Stop</B>
+      <Y>AspectRatio</Y>
+      <black>CodecInfo</black>
+      <white>Info</white>
+      <back>Seek(-7)</back><!-- Replaces smallstepback -->
+      <start>OSD</start>
+      <leftanalogtrigger>AnalogRewind</leftanalogtrigger>
+      <rightanalogtrigger>AnalogFastForward</rightanalogtrigger>
+      <dpadleft>StepBack</dpadleft>
+      <dpadright>StepForward</dpadright>
+    </gamepad>
+  </FullscreenGame>
   <FullscreenLiveTV>
     <gamepad>
       <dpadleft>StepBack</dpadleft>
@@ -129,7 +118,7 @@
   <FullscreenInfo>
     <gamepad>
       <start>OSD</start>
-      <black>CodecInfo</black>
+      <black>PlayerProcessInfo</black>
       <white>Back</white>
       <leftanalogtrigger>AnalogRewind</leftanalogtrigger>
       <rightanalogtrigger>AnalogFastForward</rightanalogtrigger>
@@ -145,7 +134,7 @@
       <A>Pause</A>
       <B>Stop</B>
       <Y>ActivateWindow(VisualisationPresetList)</Y>
-      <black>CodecInfo</black>
+      <black>PlayerProcessInfo</black>
       <white>Info</white>
       <start>OSD</start>
       <back>LockPreset</back>
@@ -160,19 +149,19 @@
   <MusicOSD>
     <gamepad>
       <start>Back</start>
-      <black>CodecInfo</black>
+      <black>PlayerProcessInfo</black>
       <white>Info</white>
       <leftanalogtrigger>AnalogRewind</leftanalogtrigger>
       <rightanalogtrigger>AnalogFastForward</rightanalogtrigger>
     </gamepad>
   </MusicOSD>
-  <VisualisationSettings>
+  <AddonSettings>
     <gamepad>
       <start>Back</start>
       <leftanalogtrigger>AnalogRewind</leftanalogtrigger>
       <rightanalogtrigger>AnalogFastForward</rightanalogtrigger>
     </gamepad>
-  </VisualisationSettings>
+  </AddonSettings>
   <VisualisationPresetList>
     <gamepad>
       <start>Back</start>
@@ -187,7 +176,7 @@
       <B>Stop</B>
       <Y>Rotate</Y>
       <X>ZoomNormal</X>
-      <black>CodecInfo</black>
+      <black>Info</black>
       <white>Info</white>
       <righttrigger>NextPicture</righttrigger>
       <lefttrigger>PreviousPicture</lefttrigger>
@@ -207,17 +196,17 @@
       <white>NextResolution</white>
     </gamepad>
   </ScreenCalibration>
-  <GUICalibration>
+  <ScreenCalibration>
     <gamepad>
       <leftthumbstick>AnalogMove</leftthumbstick>
       <A>NextCalibration</A>
       <black>ResetCalibration</black>
     </gamepad>
-  </GUICalibration>
+  </ScreenCalibration>
   <VideoOSD>
     <gamepad>
       <start>Back</start>
-      <black>CodecInfo</black>
+      <black>PlayerProcessInfo</black>
       <white>Info</white>
       <leftanalogtrigger>AnalogRewind</leftanalogtrigger>
       <rightanalogtrigger>AnalogFastForward</rightanalogtrigger>
@@ -229,7 +218,7 @@
       <B>Stop</B>
       <start>OSD</start>
       <white>Info</white>
-      <black>CodecInfo</black>
+      <black>PlayerProcessInfo</black>
       <leftanalogtrigger>AnalogRewind</leftanalogtrigger>
       <rightanalogtrigger>AnalogFastForward</rightanalogtrigger>
     </gamepad>
@@ -239,7 +228,7 @@
       <X/>
       <Y>AspectRatio</Y>
       <start>Back</start>
-      <black>CodecInfo</black>
+      <black>PlayerProcessInfo</black>
       <white>Info</white>
       <leftanalogtrigger>AnalogRewind</leftanalogtrigger>
       <rightanalogtrigger>AnalogFastForward</rightanalogtrigger>
@@ -250,7 +239,7 @@
       <X/>
       <Y>AspectRatio</Y>
       <start>Back</start>
-      <black>CodecInfo</black>
+      <black>PlayerProcessInfo</black>
       <white>Info</white>
       <leftanalogtrigger>AnalogRewind</leftanalogtrigger>
       <rightanalogtrigger>AnalogFastForward</rightanalogtrigger>
@@ -265,23 +254,17 @@
       <rightanalogtrigger>AnalogFastForward</rightanalogtrigger>
     </gamepad>
   </VideoBookmarks>
-  <MyVideoLibrary>
+  <Videos>
     <gamepad>
       <black>Delete</black>
     </gamepad>
-  </MyVideoLibrary>
-  <MyVideoFiles>
-    <gamepad>
-      <Y>Queue</Y>
-      <black>Playlist</black>
-    </gamepad>
-  </MyVideoFiles>
-  <MyVideoPlaylist>
+  </Videos>
+  <VideoPlaylist>
     <gamepad>
       <Y>Delete</Y>
       <black>Back</black>
     </gamepad>
-  </MyVideoPlaylist>
+  </VideoPlaylist>
   <VirtualKeyboard>
     <gamepad>
       <start>Enter</start>
@@ -297,11 +280,11 @@
       <white>Back</white>
     </gamepad>
   </ContextMenu>
-  <Scripts>
+  <Programs>
     <gamepad>
       <black>info</black>
     </gamepad>
-  </Scripts>
+  </Programs>
   <NumericInput>
     <gamepad>
       <B>BackSpace</B>
@@ -331,4 +314,9 @@
       <dpadright>NextPicture</dpadright>
     </gamepad>
   </PictureInfo>
+  <PlayerProcessInfo>
+    <gamepad>
+      <black>PlayerProcessInfo</black>
+    </gamepad>
+  </PlayerProcessInfo>
 </keymap>

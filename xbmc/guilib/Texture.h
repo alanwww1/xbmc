@@ -1,27 +1,13 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #pragma once
 
-#include "system.h"
-#include "gui3d.h"
 #include "XBTF.h"
 #include "guilib/imagefactory.h"
 
@@ -33,6 +19,12 @@ class CTexture;
 class CGLTexture;
 class CPiTexture;
 class CDXTexture;
+
+enum class TEXTURE_SCALING
+{
+  LINEAR,
+  NEAREST,
+};
 
 /*!
 \ingroup textures
@@ -52,12 +44,11 @@ public:
    \param texturePath the path of the texture to load.
    \param idealWidth the ideal width of the texture (defaults to 0, no ideal width).
    \param idealHeight the ideal height of the texture (defaults to 0, no ideal height).
-   \param autoRotate whether the textures should be autorotated based on EXIF information (defaults to false).
    \param strMimeType mimetype of the given texture if available (defaults to empty)
    \return a CBaseTexture pointer to the created texture - NULL if the texture failed to load.
    */
   static CBaseTexture *LoadFromFile(const std::string& texturePath, unsigned int idealWidth = 0, unsigned int idealHeight = 0,
-                                    bool autoRotate = false, bool requirePixels = false, const std::string& strMimeType = "");
+                                    bool requirePixels = false, const std::string& strMimeType = "");
 
   /*! \brief Load a texture from a file in memory
    Loads a texture from a file in memory, restricting in size if needed based on maxHeight and maxWidth.
@@ -72,10 +63,17 @@ public:
   static CBaseTexture *LoadFromFileInMemory(unsigned char* buffer, size_t bufferSize, const std::string& mimeType,
                                             unsigned int idealWidth = 0, unsigned int idealHeight = 0);
 
-  bool LoadFromMemory(unsigned int width, unsigned int height, unsigned int pitch, unsigned int format, bool hasAlpha, unsigned char* pixels);
+  bool LoadFromMemory(unsigned int width, unsigned int height, unsigned int pitch, unsigned int format, bool hasAlpha, const unsigned char* pixels);
   bool LoadPaletted(unsigned int width, unsigned int height, unsigned int pitch, unsigned int format, const unsigned char *pixels, const COLOR *palette);
 
   bool HasAlpha() const;
+
+  void SetMipmapping();
+  bool IsMipmapped() const;
+  void SetScalingMethod(TEXTURE_SCALING scalingMethod) { m_scalingMethod = scalingMethod; }
+  TEXTURE_SCALING GetScalingMethod() const { return m_scalingMethod; }
+  void SetCacheMemory(bool bCacheMemory) { m_bCacheMemory = bCacheMemory; }
+  bool GetCacheMemory() const { return m_bCacheMemory; }
 
   virtual void CreateTextureObject() = 0;
   virtual void DestroyTextureObject() = 0;
@@ -106,13 +104,13 @@ public:
 
 private:
   // no copy constructor
-  CBaseTexture(const CBaseTexture &copy);
+  CBaseTexture(const CBaseTexture &copy) = delete;
 
 protected:
   bool LoadFromFileInMem(unsigned char* buffer, size_t size, const std::string& mimeType,
                          unsigned int maxWidth, unsigned int maxHeight);
-  bool LoadFromFileInternal(const std::string& texturePath, unsigned int maxWidth, unsigned int maxHeight, bool autoRotate, bool requirePixels, const std::string& strMimeType = "");
-  bool LoadIImage(IImage* pImage, unsigned char* buffer, unsigned int bufSize, unsigned int width, unsigned int height, bool autoRotate=false);
+  bool LoadFromFileInternal(const std::string& texturePath, unsigned int maxWidth, unsigned int maxHeight, bool requirePixels, const std::string& strMimeType = "");
+  bool LoadIImage(IImage* pImage, unsigned char* buffer, unsigned int bufSize, unsigned int width, unsigned int height);
   // helpers for computation of texture parameters for compressed textures
   unsigned int GetPitch(unsigned int width) const;
   unsigned int GetRows(unsigned int height) const;
@@ -129,13 +127,13 @@ protected:
   bool m_loadedToGPU;
   unsigned int m_format;
   int m_orientation;
-  bool m_hasAlpha;
+  bool m_hasAlpha =  true ;
+  bool m_mipmapping =  false ;
+  TEXTURE_SCALING m_scalingMethod = TEXTURE_SCALING::LINEAR;
+  bool m_bCacheMemory = false;
 };
 
-#if defined(HAS_OMXPLAYER)
-#include "TexturePi.h"
-#define CTexture CPiTexture
-#elif defined(HAS_GL) || defined(HAS_GLES)
+#if defined(HAS_GL) || defined(HAS_GLES)
 #include "TextureGL.h"
 #define CTexture CGLTexture
 #elif defined(HAS_DX)

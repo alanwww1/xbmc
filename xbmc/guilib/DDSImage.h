@@ -1,27 +1,15 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #pragma once
 
-#include <string>
 #include <stdint.h>
+#include <string>
 
 class CDDSImage
 {
@@ -38,43 +26,9 @@ public:
 
   bool ReadFile(const std::string &file);
 
-  /*! \brief Create a DDS image file from the given an ARGB buffer
-   \param file name of the file to write
-   \param width width of the pixel buffer
-   \param height height of the pixel buffer
-   \param pitch pitch of the pixel buffer
-   \param argb pixel buffer
-   \param maxMSE maximum mean square error to allow, ignored if 0 (the default)
-   \return true on successful image creation, false otherwise
-   */
-  bool Create(const std::string &file, unsigned int width, unsigned int height, unsigned int pitch, unsigned char const *argb, double maxMSE = 0);
-  
-  /*! \brief Decompress a DXT1/3/5 image to the given buffer
-   Assumes the buffer has been allocated to at least width*height*4
-   \param argb pixel buffer to write to (at least width*height*4 bytes)
-   \param width width of the pixel buffer
-   \param height height of the pixel buffer
-   \param pitch pitch of the pixel buffer
-   \param dxt compressed dxt data
-   \param format format of the compressed dxt data
-   \return true on success, false otherwise
-   */
-  static bool Decompress(unsigned char *argb, unsigned int width, unsigned int height, unsigned int pitch, unsigned char const *dxt, unsigned int format);
-
 private:
   void Allocate(unsigned int width, unsigned int height, unsigned int format);
   static const char *GetFourCC(unsigned int format);
-  bool WriteFile(const std::string &file) const;
-
-  /*! \brief Compress an ARGB buffer into a DXT1/3/5 image
-   \param width width of the pixel buffer
-   \param height height of the pixel buffer
-   \param pitch pitch of the pixel buffer
-   \param argb pixel buffer
-   \param maxMSE maximum mean square error to allow, ignored if 0 (the default)
-   \return true on successful compression within the given maxMSE, false otherwise
-   */
-  bool Compress(unsigned int width, unsigned int height, unsigned int pitch, unsigned char const *argb, double maxMSE = 0);
 
   static unsigned int GetStorageRequirements(unsigned int width, unsigned int height, unsigned int format);
   enum {

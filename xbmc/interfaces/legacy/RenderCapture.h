@@ -1,29 +1,15 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #pragma once
 
-#include "cores/VideoRenderers/RenderManager.h"
-#include "cores/VideoRenderers/RenderCapture.h"
 #include "AddonClass.h"
-#include "LanguageHook.h"
+#include "Application.h"
 #include "Exception.h"
 #include "commons/Buffer.h"
 
@@ -33,99 +19,171 @@ namespace XBMCAddon
   {
     XBMCCOMMONS_STANDARD_EXCEPTION(RenderCaptureException);
 
+    //
+    /// \defgroup python_xbmc_RenderCapture RenderCapture
+    /// \ingroup python_xbmc
+    /// @{
+    /// @brief **Kodi's render capture.**
+    ///
+    /// \python_class{ RenderCapture() }
+    ///
+    ///
+    ///--------------------------------------------------------------------------
+    ///
+    //
     class RenderCapture : public AddonClass
     {
-      CRenderCapture* m_capture;
+      unsigned int m_captureId;
+      unsigned int m_width;
+      unsigned int m_height;
+      uint8_t *m_buffer;
+
     public:
-      inline RenderCapture() : m_capture(g_renderManager.AllocRenderCapture()) {}
-      inline virtual ~RenderCapture() { g_renderManager.ReleaseRenderCapture(m_capture); }
+      inline RenderCapture()
+      {
+        m_captureId = UINT_MAX;
+        m_buffer = nullptr;
+        m_width = 0;
+        m_height = 0;
+      }
+      inline ~RenderCapture() override
+      {
+        g_application.GetAppPlayer().RenderCaptureRelease(m_captureId);
+        delete [] m_buffer;
+      }
 
-      /**
-       * getWidth() -- returns width of captured image as set during\n
-       *     RenderCapture.capture(). Returns 0 prior to calling capture.\n
-       */
-      inline int getWidth() { return m_capture->GetWidth(); }
+#ifdef DOXYGEN_SHOULD_USE_THIS
+      ///
+      /// \ingroup python_xbmc_RenderCapture
+      /// @brief \python_func{ getWidth() }
+      /// Get width
+      ///
+      /// To get width of captured image as set during RenderCapture.capture().
+      /// Returns 0 prior to calling capture.
+      ///
+      /// @return                        Width or 0 prior to calling capture
+      ///
+      getWidth();
+#else
+      inline int getWidth() { return m_width; }
+#endif
 
-      /**
-       * getHeight() -- returns height of captured image as set during\n
-       *     RenderCapture.capture(). Returns 0 prior to calling capture.\n
-       */
-      inline int getHeight() { return m_capture->GetHeight(); }
+#ifdef DOXYGEN_SHOULD_USE_THIS
+      ///
+      /// \ingroup python_xbmc_RenderCapture
+      /// @brief \python_func{ getHeight() }
+      /// Get height
+      ///
+      /// To get height of captured image as set during RenderCapture.capture().
+      /// Returns 0 prior to calling capture.
+      ///
+      /// @return                        height or 0 prior to calling capture
+      getHeight();
+#else
+      inline int getHeight() { return m_height; }
+#endif
 
-      /**
-       * getCaptureState() -- returns processing state of capture request.
-       *
-       * The returned value could be compared against the following constants:
-       * - xbmc.CAPTURE_STATE_WORKING  : Capture request in progress.
-       * - xbmc.CAPTURE_STATE_DONE     : Capture request done. The image could be retrieved with getImage()
-       * - xbmc.CAPTURE_STATE_FAILED   : Capture request failed.
-       */
-      inline int getCaptureState() { return m_capture->GetUserState(); }
+#ifdef DOXYGEN_SHOULD_USE_THIS
+      ///
+      /// \ingroup python_xbmc_RenderCapture
+      /// @brief \python_func{ getAspectRatio() }
+      /// Get aspect ratio of currently displayed video.
+      ///
+      /// @return                        Aspect ratio
+      /// @warning This may be called prior to calling RenderCapture.capture().
+      ///
+      getAspectRatio();
+#else
+      inline float getAspectRatio() { return g_application.GetAppPlayer().GetRenderAspectRatio(); }
+#endif
 
-      /**
-       * getAspectRatio() -- returns aspect ratio of currently displayed video.\n
-       *     This may be called prior to calling RenderCapture.capture().\n
-       */
-      inline float getAspectRatio() { return g_renderManager.GetAspectRatio(); }
-
-      /**
-       * getImageFormat() -- returns format of captured image: 'BGRA' or 'RGBA'.
-       */
+#ifdef DOXYGEN_SHOULD_USE_THIS
+      ///
+      /// \ingroup python_xbmc_RenderCapture
+      /// @brief \python_func{ getImageFormat() }
+      /// Get image format
+      ///
+      /// @return                        Format of captured image: 'BGRA'
+      ///
+      ///
+      ///-----------------------------------------------------------------------
+      /// @python_v17 Image will now always be returned in BGRA
+      ///
+      getImageFormat()
+#else
       inline const char* getImageFormat()
+#endif
       {
-        return m_capture->GetCaptureFormat() == CAPTUREFORMAT_BGRA ? "BGRA" :
-          (m_capture->GetCaptureFormat() == CAPTUREFORMAT_RGBA ? "RGBA" : NULL);
+        return "BGRA";
       }
 
-      // RenderCapture_GetImage
-      /**
-       * getImage() -- returns captured image as a bytearray.
-       * 
-       * The size of the image is getWidth() * getHeight() * 4
-       */
-      inline XbmcCommons::Buffer getImage() throw(RenderCaptureException)
+#ifdef DOXYGEN_SHOULD_USE_THIS
+      ///
+      /// \ingroup python_xbmc_RenderCapture
+      /// @brief \python_func{ getImage([msecs]) }
+      /// Returns captured image as a bytearray.
+      ///
+      /// @param msecs               [opt] Milliseconds to wait. Waits
+      ///                            1000ms if not specified
+      /// @return                    Captured image as a bytearray
+      ///
+      /// @note The size of the image is m_width * m_height * 4
+      ///
+      ///
+      ///-----------------------------------------------------------------------
+      /// @python_v17 Added the option to specify wait time in msec.
+      ///
+      getImage(...)
+#else
+      inline XbmcCommons::Buffer getImage(unsigned int msecs = 0)
+#endif
       {
-        if (GetUserState() != CAPTURESTATE_DONE)
-          throw RenderCaptureException("illegal user state");
-        size_t size = getWidth() * getHeight() * 4;
-        return XbmcCommons::Buffer(this->GetPixels(), size);
+        if (!GetPixels(msecs))
+          return XbmcCommons::Buffer(0);
+
+        size_t size = m_width * m_height * 4;
+        return XbmcCommons::Buffer(m_buffer, size);
       }
 
-      /**
-       * capture(width, height [, flags]) -- issue capture request.
-       * 
-       * width    : Width capture image should be rendered to\n
-       * height   : Height capture image should should be rendered to\n
-       * flags    : Optional. Flags that control the capture processing.
-       * 
-       * The value for 'flags' could be or'ed from the following constants:
-       * - xbmc.CAPTURE_FLAG_CONTINUOUS    : after a capture is done, issue a new capture request immediately
-       * - xbmc.CAPTURE_FLAG_IMMEDIATELY   : read out immediately when capture() is called, this can cause a busy wait
-       */
-      inline void capture(int width, int height, int flags = 0)
+#ifdef DOXYGEN_SHOULD_USE_THIS
+      ///
+      /// \ingroup python_xbmc_RenderCapture
+      /// @brief \python_func{ capture(width, height) }
+      /// Issue capture request.
+      ///
+      /// @param width               Width capture image should be rendered to
+      /// @param height              Height capture image should should be rendered to
+      ///
+      ///
+      ///-----------------------------------------------------------------------
+      /// @python_v17 Removed the option to pass **flags**
+      ///
+      capture(...)
+#else
+      inline void capture(int width, int height)
+#endif
       {
-        g_renderManager.Capture(m_capture, (unsigned int)width, (unsigned int)height, flags);
-      }
-
-      /**
-       * waitForCaptureStateChangeEvent([msecs]) -- wait for capture state change event.
-       * 
-       * msecs     : Milliseconds to wait. Waits forever if not specified.
-       * 
-       * The method will return 1 if the Event was triggered. Otherwise it will return 0.
-       */
-      inline int waitForCaptureStateChangeEvent(unsigned int msecs = 0)
-      {
-        DelayedCallGuard dg(languageHook);
-        return msecs ? m_capture->GetEvent().WaitMSec(msecs) : m_capture->GetEvent().Wait();
+        if (m_buffer)
+        {
+          g_application.GetAppPlayer().RenderCaptureRelease(m_captureId);
+          delete [] m_buffer;
+        }
+        m_captureId = g_application.GetAppPlayer().RenderCaptureAlloc();
+        m_width = width;
+        m_height = height;
+        m_buffer = new uint8_t[m_width*m_height*4];
+        g_application.GetAppPlayer().RenderCapture(m_captureId, m_width, m_height, CAPTUREFLAG_CONTINUOUS);
       }
 
 // hide these from swig
 #ifndef SWIG
-      inline uint8_t*     GetPixels() { return m_capture->GetPixels();   }
-      inline ECAPTURESTATE GetUserState() { return m_capture->GetUserState();  }
+      inline bool GetPixels(unsigned int msec)
+      {
+        return g_application.GetAppPlayer().RenderCaptureGetPixels(m_captureId, msec, m_buffer, m_width*m_height*4);
+      }
 #endif
 
     };
+    //@}
   }
 }

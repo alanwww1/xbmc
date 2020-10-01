@@ -1,81 +1,14 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "utils/HTMLUtil.h"
 
-#include "gtest/gtest.h"
-
-TEST(TestHTMLUtil, FindTag)
-{
-  HTML::CHTMLUtil util;
-  std::string str, found;
-  str = "<!DOCTYPE html>\n"
-        "<html>\n"
-        "  <head class=\"someclass\">\n"
-        "    <body>\n"
-        "      <p>blah blah blah</p>\n"
-        "    </body>\n"
-        "  </head>\n"
-        "</html>\n";
-  EXPECT_EQ(54, util.FindTag(str, "<body", found));
-  EXPECT_STREQ("<body>", found.c_str());
-
-  found.clear();
-  EXPECT_EQ(-1, util.FindTag(str, "<span", found));
-  EXPECT_STREQ("", found.c_str());
-}
-
-TEST(TestHTMLUtil, FindClosingTag)
-{
-  HTML::CHTMLUtil util;
-  std::string str, found;
-  str = "<!DOCTYPE html>\n"
-        "<html>\n"
-        "  <head class=\"someclass\">\n"
-        "    <body>\n"
-        "      <p>blah blah blah</p>\n"
-        "    </body>\n"
-        "  </head>\n"
-        "</html>\n";
-  /* Need to set position past '<body>' tag */
-  EXPECT_EQ(93, util.FindClosingTag(str, "body", found, 61));
-  EXPECT_STREQ("</body>", found.c_str());
-}
-
-TEST(TestHTMLUtil, getValueOfTag)
-{
-  HTML::CHTMLUtil util;
-  std::string str, value;
-  str = "<p>blah blah blah</p>";
-  util.getValueOfTag(str, value);
-  EXPECT_STREQ("blah blah blah", value.c_str());
-}
-
-TEST(TestHTMLUtil, getAttributeOfTag)
-{
-  HTML::CHTMLUtil util;
-  std::string str, tag, value;
-  str = "<head class=\"someclass\"></head>\n";
-  util.getAttributeOfTag(str, "class", value);
-  EXPECT_STREQ("\"someclass", value.c_str());
-}
+#include <gtest/gtest.h>
 
 TEST(TestHTMLUtil, RemoveTags)
 {
@@ -97,7 +30,7 @@ TEST(TestHTMLUtil, ConvertHTMLToW)
 {
   std::wstring inw, refstrw, varstrw;
   inw =     L"&aring;&amp;&euro;";
-  refstrw = L"å&€";
+  refstrw = L"\u00e5&\u20ac";
   HTML::CHTMLUtil::ConvertHTMLToW(inw, varstrw);
   EXPECT_STREQ(refstrw.c_str(), varstrw.c_str());
 }

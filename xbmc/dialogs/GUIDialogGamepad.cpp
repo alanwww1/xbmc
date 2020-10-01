@@ -1,43 +1,50 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "GUIDialogGamepad.h"
-#include "utils/md5.h"
-#include "utils/StringUtils.h"
+
+#include "ServiceBroker.h"
 #include "guilib/GUIAudioManager.h"
+#include "guilib/GUIComponent.h"
 #include "guilib/GUIWindowManager.h"
-#include "GUIDialogOK.h"
-#include "utils/StringUtils.h"
-#include "guilib/Key.h"
 #include "guilib/LocalizeStrings.h"
+#include "input/Key.h"
+#include "messaging/helpers/DialogOKHelper.h"
+#include "utils/Digest.h"
+#include "utils/StringUtils.h"
+#include "utils/Variant.h"
+
+#include <utility>
+
+using namespace KODI::MESSAGING;
+using KODI::UTILITY::CDigest;
 
 CGUIDialogGamepad::CGUIDialogGamepad(void)
-    : CGUIDialogBoxBase(WINDOW_DIALOG_GAMEPAD, "DialogGamepad.xml")
+    : CGUIDialogBoxBase(WINDOW_DIALOG_GAMEPAD, "DialogConfirm.xml")
 {
   m_bCanceled = false;
   m_iRetries = 0;
   m_bUserInputCleanup = true;
+  m_bHideInputChars = true;
+  m_cHideInputChar = '*';
 }
 
-CGUIDialogGamepad::~CGUIDialogGamepad(void)
-{}
+CGUIDialogGamepad::~CGUIDialogGamepad(void) = default;
+
+void CGUIDialogGamepad::OnInitWindow()
+{
+  // hide all controls
+  for (int i = 0; i < DIALOG_MAX_CHOICES; ++i)
+    SET_CONTROL_HIDDEN(CONTROL_CHOICES_START + i);
+  SET_CONTROL_HIDDEN(CONTROL_PROGRESS_BAR);
+
+  CGUIDialogBoxBase::OnInitWindow();
+}
 
 bool CGUIDialogGamepad::OnAction(const CAction &action)
 {
@@ -83,7 +90,7 @@ bool CGUIDialogGamepad::OnAction(const CAction &action)
     {
       strHiddenInput[i] = m_cHideInputChar;
     }
-    SetLine(2, strHiddenInput);
+    SetLine(2, CVariant{std::move(strHiddenInput)});
     return true;
   }
   else if (action.GetButtonCode() == KEY_BUTTON_BACK || action.GetID() == ACTION_PREVIOUS_MENU || action.GetID() == ACTION_NAV_BACK)
@@ -100,7 +107,7 @@ bool CGUIDialogGamepad::OnAction(const CAction &action)
     m_bConfirmed = false;
     m_bCanceled = false;
 
-    std::string md5pword2 = XBMC::XBMC_MD5::GetMD5(m_strUserInput);
+    std::string md5pword2 = CDigest::Calculate(CDigest::Type::MD5, m_strUserInput);
 
     if (!StringUtils::EqualsNoCase(m_strPassword, md5pword2))
     {
@@ -194,8 +201,8 @@ bool CGUIDialogGamepad::ShowAndVerifyNewPassword(std::string& strNewPassword)
   std::string strUserInput;
   if (ShowAndVerifyInput(strUserInput, "12340", "12330", "12331", "", true, true))
   {
-    // TODO: Show error to user saying the password entry was blank
-    CGUIDialogOK::ShowAndGetInput(12357, 12358, 0, 0); // Password is empty/blank
+    //! @todo Show error to user saying the password entry was blank
+    HELPERS::ShowOKDialogText(CVariant{12357}, CVariant{12358}); // Password is empty/blank
     return false;
   }
 
@@ -206,8 +213,8 @@ bool CGUIDialogGamepad::ShowAndVerifyNewPassword(std::string& strNewPassword)
   // Prompt again for password input, this time sending previous input as the password to verify
   if (!ShowAndVerifyInput(strUserInput, "12341", "12330", "12331", "", false, true))
   {
-    // TODO: Show error to user saying the password re-entry failed
-    CGUIDialogOK::ShowAndGetInput(12357, 12344, 0, 0); // Password do not match
+    //! @todo Show error to user saying the password re-entry failed
+    HELPERS::ShowOKDialogText(CVariant{12357}, CVariant{12344}); // Password do not match
     return false;
   }
 
@@ -260,40 +267,44 @@ bool CGUIDialogGamepad::ShowAndVerifyInput(std::string& strToVerify, const std::
     const std::string& dlgLine2, bool bGetUserInput, bool bHideInputChars)
 {
   // Prompt user for password input
-  CGUIDialogGamepad *pDialog = (CGUIDialogGamepad *)g_windowManager.GetWindow(WINDOW_DIALOG_GAMEPAD);
+  CGUIDialogGamepad *pDialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogGamepad>(WINDOW_DIALOG_GAMEPAD);
   pDialog->m_strPassword = strToVerify;
   pDialog->m_bUserInputCleanup = !bGetUserInput;
   pDialog->m_bHideInputChars = bHideInputChars;
 
   // HACK: This won't work if the label specified is actually a positive numeric value, but that's very unlikely
   if (!StringUtils::IsNaturalNumber(dlgHeading))
-    pDialog->SetHeading( dlgHeading );
+    pDialog->SetHeading(CVariant{dlgHeading});
   else
-    pDialog->SetHeading( atoi(dlgHeading.c_str()) );
+    pDialog->SetHeading(CVariant{atoi(dlgHeading.c_str())});
 
   if (!StringUtils::IsNaturalNumber(dlgLine0))
-    pDialog->SetLine( 0, dlgLine0 );
+    pDialog->SetLine(0, CVariant{dlgLine0});
   else
-    pDialog->SetLine( 0, atoi(dlgLine0.c_str()) );
+    pDialog->SetLine(0, CVariant{atoi(dlgLine0.c_str())});
 
   if (!StringUtils::IsNaturalNumber(dlgLine1))
-    pDialog->SetLine( 1, dlgLine1 );
+    pDialog->SetLine(1, CVariant{dlgLine1});
   else
-    pDialog->SetLine( 1, atoi(dlgLine1.c_str()) );
+    pDialog->SetLine(1, CVariant{atoi(dlgLine1.c_str())});
 
   if (!StringUtils::IsNaturalNumber(dlgLine2))
-    pDialog->SetLine( 2, dlgLine2 );
+    pDialog->SetLine(2, CVariant{dlgLine2});
   else
-    pDialog->SetLine( 2, atoi(dlgLine2.c_str()) );
+    pDialog->SetLine(2, CVariant{atoi(dlgLine2.c_str())});
 
-  g_audioManager.Enable(false); // dont do sounds during pwd input
-  pDialog->DoModal();
-  g_audioManager.Enable(true);
+  CGUIComponent* gui = CServiceBroker::GetGUI();
+  if (gui)
+    gui->GetAudioManager().Enable(false); // don't do sounds during pwd input
+
+  pDialog->Open();
+
+  if (gui)
+    gui->GetAudioManager().Enable(true);
 
   if (bGetUserInput && !pDialog->IsCanceled())
   {
-    strToVerify = XBMC::XBMC_MD5::GetMD5(pDialog->m_strUserInput);
-    StringUtils::ToLower(strToVerify);
+    strToVerify = CDigest::Calculate(CDigest::Type::MD5, pDialog->m_strUserInput);
     pDialog->m_strUserInput = "";
   }
 

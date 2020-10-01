@@ -1,31 +1,20 @@
-#ifndef __EVENT_CLIENT_H__
-#define __EVENT_CLIENT_H__
-
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "threads/Thread.h"
-#include "threads/CriticalSection.h"
-#include "Socket.h"
+#pragma once
+
 #include "EventPacket.h"
+#include "ServiceBroker.h"
+#include "Socket.h"
 #include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
+#include "threads/CriticalSection.h"
+#include "threads/Thread.h"
 
 #include <list>
 #include <map>
@@ -99,6 +88,7 @@ namespace EVENTCLIENT
     float Amount() const  { return m_fAmount; }
     void Load();
     const std::string& JoystickName() const { return m_joystickName; }
+    const std::string& CustomControllerName() const { return m_customControllerName; }
 
     // data
     unsigned int      m_iKeyCode;
@@ -106,6 +96,7 @@ namespace EVENTCLIENT
     std::string       m_buttonName;
     std::string       m_mapName;
     std::string       m_joystickName;
+    std::string       m_customControllerName;
     float             m_fAmount;
     bool              m_bUseAmount;
     bool              m_bRepeat;
@@ -128,7 +119,7 @@ namespace EVENTCLIENT
       Initialize();
     }
 
-    CEventClient(SOCKETS::CAddress& addr):
+    explicit CEventClient(SOCKETS::CAddress& addr):
       m_remoteAddr(addr)
     {
       Initialize();
@@ -155,8 +146,9 @@ namespace EVENTCLIENT
 
     void RefreshSettings()
     {
-      m_iRepeatDelay = CSettings::Get().GetInt("services.esinitialdelay");
-      m_iRepeatSpeed = CSettings::Get().GetInt("services.escontinuousdelay");
+      const std::shared_ptr<CSettings> settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+      m_iRepeatDelay = settings->GetInt(CSettings::SETTING_SERVICES_ESINITIALDELAY);
+      m_iRepeatSpeed = settings->GetInt(CSettings::SETTING_SERVICES_ESCONTINUOUSDELAY);
     }
 
     SOCKETS::CAddress& Address()
@@ -188,7 +180,7 @@ namespace EVENTCLIENT
     void FreePacketQueues();
 
     // return event states
-    unsigned int GetButtonCode(std::string& strMapName, bool& isAxis, float& amount);
+    unsigned int GetButtonCode(std::string& strMapName, bool& isAxis, float& amount, bool &isJoystick);
 
     // update mouse position
     bool GetMousePos(float& x, float& y);
@@ -261,6 +253,5 @@ namespace EVENTCLIENT
     CEventButtonState m_currentButton;
   };
 
-} // EVENTCLIENT
+}
 
-#endif // __EVENT_CLIENT_H__

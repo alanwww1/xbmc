@@ -1,38 +1,23 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "threads/SystemClock.h"
 #include "GUILargeTextureManager.h"
-#include "settings/Settings.h"
+
+#include "TextureCache.h"
 #include "guilib/Texture.h"
 #include "threads/SingleLock.h"
-#include "utils/TimeUtils.h"
+#include "threads/SystemClock.h"
 #include "utils/JobManager.h"
-#include "guilib/GraphicContext.h"
+#include "utils/TimeUtils.h"
 #include "utils/log.h"
-#include "TextureCache.h"
+#include "windowing/GraphicContext.h"
 
 #include <cassert>
-
-using namespace std;
-
 
 CImageLoader::CImageLoader(const std::string &path, const bool useCache):
   m_path(path)
@@ -51,33 +36,42 @@ bool CImageLoader::DoWork()
   bool needsChecking = false;
   std::string loadPath;
 
-  std::string texturePath = g_TextureManager.GetTexturePath(m_path);
+  std::string texturePath = CServiceBroker::GetGUI()->GetTextureManager().GetTexturePath(m_path);
+  if (texturePath.empty())
+    return false;
+
   if (m_use_cache)
-    loadPath = CTextureCache::Get().CheckCachedImage(texturePath, true, needsChecking);
+    loadPath = CTextureCache::GetInstance().CheckCachedImage(texturePath, needsChecking);
   else
     loadPath = texturePath;
 
-  if (m_use_cache && loadPath.empty())
-  {
-    // not in our texture cache, so try and load directly and then cache the result
-    loadPath = CTextureCache::Get().CacheImage(texturePath, &m_texture);
-    if (m_texture)
-      return true; // we're done
-  }
-  if (!m_use_cache || !loadPath.empty())
+  if (!loadPath.empty())
   {
     // direct route - load the image
     unsigned int start = XbmcThreads::SystemClockMillis();
-    m_texture = CBaseTexture::LoadFromFile(loadPath, g_graphicsContext.GetWidth(), g_graphicsContext.GetHeight(), CSettings::Get().GetBool("pictures.useexifrotation"));
-    if (!m_texture)
-      return false;
+    m_texture = CBaseTexture::LoadFromFile(loadPath, CServiceBroker::GetWinSystem()->GetGfxContext().GetWidth(), CServiceBroker::GetWinSystem()->GetGfxContext().GetHeight());
+
     if (XbmcThreads::SystemClockMillis() - start > 100)
       CLog::Log(LOGDEBUG, "%s - took %u ms to load %s", __FUNCTION__, XbmcThreads::SystemClockMillis() - start, loadPath.c_str());
 
-    if (needsChecking)
-      CTextureCache::Get().BackgroundCacheImage(texturePath);
+    if (m_texture)
+    {
+      if (needsChecking)
+        CTextureCache::GetInstance().BackgroundCacheImage(texturePath);
+
+      return true;
+    }
+
+    // Fallthrough on failure:
+    CLog::Log(LOGERROR, "%s - Direct texture file loading failed for %s", __FUNCTION__, loadPath.c_str());
   }
-  return true;
+
+  if (!m_use_cache)
+    return false; // We're done
+
+  // not in our texture cache or it failed to load from it, so try and load directly and then cache the result
+  CTextureCache::GetInstance().CacheImage(texturePath, &m_texture);
+  return (m_texture != NULL);
 }
 
 CGUILargeTextureManager::CLargeTexture::CLargeTexture(const std::string &path):
@@ -130,13 +124,9 @@ void CGUILargeTextureManager::CLargeTexture::SetTexture(CBaseTexture* texture)
     m_texture.Set(texture, texture->GetWidth(), texture->GetHeight());
 }
 
-CGUILargeTextureManager::CGUILargeTextureManager()
-{
-}
+CGUILargeTextureManager::CGUILargeTextureManager() = default;
 
-CGUILargeTextureManager::~CGUILargeTextureManager()
-{
-}
+CGUILargeTextureManager::~CGUILargeTextureManager() = default;
 
 void CGUILargeTextureManager::CleanupUnusedImages(bool immediately)
 {
@@ -206,6 +196,9 @@ void CGUILargeTextureManager::ReleaseImage(const std::string &path, bool immedia
 // queue the image, and start the background loader if necessary
 void CGUILargeTextureManager::QueueImage(const std::string &path, bool useCache)
 {
+  if (path.empty())
+    return;
+
   CSingleLock lock(m_listSection);
   for (queueIterator it = m_queued.begin(); it != m_queued.end(); ++it)
   {
@@ -220,7 +213,7 @@ void CGUILargeTextureManager::QueueImage(const std::string &path, bool useCache)
   // queue the item
   CLargeTexture *image = new CLargeTexture(path);
   unsigned int jobID = CJobManager::GetInstance().AddJob(new CImageLoader(path, useCache), this, CJob::PRIORITY_NORMAL);
-  m_queued.push_back(make_pair(jobID, image));
+  m_queued.emplace_back(jobID, image);
 }
 
 void CGUILargeTextureManager::OnJobComplete(unsigned int jobID, bool success, CJob *job)
@@ -231,7 +224,7 @@ void CGUILargeTextureManager::OnJobComplete(unsigned int jobID, bool success, CJ
   {
     if (it->first == jobID)
     { // found our job
-      CImageLoader *loader = (CImageLoader *)job;
+      CImageLoader *loader = static_cast<CImageLoader*>(job);
       CLargeTexture *image = it->second;
       image->SetTexture(loader->m_texture);
       loader->m_texture = NULL; // we want to keep the texture, and jobs are auto-deleted.
@@ -241,6 +234,3 @@ void CGUILargeTextureManager::OnJobComplete(unsigned int jobID, bool success, CJ
     }
   }
 }
-
-
-

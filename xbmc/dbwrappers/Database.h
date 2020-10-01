@@ -1,24 +1,12 @@
-#pragma once
-
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
 
 namespace dbiplus {
   class Database;
@@ -31,6 +19,7 @@ namespace dbiplus {
 
 class DatabaseSettings; // forward
 class CDbUrl;
+class CProfileManager;
 struct SortDescription;
 
 class CDatabase
@@ -40,9 +29,9 @@ public:
   {
   public:
     Filter() : fields("*") {};
-    Filter(const char *w) : fields("*"), where(w) {};
-    Filter(const std::string &w) : fields("*"), where(w) {};
-    
+    explicit Filter(const char *w) : fields("*"), where(w) {};
+    explicit Filter(const std::string &w) : fields("*"), where(w) {};
+
     void AppendField(const std::string &strField);
     void AppendJoin(const std::string &strJoin);
     void AppendWhere(const std::string &strWhere, bool combineWithAnd = true);
@@ -57,19 +46,67 @@ public:
     std::string limit;
   };
 
-  CDatabase(void);
+  
+  typedef struct DatasetFieldInfo {
+    DatasetFieldInfo(bool fetch, bool output, int recno)
+      : fetch(fetch),
+      output(output),
+      recno(recno)
+    { }
+
+    bool fetch;
+    bool output;
+    int recno;
+    std::string strField;
+  } DatasetFieldInfo;
+
+  class DatasetLayout
+  {
+  public:
+    DatasetLayout(size_t totalfields);
+    void SetField(int fieldNo, const std::string &strField, bool bOutput = false);
+    void AdjustRecordNumbers(int offset);
+    bool GetFetch(int fieldno);
+    void SetFetch(int fieldno, bool bFetch = true);
+    bool GetOutput(int fieldno);
+    int GetRecNo(int fieldno);
+    const std::string GetFields();
+    bool HasFilterFields();
+
+  private:
+    std::vector<DatasetFieldInfo> m_fields;
+  };
+
+  class ExistsSubQuery
+  {
+  public:
+    explicit ExistsSubQuery(const std::string &table) : tablename(table) {};
+    ExistsSubQuery(const std::string &table, const std::string &parameter) : tablename(table), param(parameter) {};
+    void AppendJoin(const std::string &strJoin);
+    void AppendWhere(const std::string &strWhere, bool combineWithAnd = true);
+    bool BuildSQL(std::string &strSQL);
+
+    std::string tablename;
+    std::string param;
+    std::string join;
+    std::string where;
+  };
+
+
+  CDatabase();
   virtual ~CDatabase(void);
   bool IsOpen();
-  void Close();
+  virtual void Close();
   bool Compress(bool bForce=true);
-  void Interupt();
+  void Interrupt();
 
   bool Open(const DatabaseSettings &db);
 
   void BeginTransaction();
   virtual bool CommitTransaction();
   void RollbackTransaction();
-  bool InTransaction();
+  void CopyDB(const std::string& latestDb);
+  void DropAnalytics();
 
   std::string PrepareSQL(std::string strStmt, ...) const;
 
@@ -139,12 +176,6 @@ public:
   bool CommitMultipleExecute();
 
   /*!
-   * @brief Open a new dataset.
-   * @return True if the dataset was created successfully, false otherwise.
-   */
-  bool OpenDS();
-
-  /*!
    * @brief Put an INSERT or REPLACE query in the queue.
    * @param strQuery The query to queue.
    * @return True if the query was added successfully, false otherwise.
@@ -157,13 +188,39 @@ public:
    */
   bool CommitInsertQueries();
 
+  /*!
+   * @brief Get the number of INSERT queries in the queue.
+   * @return The number of queries.
+   */
+  size_t GetInsertQueriesCount();
+
+  /*!
+   * @brief Put a DELETE query in the queue.
+   * @param strQuery The query to queue.
+   * @return True if the query was added successfully, false otherwise.
+   */
+  bool QueueDeleteQuery(const std::string& strQuery);
+
+  /*!
+   * @brief Commit all queued DELETE queries.
+   * @return True if all queries were executed successfully, false otherwise.
+   */
+  bool CommitDeleteQueries();
+
+  /*!
+   * @brief Get the number of DELETE queries in the queue.
+   * @return The number of queries.
+   */
+  size_t GetDeleteQueriesCount();
+
   virtual bool GetFilter(CDbUrl &dbUrl, Filter &filter, SortDescription &sorting) { return true; }
   virtual bool BuildSQL(const std::string &strBaseDir, const std::string &strQuery, Filter &filter, std::string &strSQL, CDbUrl &dbUrl);
   virtual bool BuildSQL(const std::string &strBaseDir, const std::string &strQuery, Filter &filter, std::string &strSQL, CDbUrl &dbUrl, SortDescription &sorting);
 
+  bool Connect(const std::string &dbName, const DatabaseSettings &db, bool create);
+
 protected:
   friend class CDatabaseManager;
-  bool Update(const DatabaseSettings &db);
 
   void Split(const std::string& strFileNameAndPath, std::string& strPath, std::string& strFileName);
 
@@ -200,7 +257,6 @@ protected:
   virtual const char *GetBaseDBName() const=0;
 
   int GetDBVersion();
-  bool UpdateVersion(const std::string &dbName);
 
   bool BuildSQL(const std::string &strQuery, const Filter &filter, std::string &strSQL);
 
@@ -210,12 +266,18 @@ protected:
   std::unique_ptr<dbiplus::Dataset> m_pDS;
   std::unique_ptr<dbiplus::Dataset> m_pDS2;
 
+protected:
+  // Construction parameters
+  const CProfileManager &m_profileManager;
+
 private:
   void InitSettings(DatabaseSettings &dbSettings);
-  bool Connect(const std::string &dbName, const DatabaseSettings &db, bool create);
   void UpdateVersionNumber();
 
-  bool m_bMultiWrite; /*!< True if there are any queries in the queue, false otherwise */
+  bool m_bMultiInsert =
+      false; /*!< True if there are any queries in the insert queue, false otherwise */
+  bool m_bMultiDelete =
+      false; /*!< True if there are any queries in the delete queue, false otherwise */
   unsigned int m_openCount;
 
   bool m_multipleExecute;

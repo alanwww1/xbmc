@@ -19,7 +19,7 @@ AC_ARG_ENABLE([static],
 
 
 PKG_CHECK_MODULES([PNG], [libpng],
-  [INCLUDES="$PNG_CFLAGS"; LIBS="$LIBS $(pkg-config --silence-errors --static --libs libpng)"],
+  [INCLUDES="$PNG_CFLAGS"; LIBS="$LIBS $(${PKG_CONFIG} --silence-errors --static --libs libpng)"],
   AC_MSG_ERROR("libpng not found"))
 
 AC_CHECK_HEADER([gif_lib.h],, AC_MSG_ERROR("gif_lib.h not found"))
@@ -33,14 +33,6 @@ AC_CHECK_HEADER([jpeglib.h],, AC_MSG_ERROR("jpeglib.h not found"))
 AC_CHECK_LIB([jpeg],[main],, AC_MSG_ERROR("libjpeg not found"))
 AC_CHECK_HEADER([lzo/lzo1x.h],, AC_MSG_ERROR("lzo/lzo1x.h not found"))
 AC_CHECK_LIB([lzo2],[main],, AC_MSG_ERROR("liblzo2 not found"))
-
-# we don't compile with default upstream squish, so we use our own one
-# even on non unified deps platforms
-export PKG_CONFIG_PATH="${abs_top_srcdir}/../../libsquish-native/squish-install/lib/pkgconfig:$PKG_CONFIG_PATH"
-PKG_CHECK_MODULES([SQUISH], [squish],
- [CPPFLAGS="$CPPFLAGS $SQUISH_CFLAGS" LIBS="$LIBS $SQUISH_LIBS"],
- AC_MSG_ERROR("libsquish not found"))
-
 
 AC_SUBST(KODI_SRC_DIR)
 AC_SUBST(STATIC_FLAG)

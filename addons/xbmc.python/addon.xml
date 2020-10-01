@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="xbmc.python" version="2.19.0" provider-name="Team-Kodi">
-  <backwards-compatibility abi="2.1.0"/>
+<addon id="xbmc.python" version="3.0.0" provider-name="Team Kodi">
+  <backwards-compatibility abi="3.0.0"/>
   <requires>
     <import addon="xbmc.core" version="0.1.0"/>
   </requires>
@@ -9,5 +9,7 @@
   <extension-point id="lyrics" schema="script.xsd"/>
   <extension-point id="weather" schema="script.xsd"/>
   <extension-point id="library" schema="script.xsd"/>
+  <extension-point id="screensaver" schema="script.xsd"/>
   <extension-point id="plugin" schema="pluginsource.xsd"/>
+  <extension-point id="context.item" schema="contextitem.xsd"/>
 </addon>

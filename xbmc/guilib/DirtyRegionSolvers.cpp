@@ -1,25 +1,15 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "DirtyRegionSolvers.h"
-#include "GraphicContext.h"
+
+#include "windowing/GraphicContext.h"
+
 #include <stdio.h>
 
 void CUnionDirtyRegionSolver::Solve(const CDirtyRegionList &input, CDirtyRegionList &output)
@@ -34,14 +24,14 @@ void CUnionDirtyRegionSolver::Solve(const CDirtyRegionList &input, CDirtyRegionL
 
 void CFillViewportAlwaysRegionSolver::Solve(const CDirtyRegionList &input, CDirtyRegionList &output)
 {
-  CDirtyRegion unifiedRegion(g_graphicsContext.GetViewWindow());
+  CDirtyRegion unifiedRegion(CServiceBroker::GetWinSystem()->GetGfxContext().GetViewWindow());
   output.push_back(unifiedRegion);
 }
 
 void CFillViewportOnChangeRegionSolver::Solve(const CDirtyRegionList &input, CDirtyRegionList &output)
 {
-  if (input.size() > 0)
-    output.assign(1,g_graphicsContext.GetViewWindow());
+  if (!input.empty())
+    output.assign(1,CDirtyRegion(CServiceBroker::GetWinSystem()->GetGfxContext().GetViewWindow()));
 }
 
 CGreedyDirtyRegionSolver::CGreedyDirtyRegionSolver()
@@ -66,7 +56,7 @@ void CGreedyDirtyRegionSolver::Solve(const CDirtyRegionList &input, CDirtyRegion
       float temporaryCost = m_costPerArea * (temporaryUnion.Area() - output[j].Area());
       if (temporaryCost < possibleUnionCost)
       {
-        // TODO if the temporaryCost is 0 then we could skip checking the other regions since there exist no better solution
+        //! @todo if the temporaryCost is 0 then we could skip checking the other regions since there exist no better solution
         possibleUnionRegion = temporaryUnion;
         possibleUnionNbr    = j;
         possibleUnionCost   = temporaryCost;

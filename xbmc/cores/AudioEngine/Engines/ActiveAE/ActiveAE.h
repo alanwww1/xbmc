@@ -1,32 +1,22 @@
-#pragma once
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "system.h"
+#pragma once
+
+#include <list>
+#include <string>
+#include <vector>
+
 #include "threads/Thread.h"
 
 #include "ActiveAESink.h"
-#include "cores/AudioEngine/Interfaces/AEResample.h"
 #include "cores/AudioEngine/Interfaces/AEStream.h"
 #include "cores/AudioEngine/Interfaces/AESound.h"
-#include "cores/AudioEngine/AEFactory.h"
 #include "cores/AudioEngine/Engines/ActiveAE/ActiveAEBuffer.h"
 
 #include "guilib/DispResource.h"
@@ -34,9 +24,9 @@
 
 // ffmpeg
 extern "C" {
-#include "libavformat/avformat.h"
-#include "libavcodec/avcodec.h"
-#include "libavutil/avutil.h"
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/avutil.h>
 }
 
 class IAESink;
@@ -47,12 +37,13 @@ namespace ActiveAE
 
 class CActiveAESound;
 class CActiveAEStream;
+class CActiveAESettings;
 
 struct AudioSettings
 {
   std::string device;
   std::string driver;
-  std::string passthoughdevice;
+  std::string passthroughdevice;
   int channels;
   bool ac3passthrough;
   bool ac3transcode;
@@ -67,6 +58,9 @@ struct AudioSettings
   int guisoundmode;
   unsigned int samplerate;
   AEQuality resampleQuality;
+  double atempoThreshold;
+  bool streamNoise;
+  int silenceTimeout;
 };
 
 class CActiveAEControlProtocol : public Protocol
@@ -79,6 +73,7 @@ public:
     RECONFIGURE,
     SUSPEND,
     DEVICECHANGE,
+    DEVICECOUNTCHANGE,
     MUTE,
     VOLUME,
     PAUSESTREAM,
@@ -88,7 +83,9 @@ public:
     STREAMVOLUME,
     STREAMAMP,
     STREAMRESAMPLERATIO,
+    STREAMRESAMPLEMODE,
     STREAMFADE,
+    STREAMFFMPEGINFO,
     STOPSOUND,
     GETSTATE,
     DISPLAYLOST,
@@ -132,6 +129,13 @@ struct MsgStreamNew
 {
   AEAudioFormat format;
   unsigned int options;
+  IAEClockCallback *clock;
+};
+
+struct MsgStreamFree
+{
+  CActiveAEStream *stream;
+  bool finish; // if true switch back to gui sound mode
 };
 
 struct MsgStreamSample
@@ -147,6 +151,7 @@ struct MsgStreamParameter
   {
     float float_par;
     double double_par;
+    int int_par;
   } parameter;
 };
 
@@ -158,102 +163,117 @@ struct MsgStreamFade
   unsigned int millis;
 };
 
+struct MsgStreamFFmpegInfo
+{
+  CActiveAEStream *stream;
+  int profile;
+  enum AVMatrixEncoding matrix_encoding;
+  enum AVAudioServiceType audio_service_type;
+};
+
 class CEngineStats
 {
 public:
-  void Reset(unsigned int sampleRate);
-  void UpdateSinkDelay(const AEDelayStatus& status, int samples, int64_t pts, int clockId = 0);
+  void Reset(unsigned int sampleRate, bool pcm);
+  void UpdateSinkDelay(const AEDelayStatus& status, int samples);
   void AddSamples(int samples, std::list<CActiveAEStream*> &streams);
   void GetDelay(AEDelayStatus& status);
+  void AddStream(unsigned int streamid);
+  void RemoveStream(unsigned int streamid);
+  void UpdateStream(CActiveAEStream *stream);
   void GetDelay(AEDelayStatus& status, CActiveAEStream *stream);
+  void GetSyncInfo(CAESyncInfo& info, CActiveAEStream *stream);
   float GetCacheTime(CActiveAEStream *stream);
-  float GetCacheTotal(CActiveAEStream *stream);
+  float GetCacheTotal();
+  float GetMaxDelay() const;
   float GetWaterLevel();
-  int64_t GetPlayingPTS();
-  int Discontinuity(bool reset = false);
   void SetSuspended(bool state);
+  void SetCurrentSinkFormat(const AEAudioFormat& SinkFormat);
   void SetSinkCacheTotal(float time) { m_sinkCacheTotal = time; }
   void SetSinkLatency(float time) { m_sinkLatency = time; }
   bool IsSuspended();
-  CCriticalSection *GetLock() { return &m_lock; }
+  AEAudioFormat GetCurrentSinkFormat();
 protected:
-  int64_t m_playingPTS;
-  int m_clockId;
   float m_sinkCacheTotal;
   float m_sinkLatency;
   int m_bufferedSamples;
   unsigned int m_sinkSampleRate;
   AEDelayStatus m_sinkDelay;
   bool m_suspended;
+  AEAudioFormat m_sinkFormat;
+  bool m_pcmOutput;
   CCriticalSection m_lock;
+  struct StreamStats
+  {
+    unsigned int m_streamId;
+    double m_bufferedTime;
+    double m_resampleRatio;
+    double m_syncError;
+    unsigned int m_errorTime;
+    CAESyncInfo::AESyncState m_syncState;
+  };
+  std::vector<StreamStats> m_streamStats;
 };
 
-#if defined(HAS_GLX) || defined(TARGET_DARWIN)
 class CActiveAE : public IAE, public IDispResource, private CThread
-#else
-class CActiveAE : public IAE, private CThread
-#endif
 {
 protected:
-  friend class ::CAEFactory;
   friend class CActiveAESound;
   friend class CActiveAEStream;
   friend class CSoundPacket;
   friend class CActiveAEBufferPoolResample;
-  CActiveAE();
-  virtual ~CActiveAE();
-  virtual bool  Initialize();
 
 public:
-  virtual void   Shutdown();
-  virtual bool   Suspend();
-  virtual bool   Resume();
-  virtual bool   IsSuspended();
-  virtual void   OnSettingsChange(const std::string& setting);
+  CActiveAE();
+  ~CActiveAE() override;
+  void Start() override;
+  void Shutdown() override;
+  bool Suspend() override;
+  bool Resume() override;
+  bool IsSuspended() override;
+  void OnSettingsChange();
 
-  virtual float GetVolume();
-  virtual void  SetVolume(const float volume);
-  virtual void  SetMute(const bool enabled);
-  virtual bool  IsMuted();
-  virtual void  SetSoundMode(const int mode);
+  float GetVolume() override;
+  void SetVolume(const float volume) override;
+  void SetMute(const bool enabled) override;
+  bool IsMuted() override;
 
   /* returns a new stream for data in the specified format */
-  virtual IAEStream *MakeStream(enum AEDataFormat dataFormat, unsigned int sampleRate, unsigned int encodedSampleRate, CAEChannelInfo& channelLayout, unsigned int options = 0);
-  virtual IAEStream *FreeStream(IAEStream *stream);
+  IAEStream *MakeStream(AEAudioFormat &audioFormat, unsigned int options = 0, IAEClockCallback *clock = NULL) override;
+  bool FreeStream(IAEStream *stream, bool finish) override;
 
   /* returns a new sound object */
-  virtual IAESound *MakeSound(const std::string& file);
-  virtual void      FreeSound(IAESound *sound);
+  IAESound *MakeSound(const std::string& file) override;
+  void FreeSound(IAESound *sound) override;
 
-  virtual void GarbageCollect() {};
+  void EnumerateOutputDevices(AEDeviceList &devices, bool passthrough) override;
+  bool SupportsRaw(AEAudioFormat &format) override;
+  bool SupportsSilenceTimeout() override;
+  bool HasStereoAudioChannelCount() override;
+  bool HasHDAudioChannelCount() override;
+  bool SupportsQualityLevel(enum AEQuality level) override;
+  bool IsSettingVisible(const std::string &settingId) override;
+  void KeepConfiguration(unsigned int millis) override;
+  void DeviceChange() override;
+  void DeviceCountChange(std::string driver) override;
+  bool GetCurrentSinkFormat(AEAudioFormat &SinkFormat) override;
 
-  virtual void EnumerateOutputDevices(AEDeviceList &devices, bool passthrough);
-  virtual std::string GetDefaultDevice(bool passthrough);
-  virtual bool SupportsRaw(AEDataFormat format, int samplerate);
-  virtual bool SupportsSilenceTimeout();
-  virtual bool HasStereoAudioChannelCount();
-  virtual bool HasHDAudioChannelCount();
-  virtual bool SupportsQualityLevel(enum AEQuality level);
-  virtual bool IsSettingVisible(const std::string &settingId);
-  virtual void KeepConfiguration(unsigned int millis);
-  virtual void DeviceChange();
+  void RegisterAudioCallback(IAudioCallback* pCallback) override;
+  void UnregisterAudioCallback(IAudioCallback* pCallback) override;
 
-  virtual void RegisterAudioCallback(IAudioCallback* pCallback);
-  virtual void UnregisterAudioCallback();
-
-  virtual void OnLostDevice();
-  virtual void OnResetDevice();
-  virtual void OnAppFocusChange(bool focus);
+  void OnLostDisplay() override;
+  void OnResetDisplay() override;
+  void OnAppFocusChange(bool focus) override;
 
 protected:
   void PlaySound(CActiveAESound *sound);
-  uint8_t **AllocSoundSample(SampleConfig &config, int &samples, int &bytes_per_sample, int &planes, int &linesize);
-  void FreeSoundSample(uint8_t **data);
+  static uint8_t **AllocSoundSample(SampleConfig &config, int &samples, int &bytes_per_sample, int &planes, int &linesize);
+  static void FreeSoundSample(uint8_t **data);
   void GetDelay(AEDelayStatus& status, CActiveAEStream *stream) { m_stats.GetDelay(status, stream); }
-  int64_t GetPlayingPTS() { return m_stats.GetPlayingPTS(); }
-  int Discontinuity() { return m_stats.Discontinuity(); }
+  void GetSyncInfo(CAESyncInfo& info, CActiveAEStream *stream) { m_stats.GetSyncInfo(info, stream); }
   float GetCacheTime(CActiveAEStream *stream) { return m_stats.GetCacheTime(stream); }
-  float GetCacheTotal(CActiveAEStream *stream) { return m_stats.GetCacheTotal(stream); }
+  float GetCacheTotal() { return m_stats.GetCacheTotal(); }
+  float GetMaxDelay() { return m_stats.GetMaxDelay(); }
   void FlushStream(CActiveAEStream *stream);
   void PauseStream(CActiveAEStream *stream, bool pause);
   void StopSound(CActiveAESound *sound);
@@ -261,15 +281,16 @@ protected:
   void SetStreamReplaygain(CActiveAEStream *stream, float rgain);
   void SetStreamVolume(CActiveAEStream *stream, float volume);
   void SetStreamResampleRatio(CActiveAEStream *stream, double ratio);
+  void SetStreamResampleMode(CActiveAEStream *stream, int mode);
+  void SetStreamFFmpegInfo(CActiveAEStream *stream, int profile, enum AVMatrixEncoding matrix_encoding, enum AVAudioServiceType audio_service_type);
   void SetStreamFade(CActiveAEStream *stream, float from, float target, unsigned int millis);
 
 protected:
-  void Process();
+  void Process() override;
   void StateMachine(int signal, Protocol *port, Message *msg);
   bool InitSink();
   void DrainSink();
   void UnconfigureSink();
-  void Start();
   void Dispose();
   void LoadSettings();
   bool NeedReconfigureBuffers();
@@ -288,6 +309,7 @@ protected:
 
   bool RunStages();
   bool HasWork();
+  CSampleBuffer* SyncStream(CActiveAEStream *stream);
 
   void ResampleSounds();
   bool ResampleSound(CActiveAESound *sound);
@@ -309,6 +331,8 @@ protected:
   unsigned int m_extKeepConfig;
   bool m_extDeferData;
   std::queue<time_t> m_extLastDeviceChange;
+  bool m_extSuspended = false;
+  bool m_isWinSysReg = false;
 
   enum
   {
@@ -327,6 +351,7 @@ protected:
   CEngineStats m_stats;
   IAEEncoder *m_encoder;
   std::string m_currDevice;
+  std::unique_ptr<CActiveAESettings> m_settingsHandler;
 
   // buffers
   CActiveAEBufferPoolResample *m_sinkBuffers;
@@ -338,6 +363,7 @@ protected:
   // streams
   std::list<CActiveAEStream*> m_streams;
   std::list<CActiveAEBufferPool*> m_discardBufferPools;
+  unsigned int m_streamIdGen;
 
   // gui sounds
   struct SoundState
@@ -354,12 +380,13 @@ protected:
   bool m_sinkHasVolume;
 
   // viz
-  IAudioCallback *m_audioCallback;
+  std::vector<IAudioCallback*> m_audioCallback;
   bool m_vizInitialized;
   CCriticalSection m_vizLock;
 
   // polled via the interface
   float m_aeVolume;
   bool m_aeMuted;
+  bool m_aeGUISoundForce;
 };
 };

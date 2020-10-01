@@ -1,28 +1,18 @@
-#pragma once
-
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
+#pragma once
+
+#include "MediaSource.h"
 #include "utils/LabelFormatter.h"
 #include "utils/SortUtils.h"
-#include "MediaSource.h"
+
+#include <vector>
 
 class CViewState; // forward
 class CFileItemList;
@@ -37,11 +27,13 @@ public:
   void SaveViewAsControl(int viewAsControl);
   int GetViewAsControl() const;
 
+  bool ChooseSortMethod();
   SortDescription SetNextSortMethod(int direction = 1);
   void SetCurrentSortMethod(int method);
   SortDescription GetSortMethod() const;
   bool HasMultipleSortMethods() const;
   int GetSortMethodLabel() const;
+  int GetSortOrderLabel() const;
   void GetSortMethodLabelMasks(LABEL_MASKS& masks) const;
 
   SortOrder SetNextSortOrder();
@@ -51,33 +43,29 @@ public:
   virtual bool HideParentDirItems();
   virtual bool DisableAddSourceButtons();
 
-  virtual int GetPlaylist();
+  virtual int GetPlaylist() const;
   const std::string& GetPlaylistDirectory();
   void SetPlaylistDirectory(const std::string& strDirectory);
   bool IsCurrentPlaylistDirectory(const std::string& strDirectory);
   virtual bool AutoPlayNextItem();
-  virtual bool JumpToFirstUnplayedItem();
 
   virtual std::string GetLockType();
   virtual std::string GetExtensions();
   virtual VECSOURCES& GetSources();
 
 protected:
-  CGUIViewState(const CFileItemList& items);  // no direct object creation, use GetViewState()
+  explicit CGUIViewState(const CFileItemList& items);  // no direct object creation, use GetViewState()
 
   virtual void SaveViewState() = 0;
   virtual void SaveViewToDb(const std::string &path, int windowID, CViewState *viewState = NULL);
   void LoadViewState(const std::string &path, int windowID);
-  
+
   /*! \brief Add the addons source for the given content type, if the user has suitable addons
    \param content the type of addon content desired
    \param label the name of the addons source
    \param thumb the skin image to use as the icon
    */
   void AddAddonsSource(const std::string &content, const std::string &label, const std::string& thumb);
-#if defined(TARGET_ANDROID)
-  void AddAndroidSource(const std::string &content, const std::string &label, const std::string& thumb);
-#endif
   void AddLiveTVSources();
 
   /*! \brief Add the sort order defined in a smartplaylist
@@ -94,6 +82,8 @@ protected:
   void SetSortMethod(SortDescription sortDescription);
   void SetSortOrder(SortOrder sortOrder);
 
+  bool AutoPlayNextVideoItem() const;
+
   const CFileItemList& m_items;
 
   int m_currentViewAsControl;
@@ -109,26 +99,27 @@ protected:
 class CGUIViewStateGeneral : public CGUIViewState
 {
 public:
-  CGUIViewStateGeneral(const CFileItemList& items);
+  explicit CGUIViewStateGeneral(const CFileItemList& items);
 
 protected:
-  virtual void SaveViewState() { }
+  void SaveViewState() override { }
 };
 
 class CGUIViewStateFromItems : public CGUIViewState
 {
 public:
-  CGUIViewStateFromItems(const CFileItemList& items);
+  explicit CGUIViewStateFromItems(const CFileItemList& items);
+  bool AutoPlayNextItem() override;
 
 protected:
-  virtual void SaveViewState();
+  void SaveViewState() override;
 };
 
 class CGUIViewStateLibrary : public CGUIViewState
 {
 public:
-  CGUIViewStateLibrary(const CFileItemList& items);
+  explicit CGUIViewStateLibrary(const CFileItemList& items);
 
 protected:
-  virtual void SaveViewState();
+  void SaveViewState() override;
 };

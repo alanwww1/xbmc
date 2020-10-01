@@ -1,21 +1,9 @@
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 #ifndef __STDC_LIMIT_MACROS
   #define __STDC_LIMIT_MACROS
@@ -28,33 +16,32 @@
 #include <cassert>
 
 extern "C" {
-#include "libavutil/channel_layout.h"
+#include <libavutil/channel_layout.h>
 }
-
-using namespace std;
 
 /* declare the rng seed and initialize it */
 unsigned int CAEUtil::m_seed = (unsigned int)(CurrentHostCounter() / 1000.0f);
-#ifdef __SSE2__
+#if defined(HAVE_SSE2) && defined(__SSE2__)
   /* declare the SSE seed and initialize it */
   MEMALIGN(16, __m128i CAEUtil::m_sseSeed) = _mm_set_epi32(CAEUtil::m_seed, CAEUtil::m_seed+1, CAEUtil::m_seed, CAEUtil::m_seed+1);
 #endif
 
-void   AEDelayStatus::SetDelay(double d)
+void AEDelayStatus::SetDelay(double d)
 {
   delay = d;
-  tick  = CurrentHostCounter();
+  maxcorrection = d;
+  tick = CurrentHostCounter();
 }
 
-double AEDelayStatus::GetDelay()
+double AEDelayStatus::GetDelay() const
 {
-  double d = delay;
-  if(tick)
-    d -= (double)(CurrentHostCounter() - tick) / CurrentHostFrequency();
-  if(d < 0)
-    return 0.0;
-  else
-    return d;
+  double d = 0;
+  if (tick)
+    d = (double)(CurrentHostCounter() - tick) / CurrentHostFrequency();
+  if (d > maxcorrection)
+    d = maxcorrection;
+
+  return delay - d;
 }
 
 CAEChannelInfo CAEUtil::GuessChLayout(const unsigned int channels)
@@ -96,7 +83,7 @@ const char* CAEUtil::GetStdChLayoutName(const enum AEStdChLayout layout)
   return layouts[layout];
 }
 
-const unsigned int CAEUtil::DataFormatToBits(const enum AEDataFormat dataFormat)
+unsigned int CAEUtil::DataFormatToBits(const enum AEDataFormat dataFormat)
 {
   if (dataFormat < 0 || dataFormat >= AE_FMT_MAX)
     return 0;
@@ -108,30 +95,24 @@ const unsigned int CAEUtil::DataFormatToBits(const enum AEDataFormat dataFormat)
     16,                  /* S16BE  */
     16,                  /* S16LE  */
     16,                  /* S16NE  */
-    
+
     32,                  /* S32BE  */
     32,                  /* S32LE  */
     32,                  /* S32NE  */
-    
+
     32,                  /* S24BE  */
     32,                  /* S24LE  */
     32,                  /* S24NE  */
     32,                  /* S24NER */
-    
+
     24,                  /* S24BE3 */
     24,                  /* S24LE3 */
     24,                  /* S24NE3 */
-    
+
     sizeof(double) << 3, /* DOUBLE */
     sizeof(float ) << 3, /* FLOAT  */
-    
-    16,                  /* AAC    */
-    16,                  /* AC3    */
-    16,                  /* DTS    */
-    16,                  /* EAC3   */
-    16,                  /* TRUEHD */
-    16,                  /* DTS-HD */
-    32,                  /* LPCM   */
+
+     8,                  /* RAW    */
 
      8,                  /* U8P    */
     16,                  /* S16NEP */
@@ -146,7 +127,7 @@ const unsigned int CAEUtil::DataFormatToBits(const enum AEDataFormat dataFormat)
   return formats[dataFormat];
 }
 
-const unsigned int CAEUtil::DataFormatToUsedBits(const enum AEDataFormat dataFormat)
+unsigned int CAEUtil::DataFormatToUsedBits(const enum AEDataFormat dataFormat)
 {
   if (dataFormat == AE_FMT_S24BE4 || dataFormat == AE_FMT_S24LE4 ||
       dataFormat == AE_FMT_S24NE4 || dataFormat == AE_FMT_S24NE4MSB)
@@ -155,7 +136,7 @@ const unsigned int CAEUtil::DataFormatToUsedBits(const enum AEDataFormat dataFor
     return DataFormatToBits(dataFormat);
 }
 
-const unsigned int CAEUtil::DataFormatToDitherBits(const enum AEDataFormat dataFormat)
+unsigned int CAEUtil::DataFormatToDitherBits(const enum AEDataFormat dataFormat)
 {
   if (dataFormat == AE_FMT_S24NE4MSB)
     return 8;
@@ -163,6 +144,36 @@ const unsigned int CAEUtil::DataFormatToDitherBits(const enum AEDataFormat dataF
     return -8;
   else
     return 0;
+}
+
+const char* CAEUtil::StreamTypeToStr(const enum CAEStreamInfo::DataType dataType)
+{
+  switch (dataType)
+  {
+    case CAEStreamInfo::STREAM_TYPE_AC3:
+      return "STREAM_TYPE_AC3";
+    case CAEStreamInfo::STREAM_TYPE_DTSHD:
+      return "STREAM_TYPE_DTSHD";
+    case CAEStreamInfo::STREAM_TYPE_DTSHD_MA:
+      return "STREAM_TYPE_DTSHD_MA";
+    case CAEStreamInfo::STREAM_TYPE_DTSHD_CORE:
+      return "STREAM_TYPE_DTSHD_CORE";
+    case CAEStreamInfo::STREAM_TYPE_DTS_1024:
+      return "STREAM_TYPE_DTS_1024";
+    case CAEStreamInfo::STREAM_TYPE_DTS_2048:
+      return "STREAM_TYPE_DTS_2048";
+    case CAEStreamInfo::STREAM_TYPE_DTS_512:
+      return "STREAM_TYPE_DTS_512";
+    case CAEStreamInfo::STREAM_TYPE_EAC3:
+      return "STREAM_TYPE_EAC3";
+    case CAEStreamInfo::STREAM_TYPE_MLP:
+      return "STREAM_TYPE_MLP";
+    case CAEStreamInfo::STREAM_TYPE_TRUEHD:
+      return "STREAM_TYPE_TRUEHD";
+
+    default:
+      return "STREAM_TYPE_NULL";
+  }
 }
 
 const char* CAEUtil::DataFormatToStr(const enum AEDataFormat dataFormat)
@@ -177,31 +188,24 @@ const char* CAEUtil::DataFormatToStr(const enum AEDataFormat dataFormat)
     "AE_FMT_S16BE",
     "AE_FMT_S16LE",
     "AE_FMT_S16NE",
-    
+
     "AE_FMT_S32BE",
     "AE_FMT_S32LE",
     "AE_FMT_S32NE",
-    
+
     "AE_FMT_S24BE4",
     "AE_FMT_S24LE4",
     "AE_FMT_S24NE4",  /* S24 in 4 bytes */
     "AE_FMT_S24NE4MSB",
-    
+
     "AE_FMT_S24BE3",
     "AE_FMT_S24LE3",
     "AE_FMT_S24NE3", /* S24 in 3 bytes */
-    
+
     "AE_FMT_DOUBLE",
     "AE_FMT_FLOAT",
-    
-    /* for passthrough streams and the like */
-    "AE_FMT_AAC",
-    "AE_FMT_AC3",
-    "AE_FMT_DTS",
-    "AE_FMT_EAC3",
-    "AE_FMT_TRUEHD",
-    "AE_FMT_DTSHD",
-    "AE_FMT_LPCM",
+
+    "AE_FMT_RAW",
 
     /* planar formats */
     "AE_FMT_U8P",
@@ -217,7 +221,7 @@ const char* CAEUtil::DataFormatToStr(const enum AEDataFormat dataFormat)
   return formats[dataFormat];
 }
 
-#ifdef __SSE__
+#if defined(HAVE_SSE) && defined(__SSE__)
 void CAEUtil::SSEMulArray(float *data, const float mul, uint32_t count)
 {
   const __m128 m = _mm_set_ps1(mul);
@@ -353,7 +357,7 @@ inline float CAEUtil::SoftClamp(const float x)
 
 void CAEUtil::ClampArray(float *data, uint32_t count)
 {
-#ifndef __SSE__
+#if !defined(HAVE_SSE) || !defined(__SSE__)
   for (uint32_t i = 0; i < count; ++i)
     data[i] = SoftClamp(data[i]);
 
@@ -432,90 +436,6 @@ void CAEUtil::ClampArray(float *data, uint32_t count)
 #endif
 }
 
-/*
-  Rand implementations based on:
-  http://software.intel.com/en-us/articles/fast-random-number-generator-on-the-intel-pentiumr-4-processor/
-  This is NOT safe for crypto work, but perfectly fine for audio usage (dithering)
-*/
-float CAEUtil::FloatRand1(const float min, const float max)
-{
-  const float delta  = (max - min) / 2;
-  const float factor = delta / (float)INT32_MAX;
-  return ((float)(m_seed = (214013 * m_seed + 2531011)) * factor) - delta;
-}
-
-void CAEUtil::FloatRand4(const float min, const float max, float result[4], __m128 *sseresult/* = NULL */)
-{
-  #ifdef __SSE2__
-    /*
-      this method may be called from other SSE code, we need
-      to calculate the delta & factor using SSE as the FPU
-      state is unknown and _mm_clear() is expensive.
-    */
-    MEMALIGN(16, static const __m128 point5  ) = _mm_set_ps1(0.5f);
-    MEMALIGN(16, static const __m128 int32max) = _mm_set_ps1((const float)INT32_MAX);
-    MEMALIGN(16, __m128 f) = _mm_div_ps(
-      _mm_mul_ps(
-        _mm_sub_ps(
-          _mm_set_ps1(max),
-          _mm_set_ps1(min)
-        ),
-        point5
-      ),
-      int32max
-    );
-
-    MEMALIGN(16, __m128i cur_seed_split);
-    MEMALIGN(16, __m128i multiplier);
-    MEMALIGN(16, __m128i adder);
-    MEMALIGN(16, __m128i mod_mask);
-    MEMALIGN(16, __m128 res);
-    MEMALIGN(16, static const unsigned int mult  [4]) = {214013, 17405, 214013, 69069};
-    MEMALIGN(16, static const unsigned int gadd  [4]) = {2531011, 10395331, 13737667, 1};
-    MEMALIGN(16, static const unsigned int mask  [4]) = {0xFFFFFFFF, 0, 0xFFFFFFFF, 0};
-
-    adder          = _mm_load_si128((__m128i*)gadd);
-    multiplier     = _mm_load_si128((__m128i*)mult);
-    mod_mask       = _mm_load_si128((__m128i*)mask);
-    cur_seed_split = _mm_shuffle_epi32(m_sseSeed, _MM_SHUFFLE(2, 3, 0, 1));
-
-    m_sseSeed      = _mm_mul_epu32(m_sseSeed, multiplier);
-    multiplier     = _mm_shuffle_epi32(multiplier, _MM_SHUFFLE(2, 3, 0, 1));
-    cur_seed_split = _mm_mul_epu32(cur_seed_split, multiplier);
-
-    m_sseSeed      = _mm_and_si128(m_sseSeed, mod_mask);
-    cur_seed_split = _mm_and_si128(cur_seed_split, mod_mask);
-    cur_seed_split = _mm_shuffle_epi32(cur_seed_split, _MM_SHUFFLE(2, 3, 0, 1));
-    m_sseSeed      = _mm_or_si128(m_sseSeed, cur_seed_split);
-    m_sseSeed      = _mm_add_epi32(m_sseSeed, adder);
-
-    /* adjust the value to the range requested */
-    res = _mm_cvtepi32_ps(m_sseSeed);
-    if (sseresult)
-      *sseresult = _mm_mul_ps(res, f);
-    else
-    {
-      res = _mm_mul_ps(res, f);
-      _mm_storeu_ps(result, res);
-
-      /* returning a float array, so cleanup */
-      _mm_empty();
-    }
-
-  #else
-    const float delta  = (max - min) / 2.0f;
-    const float factor = delta / (float)INT32_MAX;
-
-    /* cant return sseresult if we are not using SSE intrinsics */
-    assert(result && !sseresult);
-
-    result[0] = ((float)(m_seed = (214013 * m_seed + 2531011)) * factor) - delta;
-    result[1] = ((float)(m_seed = (214013 * m_seed + 2531011)) * factor) - delta;
-    result[2] = ((float)(m_seed = (214013 * m_seed + 2531011)) * factor) - delta;
-    result[3] = ((float)(m_seed = (214013 * m_seed + 2531011)) * factor) - delta;
-  #endif
-}
-
 bool CAEUtil::S16NeedsByteSwap(AEDataFormat in, AEDataFormat out)
 {
   const AEDataFormat nativeFormat =
@@ -525,15 +445,15 @@ bool CAEUtil::S16NeedsByteSwap(AEDataFormat in, AEDataFormat out)
     AE_FMT_S16LE;
 #endif
 
-  if (in == AE_FMT_S16NE || AE_IS_RAW(in))
+  if (in == AE_FMT_S16NE || (in == AE_FMT_RAW))
     in = nativeFormat;
-  if (out == AE_FMT_S16NE || AE_IS_RAW(out))
+  if (out == AE_FMT_S16NE || (out == AE_FMT_RAW))
     out = nativeFormat;
 
   return in != out;
 }
 
-uint64_t CAEUtil::GetAVChannelLayout(CAEChannelInfo &info)
+uint64_t CAEUtil::GetAVChannelLayout(const CAEChannelInfo &info)
 {
   uint64_t channelLayout = 0;
   if (info.HasChannel(AE_CH_FL))   channelLayout |= AV_CH_FRONT_LEFT;
@@ -558,30 +478,79 @@ uint64_t CAEUtil::GetAVChannelLayout(CAEChannelInfo &info)
   return channelLayout;
 }
 
+CAEChannelInfo CAEUtil::GetAEChannelLayout(uint64_t layout)
+{
+  CAEChannelInfo channelLayout;
+  channelLayout.Reset();
+
+  if (layout & AV_CH_FRONT_LEFT)       channelLayout += AE_CH_FL;
+  if (layout & AV_CH_FRONT_RIGHT)      channelLayout += AE_CH_FR;
+  if (layout & AV_CH_FRONT_CENTER)     channelLayout += AE_CH_FC;
+  if (layout & AV_CH_LOW_FREQUENCY)    channelLayout += AE_CH_LFE;
+  if (layout & AV_CH_BACK_LEFT)        channelLayout += AE_CH_BL;
+  if (layout & AV_CH_BACK_RIGHT)       channelLayout += AE_CH_BR;
+  if (layout & AV_CH_FRONT_LEFT_OF_CENTER)  channelLayout += AE_CH_FLOC;
+  if (layout & AV_CH_FRONT_RIGHT_OF_CENTER) channelLayout += AE_CH_FROC;
+  if (layout & AV_CH_BACK_CENTER)      channelLayout += AE_CH_BC;
+  if (layout & AV_CH_SIDE_LEFT)        channelLayout += AE_CH_SL;
+  if (layout & AV_CH_SIDE_RIGHT)       channelLayout += AE_CH_SR;
+  if (layout & AV_CH_TOP_CENTER)       channelLayout += AE_CH_TC;
+  if (layout & AV_CH_TOP_FRONT_LEFT)   channelLayout += AE_CH_TFL;
+  if (layout & AV_CH_TOP_FRONT_CENTER) channelLayout += AE_CH_TFC;
+  if (layout & AV_CH_TOP_FRONT_RIGHT)  channelLayout += AE_CH_TFR;
+  if (layout & AV_CH_TOP_BACK_LEFT)    channelLayout += AE_CH_BL;
+  if (layout & AV_CH_TOP_BACK_CENTER)  channelLayout += AE_CH_BC;
+  if (layout & AV_CH_TOP_BACK_RIGHT)   channelLayout += AE_CH_BR;
+
+  return channelLayout;
+}
+
 AVSampleFormat CAEUtil::GetAVSampleFormat(AEDataFormat format)
 {
-  if      (format == AE_FMT_U8)     return AV_SAMPLE_FMT_U8;
-  else if (format == AE_FMT_S16NE)  return AV_SAMPLE_FMT_S16;
-  else if (format == AE_FMT_S32NE)  return AV_SAMPLE_FMT_S32;
-  else if (format == AE_FMT_S24NE4) return AV_SAMPLE_FMT_S32;
-  else if (format == AE_FMT_S24NE4MSB)return AV_SAMPLE_FMT_S32;
-  else if (format == AE_FMT_S24NE3) return AV_SAMPLE_FMT_S32;
-  else if (format == AE_FMT_FLOAT)  return AV_SAMPLE_FMT_FLT;
-  else if (format == AE_FMT_DOUBLE) return AV_SAMPLE_FMT_DBL;
-
-  else if (format == AE_FMT_U8P)     return AV_SAMPLE_FMT_U8P;
-  else if (format == AE_FMT_S16NEP)  return AV_SAMPLE_FMT_S16P;
-  else if (format == AE_FMT_S32NEP)  return AV_SAMPLE_FMT_S32P;
-  else if (format == AE_FMT_S24NE4P) return AV_SAMPLE_FMT_S32P;
-  else if (format == AE_FMT_S24NE4MSBP)return AV_SAMPLE_FMT_S32P;
-  else if (format == AE_FMT_S24NE3P) return AV_SAMPLE_FMT_S32P;
-  else if (format == AE_FMT_FLOATP)  return AV_SAMPLE_FMT_FLTP;
-  else if (format == AE_FMT_DOUBLEP) return AV_SAMPLE_FMT_DBLP;
-
-  if (AE_IS_PLANAR(format))
-    return AV_SAMPLE_FMT_FLTP;
-  else
-    return AV_SAMPLE_FMT_FLT;
+  switch (format)
+  {
+    case AEDataFormat::AE_FMT_U8:
+      return AV_SAMPLE_FMT_U8;
+    case AEDataFormat::AE_FMT_S16NE:
+      return AV_SAMPLE_FMT_S16;
+    case AEDataFormat::AE_FMT_S32NE:
+      return AV_SAMPLE_FMT_S32;
+    case AEDataFormat::AE_FMT_S24NE4:
+      return AV_SAMPLE_FMT_S32;
+    case AEDataFormat::AE_FMT_S24NE4MSB:
+      return AV_SAMPLE_FMT_S32;
+    case AEDataFormat::AE_FMT_S24NE3:
+      return AV_SAMPLE_FMT_S32;
+    case AEDataFormat::AE_FMT_FLOAT:
+      return AV_SAMPLE_FMT_FLT;
+    case AEDataFormat::AE_FMT_DOUBLE:
+      return AV_SAMPLE_FMT_DBL;
+    case AEDataFormat::AE_FMT_U8P:
+      return AV_SAMPLE_FMT_U8P;
+    case AEDataFormat::AE_FMT_S16NEP:
+      return AV_SAMPLE_FMT_S16P;
+    case AEDataFormat::AE_FMT_S32NEP:
+      return AV_SAMPLE_FMT_S32P;
+    case AEDataFormat::AE_FMT_S24NE4P:
+      return AV_SAMPLE_FMT_S32P;
+    case AEDataFormat::AE_FMT_S24NE4MSBP:
+      return AV_SAMPLE_FMT_S32P;
+    case AEDataFormat::AE_FMT_S24NE3P:
+      return AV_SAMPLE_FMT_S32P;
+    case AEDataFormat::AE_FMT_FLOATP:
+      return AV_SAMPLE_FMT_FLTP;
+    case AEDataFormat::AE_FMT_DOUBLEP:
+      return AV_SAMPLE_FMT_DBLP;
+    case AEDataFormat::AE_FMT_RAW:
+      return AV_SAMPLE_FMT_U8;
+    default:
+    {
+      if (AE_IS_PLANAR(format))
+        return AV_SAMPLE_FMT_FLTP;
+      else
+        return AV_SAMPLE_FMT_FLT;
+    }
+  }
 }
 
 uint64_t CAEUtil::GetAVChannel(enum AEChannel aechannel)

@@ -1,31 +1,20 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #pragma once
 
+#include "TextureDatabase.h"
+#include "threads/Event.h"
+#include "utils/JobManager.h"
+
 #include <set>
 #include <string>
 #include <vector>
-#include "utils/JobManager.h"
-#include "TextureDatabase.h"
-#include "threads/Event.h"
 
 class CURL;
 class CBaseTexture;
@@ -47,9 +36,9 @@ public:
    \brief The only way through which the global instance of the CTextureCache should be accessed.
    \return the global instance.
    */
-  static CTextureCache &Get();
+  static CTextureCache &GetInstance();
 
-  /*! \brief Initalize the texture cache
+  /*! \brief Initialize the texture cache
    */
   void Initialize();
 
@@ -61,15 +50,13 @@ public:
 
    Check and return URL to cached image if it exists; If not, return empty string.
    If the image is cached, return URL (for original image or .dds version if requested)
-   Creates a .dds of image if requested via returnDDS and the image doesn't need recaching.
 
    \param image url of the image to check
-   \param returnDDS if we're allowed to return a DDS version, defaults to true
    \param needsRecaching [out] whether the image needs recaching.
    \return cached url of this image
    \sa GetCachedImage
-   */ 
-  std::string CheckCachedImage(const std::string &image, bool returnDDS, bool &needsRecaching);
+   */
+  std::string CheckCachedImage(const std::string &image, bool &needsRecaching);
 
   /*! \brief Cache image (if required) using a background job
 
@@ -92,7 +79,7 @@ public:
    \return cached url of this image
    \sa CTextureCacheJob::CacheTexture
    */
-  std::string CacheImage(const std::string &url, CBaseTexture **texture = NULL, CTextureDetails *details = NULL);
+  std::string CacheImage(const std::string &image, CBaseTexture **texture = NULL, CTextureDetails *details = NULL);
 
   /*! \brief Cache an image to image cache if not already cached, returning the image details.
    \param image url of the image to cache.
@@ -156,13 +143,13 @@ public:
    \return true if we successfully exported the file, false otherwise.
    */
   bool Export(const std::string &image, const std::string &destination, bool overwrite);
-  bool Export(const std::string &image, const std::string &destination); // TODO: BACKWARD COMPATIBILITY FOR MUSIC THUMBS
+  bool Export(const std::string &image, const std::string &destination); //! @todo BACKWARD COMPATIBILITY FOR MUSIC THUMBS
 private:
-  // private construction, and no assignements; use the provided singleton methods
+  // private construction, and no assignments; use the provided singleton methods
   CTextureCache();
-  CTextureCache(const CTextureCache&);
-  CTextureCache const& operator=(CTextureCache const&);
-  virtual ~CTextureCache();
+  CTextureCache(const CTextureCache&) = delete;
+  CTextureCache const& operator=(CTextureCache const&) = delete;
+  ~CTextureCache() override;
 
   /*! \brief Check if the given image is a cached image
    \param image url of the image
@@ -210,8 +197,8 @@ private:
    */
   bool SetCachedTextureValid(const std::string &url, bool updateable);
 
-  virtual void OnJobComplete(unsigned int jobID, bool success, CJob *job);
-  virtual void OnJobProgress(unsigned int jobID, unsigned int progress, unsigned int total, const CJob *job);
+  void OnJobComplete(unsigned int jobID, bool success, CJob *job) override;
+  void OnJobProgress(unsigned int jobID, unsigned int progress, unsigned int total, const CJob *job) override;
 
   /*! \brief Called when a caching job has completed.
    Removes the job from our processing list, updates the database

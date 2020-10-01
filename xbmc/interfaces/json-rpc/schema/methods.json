@@ -157,12 +157,13 @@
       },
       { "name": "options", "type": "object", "additionalProperties": false,
         "properties": {
-          "playercoreid": { "type": [
+          "playername": { "type": [
               "null",
-			  { "type": "string", "enum": [ "default" ], "required": true },
-              { "type": "integer", "minimum": 1, "required": true }
+              { "type": "string", "enum": [ "default" ], "required": true },
+              { "type": "string", "minLength": 1, "required": true, "description": "name of player" }
             ],
-            "default": null },
+            "default": null
+          },
           "shuffled": { "$ref": "Optional.Boolean" },
           "repeat": { "type": [ "null", { "$ref": "Player.Repeat", "required": true } ], "default": null },
           "resume": { "type": [
@@ -190,7 +191,8 @@
         "type": "object",
         "properties": {
           "playerid": { "$ref": "Player.Id", "required": true },
-          "type": { "$ref": "Player.Type", "required": true }
+          "type": { "$ref": "Player.Type", "required": true },
+          "playertype": { "type": "string", "enum": [ "internal", "external", "remote" ], "required": true }
         }
       }
     }
@@ -209,7 +211,6 @@
       "items": {
         "type": "object",
         "properties": {
-          "playercoreid": { "type": "integer", "minimum": 1, "required": true },
           "name": { "$ref": "Global.String.NotEmpty", "required": true },
           "type": { "type": "string", "enum": [ "internal", "external", "remote" ], "required": true },
           "playsvideo": { "type": "boolean", "required": true },
@@ -289,9 +290,10 @@
     "params": [
       { "name": "playerid", "$ref": "Player.Id", "required": true },
       { "name": "value", "required": true, "type": [
-          { "$ref": "Player.Position.Percentage", "required": true, "description": "Percentage value to seek to" },
-          { "$ref": "Player.Position.Time", "required": true, "description": "Time to seek to" },
-          { "type": "string", "enum": [ "smallforward", "smallbackward", "bigforward", "bigbackward" ], "required": true, "description": "Seek by predefined jumps" }
+          { "type": "object", "properties": { "percentage": { "$ref": "Player.Position.Percentage", "required": true, "description": "Percentage value to seek to" } }, "additionalProperties": false, "required": true },
+          { "type": "object", "properties": { "time": { "$ref": "Player.Position.Time", "required": true, "description": "Time to seek to" } }, "additionalProperties": false, "required": true },
+          { "type": "object", "properties": { "step": { "type": "string", "enum": [ "smallforward", "smallbackward", "bigforward", "bigbackward" ], "required": true, "description": "Seek by predefined jumps" } }, "additionalProperties": false, "required": true },
+          { "type": "object", "properties": { "seconds": { "type": "integer", "required": true, "description": "Seek by the given number of seconds" } }, "additionalProperties": false, "required": true }
         ]
       }
     ],
@@ -329,6 +331,37 @@
       "required": true }
     ],
     "returns": "string"
+  },
+  "Player.SetViewMode": {
+    "type": "method",
+    "description": "Set view mode of video player",
+    "transport": "Response",
+    "permission": "ControlPlayback",
+    "params": [
+      { "name": "viewmode", "type": [
+          { "$ref": "Player.CustomViewMode", "description": "Custom view mode", "required": true },
+          { "name": "value", "$ref": "Player.ViewMode", "required": true}
+        ],
+      "required": true }
+    ],
+    "returns": "string"
+  },
+  "Player.GetViewMode": {
+    "type": "method",
+    "description": "Get view mode of video player",
+    "transport": "Response",
+    "permission": "ReadData",
+    "params": [],
+    "returns": {
+      "type": "object",
+      "properties": {
+        "viewmode": { "$ref": "Player.ViewMode", "required": true },
+        "zoom": { "type": "number", "required": true },
+        "pixelratio": { "type": "number", "required": true },
+        "verticalshift": { "type": "number", "required": true },
+        "nonlinearstretch": { "type": "boolean", "required": true }		
+        }
+      }
   },
   "Player.Rotate": {
     "type": "method",
@@ -404,6 +437,21 @@
       { "name": "stream", "required": true, "type": [
           { "type": "string", "enum": [ "previous", "next" ] },
           { "type": "integer", "minimum": 0, "description": "Index of the audio stream to play" }
+        ]
+      }
+    ],
+    "returns": "string"
+  },
+  "Player.SetVideoStream": {
+    "type": "method",
+    "description": "Set the video stream played by the player",
+    "transport": "Response",
+    "permission": "ControlPlayback",
+    "params": [
+      { "name": "playerid", "$ref": "Player.Id", "required": true },
+      { "name": "stream", "required": true, "type": [
+          { "type": "string", "enum": [ "previous", "next" ] },
+          { "type": "integer", "minimum": 0, "description": "Index of the video stream to play" }
         ]
       }
     ],
@@ -620,26 +668,67 @@
       }
     }
   },
-  "AudioLibrary.GetArtists": {
+  "Files.SetFileDetails": {
     "type": "method",
-    "description": "Retrieve all artists",
+    "description": "Update the given specific file with the given details",
+    "transport": "Response",
+    "permission": "UpdateData",
+    "params": [
+      { "name": "file", "type": "string", "required": true, "description": "Full path to the file" },
+      { "name": "media", "$ref": "Files.Media", "required": true, "description": "File type to update correct database. Currently only \"video\" is supported." },
+      { "name": "playcount", "$ref": "Optional.Integer" },
+      { "name": "lastplayed", "$ref": "Optional.String", "description": "Setting a valid lastplayed without a playcount will force playcount to 1." },
+      { "name": "resume", "type": [ "null", { "$ref": "Video.Resume", "required": true } ], "default": null }
+    ],
+    "returns": "string"
+  },
+  "AudioLibrary.GetProperties": {
+    "type": "method",
+    "description": "Retrieves the values of the music library properties",
     "transport": "Response",
     "permission": "ReadData",
     "params": [
-      { "name": "albumartistsonly", "$ref": "Optional.Boolean", "description": "Whether or not to include artists only appearing in compilations. If the parameter is not passed or is passed as null the GUI setting will be used" },
+      { "name": "properties", "type": "array", "uniqueItems": true, "required": true, "items": { "$ref": "Audio.Property.Name" } }
+    ],
+    "returns":  { "$ref": "Audio.Property.Value", "required": true }
+  },
+  "AudioLibrary.GetArtists": {
+    "type": "method",
+    "description": "Retrieve all artists. For backward compatibility by default this implicitly does not include those that only contribute other roles, however absolutely all artists can be returned using allroles=true",
+    "transport": "Response",
+    "permission": "ReadData",
+    "params": [
+      { "name": "albumartistsonly", "$ref": "Optional.Boolean", "description": "Whether or not to only include album artists rather than the artists of only individual songs as well. If the parameter is not passed or is passed as null the GUI setting will be used" },
       { "name": "properties", "$ref": "Audio.Fields.Artist" },
       { "name": "limits", "$ref": "List.Limits" },
       { "name": "sort", "$ref": "List.Sort" },
       { "name": "filter",
         "type": [
-          { "type": "object", "properties": { "genreid": { "$ref": "Library.Id", "required": true } }, "additionalProperties": false },
-          { "type": "object", "properties": { "genre": { "type": "string", "minLength": 1, "required": true } }, "additionalProperties": false },
+          { "type": "object", "properties": { "genreid": { "$ref": "Library.Id", "required": true, "description": "Deprecated, use songgenreid. Filter for existence of songs with this genre" } }, "additionalProperties": false },
+          { "type": "object", "properties": { "songgenreid": { "$ref": "Library.Id", "required": true, "description": "Song genreid. Filter for existence of songs with this genre" } }, "additionalProperties": false },
+          { "type": "object", "properties": { "songgenreid": { "$ref": "Library.Id", "required": true },
+                                              "roleid": { "$ref": "Library.Id", "required": true }}, "additionalProperties": false },
+          { "type": "object", "properties": { "songgenreid": { "$ref": "Library.Id", "required": true },
+                                              "role": { "type": "string", "minLength": 1, "required": true }}, "additionalProperties": false },
+          { "type": "object", "properties": { "genre": { "type": "string", "minLength": 1, "required": true, "description": "Deprecated, use songgenre. Filter for existence of songs with this genre" } }, "additionalProperties": false },
+          { "type": "object", "properties": { "songgenre": { "type": "string", "minLength": 1, "required": true, "description": "Song genre. Filter for existence of songs with this genre" } }, "additionalProperties": false },
+          { "type": "object", "properties": { "songgenre": { "type": "string", "minLength": 1, "required": true },
+                                              "roleid": { "$ref": "Library.Id", "required": true }}, "additionalProperties": false },
+          { "type": "object", "properties": { "songgenre": { "type": "string", "minLength": 1, "required": true },
+                                              "role": { "type": "string", "minLength": 1, "required": true }}, "additionalProperties": false },
           { "type": "object", "properties": { "albumid": { "$ref": "Library.Id", "required": true } }, "additionalProperties": false },
           { "type": "object", "properties": { "album": { "type": "string", "minLength": 1, "required": true } }, "additionalProperties": false },
           { "type": "object", "properties": { "songid": { "$ref": "Library.Id", "required": true } }, "additionalProperties": false },
+          { "type": "object", "properties": { "songid": { "$ref": "Library.Id", "required": true },
+                                              "roleid": { "$ref": "Library.Id", "required": true }}, "additionalProperties": false },
+          { "type": "object", "properties": { "songid": { "$ref": "Library.Id", "required": true },
+                                              "role": { "type": "string", "minLength": 1, "required": true }}, "additionalProperties": false },
+          { "type": "object", "properties": { "roleid": { "$ref": "Library.Id", "required": true, "description": "Role contributed by artist. Overridden by allroles parameter" } }, "additionalProperties": false },
+          { "type": "object", "properties": { "role": { "type": "string", "minLength": 1, "required": true, "description": "Role contributed by artist. Overridden by allroles parameter" } }, "additionalProperties": false },
           { "$ref": "List.Filter.Artists" }
         ]
-      }
+      },
+      { "name": "allroles", "type": "boolean", "default":false, "description": "Whether or not to include all artists irrespective of the role they contributed. When true it overrides any role filter value." }
     ],
     "returns": {
       "type": "object",
@@ -668,7 +757,7 @@
   },
   "AudioLibrary.GetAlbums": {
     "type": "method",
-    "description": "Retrieve all albums from specified artist or genre",
+    "description": "Retrieve all albums from specified artist (and role) or that has songs of the specified genre",
     "transport": "Response",
     "permission": "ReadData",
     "params": [
@@ -677,13 +766,23 @@
       { "name": "sort", "$ref": "List.Sort" },
       { "name": "filter",
         "type": [
-          { "type": "object", "properties": { "genreid": { "$ref": "Library.Id", "required": true } }, "additionalProperties": false },
-          { "type": "object", "properties": { "genre": { "type": "string", "minLength": 1, "required": true } }, "additionalProperties": false },
+          { "type": "object", "properties": { "genreid": { "$ref": "Library.Id", "required": true, "description": "Song genre. Filter for existence of songs with this genre" } }, "additionalProperties": false },
+          { "type": "object", "properties": { "genre": { "type": "string", "minLength": 1, "required": true, "description": "Song genre. Filter for existence of songs with this genre" } }, "additionalProperties": false },
           { "type": "object", "properties": { "artistid": { "$ref": "Library.Id", "required": true } }, "additionalProperties": false },
+          { "type": "object", "properties": { "artistid": { "$ref": "Library.Id", "required": true },
+                                              "roleid": { "$ref": "Library.Id", "required": true }}, "additionalProperties": false },
+          { "type": "object", "properties": { "artistid": { "$ref": "Library.Id", "required": true },
+                                              "role": { "type": "string", "minLength": 1, "required": true }}, "additionalProperties": false },
           { "type": "object", "properties": { "artist": { "type": "string", "minLength": 1, "required": true } }, "additionalProperties": false },
+          { "type": "object", "properties": { "artist": { "type": "string", "minLength": 1, "required": true },
+                                              "roleid": { "$ref": "Library.Id", "required": true }}, "additionalProperties": false },
+          { "type": "object", "properties": { "artist": { "type": "string", "minLength": 1, "required": true },
+                                              "role": { "type": "string", "minLength": 1, "required": true }}, "additionalProperties": false },
           { "$ref": "List.Filter.Albums" }
         ]
-      }
+      },
+      { "name": "includesingles", "type": "boolean", "default": false },
+      { "name": "allroles", "type": "boolean", "default":false, "description": "Whether or not to include all roles when filtering by artist, rather than the default of excluding other contributions. When true it overrides any role filter value." }
     ],
     "returns": {
       "type": "object",
@@ -721,15 +820,26 @@
       { "name": "sort", "$ref": "List.Sort" },
       { "name": "filter",
         "type": [
-          { "type": "object", "properties": { "genreid": { "$ref": "Library.Id", "required": true } }, "additionalProperties": false },
-          { "type": "object", "properties": { "genre": { "type": "string", "minLength": 1, "required": true } }, "additionalProperties": false },
+          { "type": "object", "properties": { "genreid": { "$ref": "Library.Id", "required": true, "description": "Song genre. Filter for existence of songs with this genre" } }, "additionalProperties": false },
+          { "type": "object", "properties": { "genre": { "type": "string", "minLength": 1, "required": true, "description": "Song genre. Filter for existence of songs with this genre" } }, "additionalProperties": false },
           { "type": "object", "properties": { "artistid": { "$ref": "Library.Id", "required": true } }, "additionalProperties": false },
+          { "type": "object", "properties": { "artistid": { "$ref": "Library.Id", "required": true },
+                                              "roleid": { "$ref": "Library.Id", "required": true }}, "additionalProperties": false },
+          { "type": "object", "properties": { "artistid": { "$ref": "Library.Id", "required": true },
+                                              "role": { "type": "string", "minLength": 1, "required": true }}, "additionalProperties": false },
           { "type": "object", "properties": { "artist": { "type": "string", "minLength": 1, "required": true } }, "additionalProperties": false },
+          { "type": "object", "properties": { "artist": { "type": "string", "minLength": 1, "required": true },
+                                              "roleid": { "$ref": "Library.Id", "required": true }}, "additionalProperties": false },
+          { "type": "object", "properties": { "artist": { "type": "string", "minLength": 1, "required": true },
+                                              "role": { "type": "string", "minLength": 1, "required": true }}, "additionalProperties": false },
           { "type": "object", "properties": { "albumid": { "$ref": "Library.Id", "required": true } }, "additionalProperties": false },
           { "type": "object", "properties": { "album": { "type": "string", "minLength": 1, "required": true } }, "additionalProperties": false },
           { "$ref": "List.Filter.Songs" }
         ]
-      }
+      },
+      { "name": "includesingles", "type": "boolean", "default": true, "description": "Only songs from albums are returned when false, but overridden when singlesonly parameter is true" },
+      { "name": "allroles", "type": "boolean", "default":false, "description": "Whether or not to include all roles when filtering by artist, rather than default of excluding other contributors. When true it overrides any role filter value." },
+      { "name": "singlesonly", "type": "boolean", "default": false, "description": "Only singles are returned when true, and overrides includesingles parameter" }
     ],
     "returns": {
       "type": "object",
@@ -857,6 +967,46 @@
       }
     }
   },
+  "AudioLibrary.GetSources": {
+    "type": "method",
+    "description": "Get all music sources, including unique ID",
+    "transport": "Response",
+    "permission": "ReadData",
+    "params": [
+      { "name": "properties", "$ref": "Library.Fields.Source" },
+      { "name": "limits", "$ref": "List.Limits" },
+      { "name": "sort", "$ref": "List.Sort" }
+    ],
+    "returns": {
+      "type": "object",
+      "properties": {
+        "limits": { "$ref": "List.LimitsReturned", "required": true },
+        "sources": { "type": "array", "required": true,
+          "items": { "$ref": "Library.Details.Source" }
+        }
+      }
+    }
+  },
+  "AudioLibrary.GetRoles": {
+    "type": "method",
+    "description": "Retrieve all contributor roles",
+    "transport": "Response",
+    "permission": "ReadData",
+    "params": [
+      { "name": "properties", "$ref": "Audio.Fields.Role" },
+      { "name": "limits", "$ref": "List.Limits" },
+      { "name": "sort", "$ref": "List.Sort" }
+    ],
+    "returns": {
+      "type": "object",
+      "properties": {
+        "limits": { "$ref": "List.LimitsReturned", "required": true },
+        "roles": { "type": "array", "required": true,
+          "items": { "$ref": "Audio.Details.Role" }
+        }
+      }
+    }
+  },
   "AudioLibrary.SetArtistDetails": {
     "type": "method",
     "description": "Update the given artist with the given details",
@@ -874,7 +1024,13 @@
       { "name": "genre", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
       { "name": "died", "$ref": "Optional.String" },
       { "name": "disbanded", "$ref": "Optional.String" },
-      { "name": "yearsactive", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null }
+      { "name": "yearsactive", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
+      { "name": "musicbrainzartistid", "$ref": "Optional.String" },
+      { "name": "sortname", "$ref": "Optional.String" },
+      { "name": "type", "$ref": "Optional.String" },
+      { "name": "gender", "$ref": "Optional.String" },
+      { "name": "disambiguation", "$ref": "Optional.String" },
+      { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null }
     ],
     "returns": "string"
   },
@@ -894,8 +1050,19 @@
       { "name": "style", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
       { "name": "type", "$ref": "Optional.String" },
       { "name": "albumlabel", "$ref": "Optional.String" },
-      { "name": "rating", "$ref": "Optional.Integer" },
-      { "name": "year", "$ref": "Optional.Integer" }
+      { "name": "rating", "$ref": "Optional.Number" },
+      { "name": "year", "$ref": "Optional.Integer" },
+      { "name": "userrating", "$ref": "Optional.Integer" },
+      { "name": "votes", "$ref": "Optional.Integer" },
+      { "name": "musicbrainzalbumid", "$ref": "Optional.String" },
+      { "name": "musicbrainzreleasegroupid", "$ref": "Optional.String" },
+      { "name": "sortartist", "$ref": "Optional.String" },
+      { "name": "displayartist", "$ref": "Optional.String" },
+      { "name": "musicbrainzalbumartistid", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
+      { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null },
+      { "name": "isboxset", "$ref": "Optional.Boolean" },
+      { "name": "releasedate", "$ref": "Optional.String" },
+      { "name": "originaldate", "$ref": "Optional.String" }
     ],
     "returns": "string"
   },
@@ -908,21 +1075,27 @@
       { "name": "songid", "$ref": "Library.Id", "required": true },
       { "name": "title", "$ref": "Optional.String" },
       { "name": "artist", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
-      { "name": "albumartist", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
       { "name": "genre", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
       { "name": "year", "$ref": "Optional.Integer" },
-      { "name": "rating", "$ref": "Optional.Integer" },
-      { "name": "album", "$ref": "Optional.String" },
+      { "name": "rating", "$ref": "Optional.Number" },
       { "name": "track", "$ref": "Optional.Integer" },
       { "name": "disc", "$ref": "Optional.Integer" },
       { "name": "duration", "$ref": "Optional.Integer" },
       { "name": "comment", "$ref": "Optional.String" },
       { "name": "musicbrainztrackid", "$ref": "Optional.String" },
       { "name": "musicbrainzartistid", "$ref": "Optional.String" },
-      { "name": "musicbrainzalbumid", "$ref": "Optional.String" },
-      { "name": "musicbrainzalbumartistid", "$ref": "Optional.String" },
       { "name": "playcount", "$ref": "Optional.Integer" },
-      { "name": "lastplayed", "$ref": "Optional.String" }
+      { "name": "lastplayed", "$ref": "Optional.String" },
+      { "name": "userrating", "$ref": "Optional.Integer" },
+      { "name": "votes", "$ref": "Optional.Integer" },
+      { "name": "displayartist", "$ref": "Optional.String" },
+      { "name": "sortartist", "$ref": "Optional.String" },
+      { "name": "mood", "$ref": "Optional.String" },
+      { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null },
+      { "name": "disctitle", "$ref": "Optional.String" },
+      { "name": "releasedate", "$ref": "Optional.String" },
+      { "name": "originaldate", "$ref": "Optional.String" },
+      { "name": "bpm", "$ref": "Optional.Integer" }
     ],
     "returns": "string"
   },
@@ -1112,7 +1285,7 @@
     "transport": "Response",
     "permission": "ReadData",
     "params": [
-      { "name": "tvshowid", "$ref": "Library.Id", "required": true },
+      { "name": "tvshowid", "$ref": "Library.Id" },
       { "name": "properties", "$ref": "Video.Fields.Season" },
       { "name": "limits", "$ref": "List.Limits" },
       { "name": "sort", "$ref": "List.Sort" }
@@ -1290,6 +1463,25 @@
       }
     }
   },
+  "VideoLibrary.GetInProgressTVShows": {
+    "type": "method",
+    "description": "Retrieve all in progress tvshows",
+    "transport": "Response",
+    "permission": "ReadData",
+    "params": [
+      { "name": "properties", "$ref": "Video.Fields.TVShow" },
+      { "name": "limits", "$ref": "List.Limits" },
+      { "name": "sort", "$ref": "List.Sort" }
+    ],
+    "returns": { "type": "object",
+      "properties": {
+        "limits": { "$ref": "List.LimitsReturned", "required": true },
+        "tvshows": { "type": "array",
+          "items": { "$ref": "Video.Details.TVShow" }
+        }
+      }
+    }
+  },
   "VideoLibrary.GetGenres": {
     "type": "method",
     "description": "Retrieve all genres",
@@ -1311,6 +1503,27 @@
       }
     }
   },
+  "VideoLibrary.GetTags": {
+    "type": "method",
+    "description": "Retrieve all tags",
+    "transport": "Response",
+    "permission": "ReadData",
+    "params": [
+      { "name": "type", "type": "string", "required": true, "enum": [ "movie", "tvshow", "musicvideo" ] },
+      { "name": "properties", "$ref": "Library.Fields.Tag" },
+      { "name": "limits", "$ref": "List.Limits" },
+      { "name": "sort", "$ref": "List.Sort" }
+    ],
+    "returns": {
+      "type": "object",
+      "properties": {
+        "limits": { "$ref": "List.LimitsReturned", "required": true },
+        "tags": { "type": "array", "required": true,
+          "items": { "$ref": "Library.Details.Tag" }
+        }
+      }
+    }
+  },
   "VideoLibrary.SetMovieDetails": {
     "type": "method",
     "description": "Update the given movie with the given details",
@@ -1323,7 +1536,7 @@
       { "name": "runtime", "$ref": "Optional.Integer", "description": "Runtime in seconds" },
       { "name": "director", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
       { "name": "studio", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
-      { "name": "year", "$ref": "Optional.Integer" },
+      { "name": "year", "$ref": "Optional.Integer", "description": "linked with premiered. Overridden by premiered parameter" },
       { "name": "plot", "$ref": "Optional.String" },
       { "name": "genre", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
       { "name": "rating", "$ref": "Optional.Number" },
@@ -1345,7 +1558,12 @@
       { "name": "fanart", "$ref": "Optional.String" },
       { "name": "tag", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
       { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null },
-      { "name": "resume", "type": [ "null", { "$ref": "Video.Resume", "required": true } ], "default": null }
+      { "name": "resume", "type": [ "null", { "$ref": "Video.Resume", "required": true } ], "default": null },
+      { "name": "userrating", "$ref": "Optional.Integer" },
+      { "name": "ratings", "$ref": "Video.Ratings.Set" },
+      { "name": "dateadded", "$ref": "Optional.String" },
+      { "name": "premiered", "$ref": "Optional.String", "description": "linked with year. Overrides year" },
+      { "name": "uniqueid", "type": [ "null", { "$ref": "Media.UniqueID.Set", "required": true } ], "default": null }
     ],
     "returns": "string"
   },
@@ -1357,7 +1575,8 @@
     "params": [
       { "name": "setid", "$ref": "Library.Id", "required": true },
       { "name": "title", "$ref": "Optional.String" },
-      { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null }
+      { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null },
+      { "name": "plot", "$ref": "Optional.String" }
     ],
     "returns": "string"
   },
@@ -1385,7 +1604,13 @@
       { "name": "thumbnail", "$ref": "Optional.String" },
       { "name": "fanart", "$ref": "Optional.String" },
       { "name": "tag", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
-      { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null }
+      { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null },
+      { "name": "userrating", "$ref": "Optional.Integer" },
+      { "name": "ratings", "$ref": "Video.Ratings.Set" },
+      { "name": "dateadded", "$ref": "Optional.String" },
+      { "name": "runtime", "$ref": "Optional.Integer", "description": "Runtime in seconds" },
+      { "name": "status", "$ref": "Optional.String", "description": "Valid values: 'returning series', 'in production', 'planned', 'cancelled', 'ended'" },
+      { "name": "uniqueid", "type": [ "null", { "$ref": "Media.UniqueID.Set", "required": true } ], "default": null }
     ],
     "returns": "string"
   },
@@ -1396,7 +1621,9 @@
     "permission": "UpdateData",
     "params": [
       { "name": "seasonid", "$ref": "Library.Id", "required": true },
-      { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null }
+      { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null },
+      { "name": "userrating", "$ref": "Optional.Integer" },
+      { "name": "title", "$ref": "Optional.String" }
     ],
     "returns": "string"
   },
@@ -1424,7 +1651,11 @@
       { "name": "thumbnail", "$ref": "Optional.String" },
       { "name": "fanart", "$ref": "Optional.String" },
       { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null },
-      { "name": "resume", "type": [ "null", { "$ref": "Video.Resume", "required": true } ], "default": null }
+      { "name": "resume", "type": [ "null", { "$ref": "Video.Resume", "required": true } ], "default": null },
+      { "name": "userrating", "$ref": "Optional.Integer" },
+      { "name": "ratings", "$ref": "Video.Ratings.Set" },
+      { "name": "dateadded", "$ref": "Optional.String" },
+      { "name": "uniqueid", "type": [ "null", { "$ref": "Media.UniqueID.Set", "required": true } ], "default": null }
     ],
     "returns": "string"
   },
@@ -1440,7 +1671,7 @@
       { "name": "runtime", "$ref": "Optional.Integer", "description": "Runtime in seconds" },
       { "name": "director", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
       { "name": "studio", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
-      { "name": "year", "$ref": "Optional.Integer" },
+      { "name": "year", "$ref": "Optional.Integer", "description": "linked with premiered. Overridden by premiered parameter" },
       { "name": "plot", "$ref": "Optional.String" },
       { "name": "album", "$ref": "Optional.String" },
       { "name": "artist", "type": [ "null", { "$ref": "Array.String", "required": true } ] },
@@ -1451,7 +1682,60 @@
       { "name": "fanart", "$ref": "Optional.String" },
       { "name": "tag", "type": [ "null", { "$ref": "Array.String", "required": true } ], "default": null },
       { "name": "art", "type": [ "null", { "$ref": "Media.Artwork.Set", "required": true } ], "default": null },
-      { "name": "resume", "type": [ "null", { "$ref": "Video.Resume", "required": true } ], "default": null }
+      { "name": "resume", "type": [ "null", { "$ref": "Video.Resume", "required": true } ], "default": null },
+      { "name": "rating", "$ref": "Optional.Number" },
+      { "name": "userrating", "$ref": "Optional.Integer" },
+      { "name": "dateadded", "$ref": "Optional.String" },
+      { "name": "premiered", "$ref": "Optional.String", "description": "linked with year. Overrides year" }
+    ],
+    "returns": "string"
+  },
+  "VideoLibrary.RefreshMovie": {
+    "type": "method",
+    "description": "Refresh the given movie in the library",
+    "transport": "Response",
+    "permission": "UpdateData",
+    "params": [
+      { "name": "movieid", "$ref": "Library.Id", "required": true },
+      { "name": "ignorenfo", "type": "boolean", "required": false, "default": false, "description": "Whether or not to ignore a local NFO if present." },
+      { "name": "title", "type": "string", "required": "false", "default": "", "description": "Title to use for searching (instead of determining it from the item's filename/path)." }
+    ],
+    "returns": "string"
+  },
+  "VideoLibrary.RefreshTVShow": {
+    "type": "method",
+    "description": "Refresh the given tv show in the library",
+    "transport": "Response",
+    "permission": "UpdateData",
+    "params": [
+      { "name": "tvshowid", "$ref": "Library.Id", "required": true },
+      { "name": "ignorenfo", "type": "boolean", "required": false, "default": false, "description": "Whether or not to ignore a local NFO if present." },
+      { "name": "refreshepisodes", "type": "boolean", "required": false, "default": false, "description": "Whether or not to refresh all episodes belonging to the TV show." },
+      { "name": "title", "type": "string", "required": "false", "default": "", "description": "Title to use for searching (instead of determining it from the item's filename/path)." }
+    ],
+    "returns": "string"
+  },
+  "VideoLibrary.RefreshEpisode": {
+    "type": "method",
+    "description": "Refresh the given episode in the library",
+    "transport": "Response",
+    "permission": "UpdateData",
+    "params": [
+      { "name": "episodeid", "$ref": "Library.Id", "required": true },
+      { "name": "ignorenfo", "type": "boolean", "required": false, "default": false, "description": "Whether or not to ignore a local NFO if present." },
+      { "name": "title", "type": "string", "required": "false", "default": "", "description": "Title to use for searching (instead of determining it from the item's filename/path)." }
+    ],
+    "returns": "string"
+  },
+  "VideoLibrary.RefreshMusicVideo": {
+    "type": "method",
+    "description": "Refresh the given music video in the library",
+    "transport": "Response",
+    "permission": "UpdateData",
+    "params": [
+      { "name": "musicvideoid", "$ref": "Library.Id", "required": true },
+      { "name": "ignorenfo", "type": "boolean", "required": false, "default": false, "description": "Whether or not to ignore a local NFO if present." },
+      { "name": "title", "type": "string", "required": "false", "default": "", "description": "Title to use for searching (instead of determining it from the item's filename/path)." }
     ],
     "returns": "string"
   },
@@ -1532,11 +1816,12 @@
   },
   "VideoLibrary.Clean": {
     "type": "method",
-    "description": "Cleans the video library from non-existent items",
+    "description": "Cleans the video library for non-existent items",
     "transport": "Response",
     "permission": "RemoveData",
     "params": [
-      { "name": "showdialogs", "type": "boolean", "default": true, "description": "Whether or not to show the progress bar or any other GUI dialog" }
+      { "name": "showdialogs", "type": "boolean", "default": true, "description": "Whether or not to show the progress bar or any other GUI dialog" },
+      { "name": "content", "type": "string", "default": "video", "enum": [ "video", "movies", "tvshows", "musicvideos" ], "description": "Content type to clean for" }
     ],
     "returns": "string"
   },
@@ -1625,7 +1910,8 @@
       { "name": "content", "$ref": "Addon.Content", "description": "Content provided by the addon. Only considered for plugins and scripts." },
       { "name": "enabled", "type": [ { "type": "boolean" }, { "type": "string", "enum": [ "all" ] } ], "default": "all" },
       { "name": "properties", "$ref": "Addon.Fields" },
-      { "name": "limits", "$ref": "List.Limits" }
+      { "name": "limits", "$ref": "List.Limits" },
+      { "name": "installed", "type": [ { "type": "boolean" }, { "type": "string", "enum": [ "all" ] } ], "default": true }
     ],
     "returns": { "type": "object",
       "properties": {
@@ -1830,6 +2116,38 @@
       }
     }
   },
+  "PVR.AddTimer": {
+    "type": "method",
+    "description": "Adds a timer to record the given show one times or a timer rule to record all showings of the given show",
+    "transport": "Response",
+    "permission": "ControlPVR",
+    "params": [
+      { "name": "broadcastid", "$ref": "Library.Id", "required": true, "description": "the broadcast id of the item to record" },
+      { "name": "timerrule", "type": "boolean", "default": false, "description": "controls whether to create a timer rule or a onetime timer" }
+    ],
+    "returns":  "string"
+  },
+  "PVR.DeleteTimer": {
+    "type": "method",
+    "description": "Deletes a onetime timer or a timer rule",
+    "transport": "Response",
+    "permission": "ControlPVR",
+    "params": [
+      { "name": "timerid", "$ref": "Library.Id", "required": true, "description": "the id of the onetime timer or timer rule to delete" }
+    ],
+    "returns":  "string"
+  },
+  "PVR.ToggleTimer": {
+    "type": "method",
+    "description": "Creates or deletes a onetime timer or timer rule for a given show. If it exists, it will be deleted. If it does not exist, it will be created",
+    "transport": "Response",
+    "permission": "ControlPVR",
+    "params": [
+      { "name": "broadcastid", "$ref": "Library.Id", "required": true, "description": "the broadcast id of the item to toggle a onetime timer or time rule for" },
+      { "name": "timerrule", "type": "boolean", "default": false, "description": "controls whether to create / delete a timer rule or a onetime timer" }
+    ],
+    "returns":  "string"
+  },
   "PVR.GetRecordings": {
     "type": "method",
     "description": "Retrieves the recordings",
@@ -2028,6 +2346,18 @@
     ],
     "returns": "string"
   },
+  "Input.ButtonEvent": {
+    "type": "method",
+    "description": "Send a button press event",
+    "transport": "Response",
+    "permission": "Navigate",
+    "params": [
+      { "name": "button", "type": "string", "required": true, "description": "Button name" },
+      { "name": "keymap", "type": "string", "required": true, "description": "Keymap name (KB, XG, R1, or R2)", "enum": [ "KB", "XG", "R1", "R2" ] },
+      { "name": "holdtime", "type": "integer", "required": false, "minimum" : 0, "default" : 0, "description": "Number of milliseconds to simulate button hold." }
+    ],
+    "returns": "string"
+  },
   "Input.Left": {
     "type": "method",
     "description": "Navigate left in GUI",
@@ -2111,6 +2441,14 @@
   "Input.ShowOSD": {
     "type": "method",
     "description": "Show the on-screen display for the current player",
+    "transport": "Response",
+    "permission": "Navigate",
+    "params": [],
+    "returns": "string"
+  },
+  "Input.ShowPlayerProcessInfo": {
+    "type": "method",
+    "description": "Show player process information of the playing item, like video decoder, pixel format, pvr signal strength, ...",
     "transport": "Response",
     "permission": "Navigate",
     "params": [],
@@ -2214,7 +2552,7 @@
     "params": [
       { "name": "title", "type": "string", "required": true },
       { "name": "type", "$ref": "Favourite.Type", "required": true },
-      { "name": "path", "$ref": "Optional.String", "description": "Required for media and script favourites types" },
+      { "name": "path", "$ref": "Optional.String", "description": "Required for media, script and androidapp favourites types" },
       { "name": "window", "$ref": "Optional.String", "description": "Required for window favourite type" },
       { "name": "windowparameter", "$ref": "Optional.String" },
       { "name": "thumbnail", "$ref": "Optional.String" }

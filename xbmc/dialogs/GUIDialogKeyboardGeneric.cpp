@@ -1,38 +1,46 @@
 /*
- *      Copyright (C) 2012-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2012-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "interfaces/AnnouncementManager.h"
 #include "input/XBMC_vkeys.h"
+#include "input/InputCodingTable.h"
+#include "guilib/GUIComponent.h"
 #include "guilib/GUIEditControl.h"
+#include "guilib/GUILabelControl.h"
 #include "guilib/GUIWindowManager.h"
-#include "guilib/Key.h"
+#include "input/KeyboardLayoutManager.h"
+#include "input/Key.h"
 #include "guilib/LocalizeStrings.h"
 #include "GUIUserMessages.h"
 #include "GUIDialogNumeric.h"
-#include "GUIDialogOK.h"
 #include "GUIDialogKeyboardGeneric.h"
+#include "ServiceBroker.h"
 #include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
 #include "utils/RegExp.h"
+#include "utils/Variant.h"
 #include "utils/StringUtils.h"
-#include "ApplicationMessenger.h"
-#include "windowing/WindowingFactory.h"
+#include "messaging/ApplicationMessenger.h"
+#include "utils/CharsetConverter.h"
+#include "windowing/WinSystem.h"
+#include "utils/log.h"
+
+#ifdef TARGET_ANDROID
+#include <androidjni/Intent.h>
+#include <androidjni/RecognizerIntent.h>
+#include <androidjni/ArrayList.h>
+#include "platform/android/activity/XBMCApp.h"
+
+#define ACTION_RECOGNIZE_SPEECH_REQID 543
+
+#endif
+
+using namespace KODI::MESSAGING;
 
 #define BUTTON_ID_OFFSET      100
 #define BUTTONS_PER_ROW        20
@@ -51,6 +59,8 @@
 
 #define CTL_LABEL_HEADING     311
 #define CTL_EDIT              312
+#define CTL_LABEL_HZCODE      313
+#define CTL_LABEL_HZLIST      314
 
 #define CTL_BUTTON_BACKSPACE    8
 #define CTL_BUTTON_SPACE       32
@@ -68,15 +78,42 @@ CGUIDialogKeyboardGeneric::CGUIDialogKeyboardGeneric()
   m_keyType = LOWER;
   m_currentLayout = 0;
   m_loadType = KEEP_IN_MEMORY;
+  m_isKeyboardNavigationMode = false;
+  m_previouslyFocusedButton = 0;
+  m_codingtable = NULL;
+  m_pos = 0;
+  m_listwidth = 600;
+  m_hzcode = "";
 }
 
 void CGUIDialogKeyboardGeneric::OnWindowLoaded()
 {
-  // show the cursor always
-  CGUIEditControl *edit = (CGUIEditControl *)GetControl(CTL_EDIT);
+  CGUIEditControl *edit = static_cast<CGUIEditControl*>(GetControl(CTL_EDIT));
   if (edit)
-    edit->SetShowCursorAlways(true);
-  g_Windowing.EnableTextInput(false);
+  {
+    // add control CTL_LABEL_HZCODE and CTL_LABEL_HZLIST if not exist
+    CGUIControlGroup *ParentControl = static_cast<CGUIControlGroup*>(edit->GetParentControl());
+    CLabelInfo labelInfo = edit->GetLabelInfo();
+    float px = edit->GetXPosition();
+    float py = edit->GetYPosition();
+    float pw = edit->GetWidth();
+    float ph = edit->GetHeight();
+
+    CGUILabelControl* control = static_cast<CGUILabelControl*>(GetControl(CTL_LABEL_HZCODE));
+    if (!control)
+    {
+      control = new CGUILabelControl(GetID(), CTL_LABEL_HZCODE, px, py + ph, 90, 30, labelInfo, false, false);
+      ParentControl->AddControl(control);
+    }
+
+    control = static_cast<CGUILabelControl*>(GetControl(CTL_LABEL_HZLIST));
+    if (!control)
+    {
+      labelInfo.align = XBFONT_CENTER_Y;
+      control = new CGUILabelControl(GetID(), CTL_LABEL_HZLIST, px + 95, py + ph, pw - 95, 30, labelInfo, false, false);
+      ParentControl->AddControl(control);
+    }
+  }
 
   CGUIDialog::OnWindowLoaded();
 }
@@ -86,19 +123,25 @@ void CGUIDialogKeyboardGeneric::OnInitWindow()
   CGUIDialog::OnInitWindow();
 
   m_bIsConfirmed = false;
+  m_isKeyboardNavigationMode = false;
 
   // fill in the keyboard layouts
   m_currentLayout = 0;
   m_layouts.clear();
-  std::vector<CKeyboardLayout> keyLayouts = CKeyboardLayout::LoadLayouts();
-  const CSetting *setting = CSettings::Get().GetSetting("locale.keyboardlayouts");
-  std::vector<std::string> layouts;
-  if (setting)
-    layouts = StringUtils::Split(setting->ToString(), '|');
-  for (std::vector<CKeyboardLayout>::const_iterator j = keyLayouts.begin(); j != keyLayouts.end(); ++j)
+  const KeyboardLayouts& keyboardLayouts = CKeyboardLayoutManager::GetInstance().GetLayouts();
+  const std::shared_ptr<CSettings> settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+  std::vector<CVariant> layoutNames = settings->GetList(CSettings::SETTING_LOCALE_KEYBOARDLAYOUTS);
+  std::string activeLayout = settings->GetString(CSettings::SETTING_LOCALE_ACTIVEKEYBOARDLAYOUT);
+
+  for (const auto& layoutName : layoutNames)
   {
-    if (std::find(layouts.begin(), layouts.end(), j->GetName()) != layouts.end())
-      m_layouts.push_back(*j);
+    const auto keyboardLayout = keyboardLayouts.find(layoutName.asString());
+    if (keyboardLayout != keyboardLayouts.end())
+    {
+      m_layouts.emplace_back(keyboardLayout->second);
+      if (layoutName.asString() == activeLayout)
+        m_currentLayout = m_layouts.size() - 1;
+    }
   }
 
   // set alphabetic (capitals)
@@ -121,34 +164,75 @@ void CGUIDialogKeyboardGeneric::OnInitWindow()
   }
   SetEditText(m_text);
 
+  // get HZLIST label options
+  CGUILabelControl* pEdit = static_cast<CGUILabelControl*>(GetControl(CTL_LABEL_HZLIST));
+  CLabelInfo labelInfo = pEdit->GetLabelInfo();
+  m_listfont = labelInfo.font;
+  m_listwidth = pEdit->GetWidth();
+  m_hzcode.clear();
+  m_words.clear();
+  SET_CONTROL_LABEL(CTL_LABEL_HZCODE, "");
+  SET_CONTROL_LABEL(CTL_LABEL_HZLIST, "");
+
   CVariant data;
   data["title"] = m_strHeading;
   data["type"] = !m_hiddenInput ? "keyboard" : "password";
   data["value"] = GetText();
-  ANNOUNCEMENT::CAnnouncementManager::Get().Announce(ANNOUNCEMENT::Input, "xbmc", "OnInputRequested", data);
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Input, "xbmc", "OnInputRequested", data);
 }
 
 bool CGUIDialogKeyboardGeneric::OnAction(const CAction &action)
 {
+  int actionId = action.GetID();
   bool handled = true;
-  if (action.GetID() == ACTION_ENTER)
+  if (actionId == (KEY_VKEY | XBMCVK_BACK))
+    Backspace();
+  else if (actionId == ACTION_ENTER ||
+           (actionId == ACTION_SELECT_ITEM && (m_isKeyboardNavigationMode || GetFocusedControlID() == CTL_EDIT)))
     OnOK();
-  else if (action.GetID() == ACTION_SHIFT)
+  else if (actionId == ACTION_SHIFT)
     OnShift();
-  else if (action.GetID() == ACTION_SYMBOLS)
+  else if (actionId == ACTION_SYMBOLS)
     OnSymbols();
   // don't handle move left/right and select in the edit control
-  else if (action.GetID() == ACTION_MOVE_LEFT ||
-           action.GetID() == ACTION_MOVE_RIGHT ||
-           action.GetID() == ACTION_SELECT_ITEM)
+  else if (!m_isKeyboardNavigationMode &&
+           (actionId == ACTION_MOVE_LEFT ||
+           actionId == ACTION_MOVE_RIGHT ||
+           actionId == ACTION_SELECT_ITEM))
     handled = false;
+  else if (actionId == ACTION_VOICE_RECOGNIZE)
+    OnVoiceRecognition();
   else
   {
-    handled = false;
-    // send action to edit control
-    CGUIControl *edit = GetControl(CTL_EDIT);
-    if (edit)
-      handled = edit->OnAction(action);
+    std::wstring wch = L"";
+    wch.insert(wch.begin(), action.GetUnicode());
+    std::string ch;
+    g_charsetConverter.wToUTF8(wch, ch);
+    handled = CodingCharacter(ch);
+    if (!handled)
+    {
+      // send action to edit control
+      CGUIControl *edit = GetControl(CTL_EDIT);
+      if (edit)
+        handled = edit->OnAction(action);
+      if (!handled && actionId >= KEY_VKEY && actionId < KEY_UNICODE)
+      {
+        unsigned char b = actionId & 0xFF;
+        if (b == XBMCVK_TAB)
+        {
+          // Toggle left/right key mode
+          m_isKeyboardNavigationMode = !m_isKeyboardNavigationMode;
+          if (m_isKeyboardNavigationMode)
+          {
+            m_previouslyFocusedButton = GetFocusedControlID();
+            SET_CONTROL_FOCUS(edit->GetID(), 0);
+          }
+          else
+            SET_CONTROL_FOCUS(m_previouslyFocusedButton, 0);
+          handled = true;
+        }
+      }
+    }
   }
 
   if (!handled) // unhandled by us - let's see if the baseclass wants it
@@ -221,9 +305,8 @@ bool CGUIDialogKeyboardGeneric::OnMessage(CGUIMessage& message)
     break;
 
   case GUI_MSG_SET_TEXT:
-  case GUI_MSG_INPUT_TEXT_EDIT:
     {
-      // the edit control only handles these messages if it is either focues
+      // the edit control only handles these messages if it is either focused
       // or its specific control ID is set in the message. As neither is the
       // case here (focus is on one of the keyboard buttons) we have to force
       // the control ID of the message to the control ID of the edit control
@@ -240,6 +323,17 @@ bool CGUIDialogKeyboardGeneric::OnMessage(CGUIMessage& message)
       if (message.GetMessage() == GUI_MSG_SET_TEXT && message.GetParam1() > 0)
         OnOK();
       return true;
+    }
+  case GUI_MSG_CODINGTABLE_LOOKUP_COMPLETED:
+    {
+      std::string code = message.GetStringParam();
+      if (code == m_hzcode)
+      {
+        int response = message.GetParam1();
+        auto words = m_codingtable->GetResponse(response);
+        m_words.insert(m_words.end(), words.begin(), words.end());
+        ShowWordList(0);
+      }
     }
   }
 
@@ -266,7 +360,12 @@ const std::string &CGUIDialogKeyboardGeneric::GetText() const
 void CGUIDialogKeyboardGeneric::Character(const std::string &ch)
 {
   if (ch.empty()) return;
+  if (!CodingCharacter(ch))
+    NormalCharacter(ch);
+}
 
+void CGUIDialogKeyboardGeneric::NormalCharacter(const std::string &ch)
+{
   // send text to edit control
   CGUIControl *edit = GetControl(CTL_EDIT);
   if (edit)
@@ -279,10 +378,35 @@ void CGUIDialogKeyboardGeneric::Character(const std::string &ch)
 
 void CGUIDialogKeyboardGeneric::Backspace()
 {
-  // send action to edit control
-  CGUIControl *edit = GetControl(CTL_EDIT);
-  if (edit)
-    edit->OnAction(CAction(ACTION_BACKSPACE));
+  if (m_codingtable && m_hzcode.length() > 0)
+  {
+    std::wstring tmp;
+    g_charsetConverter.utf8ToW(m_hzcode, tmp);
+    tmp.erase(tmp.length() - 1, 1);
+    g_charsetConverter.wToUTF8(tmp, m_hzcode);
+
+    switch (m_codingtable->GetType())
+    {
+    case IInputCodingTable::TYPE_WORD_LIST:
+      SetControlLabel(CTL_LABEL_HZCODE, m_hzcode);
+      ChangeWordList(0);
+      break;
+
+    case IInputCodingTable::TYPE_CONVERT_STRING:
+      SetEditText(m_codingtable->ConvertString(m_hzcode));
+      break;
+    }
+  }
+  else
+  {
+    // send action to edit control
+    CGUIControl *edit = GetControl(CTL_EDIT);
+    if (edit)
+      edit->OnAction(CAction(ACTION_BACKSPACE));
+
+    if (m_codingtable && m_codingtable->GetType() == IInputCodingTable::TYPE_CONVERT_STRING)
+      m_codingtable->SetTextPrev(GetText());
+  }
 }
 
 void CGUIDialogKeyboardGeneric::OnClickButton(int iButtonControl)
@@ -298,7 +422,8 @@ void CGUIDialogKeyboardGeneric::OnClickButton(int iButtonControl)
   else
   {
     const CGUIControl* pButton = GetControl(iButtonControl);
-    if (pButton)
+    // Do not register input for buttons with id >= 500
+    if (pButton && iButtonControl < 500)
     {
       Character(pButton->GetDescription());
       // reset the shift keys
@@ -316,16 +441,46 @@ void CGUIDialogKeyboardGeneric::UpdateButtons()
   if (m_currentLayout >= m_layouts.size())
     m_currentLayout = 0;
   CKeyboardLayout layout = m_layouts.empty() ? CKeyboardLayout() : m_layouts[m_currentLayout];
+  m_codingtable = layout.GetCodingTable();
+  if (m_codingtable && !m_codingtable->IsInitialized())
+    m_codingtable->Initialize();
+
+  bool bShowWordList = false;
+  if (m_codingtable)
+  {
+    switch (m_codingtable->GetType())
+    {
+    case IInputCodingTable::TYPE_WORD_LIST:
+      bShowWordList = true;
+      break;
+
+    case IInputCodingTable::TYPE_CONVERT_STRING:
+      m_codingtable->SetTextPrev(GetText());
+      m_hzcode.clear();
+      break;
+    }
+  }
+
+  if (bShowWordList)
+  {
+    SET_CONTROL_VISIBLE(CTL_LABEL_HZCODE);
+    SET_CONTROL_VISIBLE(CTL_LABEL_HZLIST);
+  }
+  else
+  {
+    SET_CONTROL_HIDDEN(CTL_LABEL_HZCODE);
+    SET_CONTROL_HIDDEN(CTL_LABEL_HZLIST);
+  }
   SET_CONTROL_LABEL(CTL_BUTTON_LAYOUT, layout.GetName());
 
-  unsigned int modifiers = CKeyboardLayout::MODIFIER_KEY_NONE;
+  unsigned int modifiers = CKeyboardLayout::ModifierKeyNone;
   if ((m_keyType == CAPS && !m_bShift) || (m_keyType == LOWER && m_bShift))
-    modifiers |= CKeyboardLayout::MODIFIER_KEY_SHIFT;
+    modifiers |= CKeyboardLayout::ModifierKeyShift;
   if (m_keyType == SYMBOLS)
   {
-    modifiers |= CKeyboardLayout::MODIFIER_KEY_SYMBOL;
+    modifiers |= CKeyboardLayout::ModifierKeySymbol;
     if (m_bShift)
-      modifiers |= CKeyboardLayout::MODIFIER_KEY_SHIFT;
+      modifiers |= CKeyboardLayout::ModifierKeyShift;
   }
 
   for (unsigned int row = 0; row < BUTTONS_MAX_ROWS; row++)
@@ -345,19 +500,30 @@ void CGUIDialogKeyboardGeneric::UpdateButtons()
 
 void CGUIDialogKeyboardGeneric::OnDeinitWindow(int nextWindowID)
 {
+  for (auto& layout : m_layouts)
+  {
+    auto codingTable = layout.GetCodingTable();
+    if (codingTable && codingTable->IsInitialized())
+      codingTable->Deinitialize();
+  }
   // call base class
   CGUIDialog::OnDeinitWindow(nextWindowID);
   // reset the heading (we don't always have this)
   m_strHeading = "";
 
-  ANNOUNCEMENT::CAnnouncementManager::Get().Announce(ANNOUNCEMENT::Input, "xbmc", "OnInputFinished");
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Input, "xbmc", "OnInputFinished");
 }
 
 void CGUIDialogKeyboardGeneric::MoveCursor(int iAmount)
 {
-  CGUIControl *edit = GetControl(CTL_EDIT);
-  if (edit)
-    edit->OnAction(CAction(iAmount < 0 ? ACTION_CURSOR_LEFT : ACTION_CURSOR_RIGHT));
+  if (m_codingtable && m_words.size())
+    ChangeWordList(iAmount);
+  else
+  {
+    CGUIControl *edit = GetControl(CTL_EDIT);
+    if (edit)
+      edit->OnAction(CAction(iAmount < 0 ? ACTION_CURSOR_LEFT : ACTION_CURSOR_RIGHT));
+  }
 }
 
 void CGUIDialogKeyboardGeneric::OnLayout()
@@ -365,6 +531,8 @@ void CGUIDialogKeyboardGeneric::OnLayout()
   m_currentLayout++;
   if (m_currentLayout >= m_layouts.size())
     m_currentLayout = 0;
+  CKeyboardLayout layout = m_layouts.empty() ? CKeyboardLayout() : m_layouts[m_currentLayout];
+  CServiceBroker::GetSettingsComponent()->GetSettings()->SetString(CSettings::SETTING_LOCALE_ACTIVEKEYBOARDLAYOUT, layout.GetName());
   UpdateButtons();
 }
 
@@ -404,6 +572,21 @@ void CGUIDialogKeyboardGeneric::OnIPAddress()
     SetEditText(text.substr(0, start) + ip.c_str() + text.substr(start + length));
 }
 
+void CGUIDialogKeyboardGeneric::OnVoiceRecognition()
+{
+#ifdef TARGET_ANDROID
+  CJNIIntent intent = CJNIIntent(CJNIRecognizerIntent::ACTION_RECOGNIZE_SPEECH);
+  intent.putExtra(CJNIRecognizerIntent::EXTRA_LANGUAGE_MODEL, CJNIRecognizerIntent::LANGUAGE_MODEL_FREE_FORM);
+  CJNIIntent result;
+  if (CXBMCApp::WaitForActivityResult(intent, ACTION_RECOGNIZE_SPEECH_REQID, result) == CJNIBase::RESULT_OK)
+  {
+    CJNIArrayList<std::string> guesses = result.getStringArrayListExtra(CJNIRecognizerIntent::EXTRA_RESULTS);
+    if (guesses.size())
+      SetEditText(guesses.get(0));
+  }
+#endif
+}
+
 void CGUIDialogKeyboardGeneric::SetControlLabel(int id, const std::string &label)
 { // find all controls with this id, and set all their labels
   CGUIMessage message(GUI_MSG_LABEL_SET, GetID(), id);
@@ -439,7 +622,7 @@ void CGUIDialogKeyboardGeneric::Cancel()
 
 bool CGUIDialogKeyboardGeneric::ShowAndGetInput(char_callback_t pCallback, const std::string &initialString, std::string &typedString, const std::string &heading, bool bHiddenInput)
 {
-  CGUIDialogKeyboardGeneric *pKeyboard = (CGUIDialogKeyboardGeneric*)g_windowManager.GetWindow(WINDOW_DIALOG_KEYBOARD);
+  CGUIDialogKeyboardGeneric *pKeyboard = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogKeyboardGeneric>(WINDOW_DIALOG_KEYBOARD);
 
   if (!pKeyboard)
     return false;
@@ -450,9 +633,7 @@ bool CGUIDialogKeyboardGeneric::ShowAndGetInput(char_callback_t pCallback, const
   pKeyboard->SetHeading(heading);
   pKeyboard->SetHiddenInput(bHiddenInput);
   pKeyboard->SetText(initialString);
-  // do this using a thread message to avoid render() conflicts
-  ThreadMessage tMsg = {TMSG_DIALOG_DOMODAL, WINDOW_DIALOG_KEYBOARD, g_windowManager.GetActiveWindow()};
-  CApplicationMessenger::Get().SendMessage(tMsg, true);
+  pKeyboard->Open();
   pKeyboard->Close();
 
   // If have text - update this.
@@ -462,4 +643,132 @@ bool CGUIDialogKeyboardGeneric::ShowAndGetInput(char_callback_t pCallback, const
     return true;
   }
   else return false;
+}
+
+float CGUIDialogKeyboardGeneric::GetStringWidth(const std::wstring & utf16)
+{
+  vecText utf32;
+
+  utf32.resize(utf16.size());
+  for (unsigned int i = 0; i < utf16.size(); i++)
+    utf32[i] = utf16[i];
+
+  return m_listfont->GetTextWidth(utf32);
+}
+
+void CGUIDialogKeyboardGeneric::ChangeWordList(int direct)
+{
+  if (direct == 0)
+  {
+    m_pos = 0;
+    m_words.clear();
+    m_codingtable->GetWordListPage(m_hzcode, true);
+  }
+  else
+  {
+    ShowWordList(direct);
+    if (direct > 0 && m_pos + m_num == static_cast<int>(m_words.size()))
+      m_codingtable->GetWordListPage(m_hzcode, false);
+  }
+}
+
+void CGUIDialogKeyboardGeneric::ShowWordList(int direct)
+{
+  CSingleLock lock(m_CS);
+  std::wstring hzlist = L"";
+  CServiceBroker::GetWinSystem()->GetGfxContext().SetScalingResolution(m_coordsRes, true);
+  float width = m_listfont->GetCharWidth(L'<') + m_listfont->GetCharWidth(L'>');
+  float spacewidth = m_listfont->GetCharWidth(L' ');
+  float numwidth = m_listfont->GetCharWidth(L'1') + m_listfont->GetCharWidth(L'.');
+  int i;
+
+  if (direct >= 0)
+  {
+    if (direct > 0)
+      m_pos += m_num;
+    if (m_pos > static_cast<int>(m_words.size()) - 1)
+      m_pos = 0;
+    for (i = 0; m_pos + i < static_cast<int>(m_words.size()); i++)
+    {
+      if ((i > 0 && width + GetStringWidth(m_words[m_pos + i]) + numwidth > m_listwidth) || i > 9)
+        break;
+      hzlist.insert(hzlist.length(), 1, (wchar_t)(i + 48));
+      hzlist.insert(hzlist.length(), 1, L'.');
+      hzlist.append(m_words[m_pos + i]);
+      hzlist.insert(hzlist.length(), 1, L' ');
+      width += GetStringWidth(m_words[m_pos + i]) + numwidth + spacewidth;
+    }
+    m_num = i;
+  }
+  else
+  {
+    if (m_pos == 0)
+      return;
+    for (i = 1; i <= 10; i++)
+    {
+      if (m_pos - i < 0 || (i > 1 && width + GetStringWidth(m_words[m_pos - i]) + numwidth > m_listwidth))
+        break;
+      width += GetStringWidth(m_words[m_pos - i]) + numwidth + spacewidth;
+    }
+    m_num = --i;
+    m_pos -= m_num;
+    for (i = 0; i < m_num; i++)
+    {
+      hzlist.insert(hzlist.length(), 1, (wchar_t)(i + 48));
+      hzlist.insert(hzlist.length(), 1, L'.');
+      hzlist.append(m_words[m_pos + i]);
+      hzlist.insert(hzlist.length(), 1, L' ');
+    }
+  }
+  hzlist.erase(hzlist.find_last_not_of(L" ") + 1);
+  if (m_pos > 0)
+    hzlist.insert(0, 1, L'<');
+  if (m_pos + m_num < static_cast<int>(m_words.size()))
+    hzlist.insert(hzlist.length(), 1, L'>');
+  std::string utf8String;
+  g_charsetConverter.wToUTF8(hzlist, utf8String);
+  SET_CONTROL_LABEL(CTL_LABEL_HZLIST, utf8String);
+}
+
+bool CGUIDialogKeyboardGeneric::CodingCharacter(const std::string &ch)
+{
+  if (!m_codingtable)
+    return false;
+
+  switch (m_codingtable->GetType())
+  {
+  case IInputCodingTable::TYPE_CONVERT_STRING:
+    if (!ch.empty() && ch[0] != 0)
+    {
+      m_hzcode += ch;
+      SetEditText(m_codingtable->ConvertString(m_hzcode));
+      return true;
+    }
+    break;
+
+  case IInputCodingTable::TYPE_WORD_LIST:
+    if (m_codingtable->GetCodeChars().find(ch) != std::string::npos)
+    {
+      m_hzcode += ch;
+      SetControlLabel(CTL_LABEL_HZCODE, m_hzcode);
+      ChangeWordList(0);
+      return true;
+    }
+    if (ch[0] >= '0' && ch[0] <= '9')
+    {
+      int i = m_pos + (int)ch[0] - 48;
+      if (i < (m_pos + m_num))
+      {
+        m_hzcode = "";
+        SetControlLabel(CTL_LABEL_HZCODE, m_hzcode);
+        std::string utf8String;
+        g_charsetConverter.wToUTF8(m_words[i], utf8String);
+        NormalCharacter(utf8String);
+      }
+      return true;
+    }
+    break;
+  }
+
+  return false;
 }

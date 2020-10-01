@@ -1,35 +1,26 @@
 /*
- *      Copyright (C) 2011-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2011-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include <string>
-#include <sstream>
-#include <boost/uuid/sha1.hpp>
-
 #include "WebSocketV8.h"
+
 #include "WebSocket.h"
 #include "utils/Base64.h"
+#include "utils/Digest.h"
 #include "utils/EndianSwap.h"
 #include "utils/HttpParser.h"
 #include "utils/HttpResponse.h"
-#include "utils/log.h"
 #include "utils/StringUtils.h"
+#include "utils/log.h"
+
+#include <sstream>
+#include <string>
+
+using KODI::UTILITY::CDigest;
 
 #define WS_HTTP_METHOD          "GET"
 #define WS_HTTP_TAG             "HTTP/"
@@ -46,11 +37,9 @@
 #define WS_HEADER_UPGRADE_VALUE "websocket"
 #define WS_KEY_MAGICSTRING      "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-using namespace std;
-
 bool CWebSocketV8::Handshake(const char* data, size_t length, std::string &response)
 {
-  string strHeader(data, length);
+  std::string strHeader(data, length);
   const char *value;
   HttpParser header;
   if (header.addBytes(data, length) != HttpParser::Done)
@@ -61,7 +50,8 @@ bool CWebSocketV8::Handshake(const char* data, size_t length, std::string &respo
 
   // The request must be GET
   value = header.getMethod();
-  if (value == NULL || strnicmp(value, WS_HTTP_METHOD, strlen(WS_HTTP_METHOD)) != 0)
+  if (value == NULL ||
+      StringUtils::CompareNoCase(value, WS_HTTP_METHOD, strlen(WS_HTTP_METHOD)) != 0)
   {
     CLog::Log(LOGINFO, "WebSocket [hybi-10]: invalid HTTP method received (GET expected)");
     return false;
@@ -69,14 +59,14 @@ bool CWebSocketV8::Handshake(const char* data, size_t length, std::string &respo
 
   // The request must be HTTP/1.1 or higher
   size_t pos;
-  if ((pos = strHeader.find(WS_HTTP_TAG)) == string::npos)
+  if ((pos = strHeader.find(WS_HTTP_TAG)) == std::string::npos)
   {
     CLog::Log(LOGINFO, "WebSocket [hybi-10]: invalid handshake received");
     return false;
   }
 
   pos += strlen(WS_HTTP_TAG);
-  istringstream converter(strHeader.substr(pos, strHeader.find_first_of(" \r\n\t", pos) - pos));
+  std::istringstream converter(strHeader.substr(pos, strHeader.find_first_of(" \r\n\t", pos) - pos));
   float fVersion;
   converter >> fVersion;
 
@@ -86,7 +76,7 @@ bool CWebSocketV8::Handshake(const char* data, size_t length, std::string &respo
     return false;
   }
 
-  string websocketKey, websocketProtocol;
+  std::string websocketKey, websocketProtocol;
   // There must be a "Host" header
   value = header.getValue("host");
   if (value == NULL || strlen(value) == 0)
@@ -107,11 +97,11 @@ bool CWebSocketV8::Handshake(const char* data, size_t length, std::string &respo
   value = header.getValue(WS_HEADER_PROTOCOL_LC);
   if (value && strlen(value) > 0)
   {
-    vector<string> protocols = StringUtils::Split(value, ",");
-    for (vector<string>::iterator protocol = protocols.begin(); protocol != protocols.end(); ++protocol)
+    std::vector<std::string> protocols = StringUtils::Split(value, ",");
+    for (auto& protocol : protocols)
     {
-      StringUtils::Trim(*protocol);
-      if (*protocol == WS_PROTOCOL_JSONRPC)
+      StringUtils::Trim(protocol);
+      if (protocol == WS_PROTOCOL_JSONRPC)
       {
         websocketProtocol = WS_PROTOCOL_JSONRPC;
         break;
@@ -126,10 +116,8 @@ bool CWebSocketV8::Handshake(const char* data, size_t length, std::string &respo
   if (!websocketProtocol.empty())
     httpResponse.AddHeader(WS_HEADER_PROTOCOL, websocketProtocol);
 
-  char *responseBuffer;
-  int responseLength = httpResponse.Create(responseBuffer);
-  response = std::string(responseBuffer, responseLength);
-  
+  response = response = httpResponse.Create();
+
   m_state = WebSocketStateConnected;
 
   return true;
@@ -190,17 +178,11 @@ const CWebSocketFrame* CWebSocketV8::close(WebSocketCloseReason reason /* = WebS
 
 std::string CWebSocketV8::calculateKey(const std::string &key)
 {
-  string acceptKey = key;
+  std::string acceptKey = key;
   acceptKey.append(WS_KEY_MAGICSTRING);
 
-  boost::uuids::detail::sha1 hash;
-  hash.process_bytes(acceptKey.c_str(), acceptKey.size());
+  CDigest digest{CDigest::Type::SHA1};
+  digest.Update(acceptKey);
 
-  unsigned int digest[5];
-  hash.get_digest(digest);
-
-  for (unsigned int index = 0; index < 5; index++)
-    digest[index] = Endian_SwapBE32(digest[index]);
-
-  return Base64::Encode((const char*)digest, sizeof(digest));
+  return Base64::Encode(digest.FinalizeRaw());
 }

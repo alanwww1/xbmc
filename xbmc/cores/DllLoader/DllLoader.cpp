@@ -1,21 +1,9 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include <stdlib.h>
@@ -49,7 +37,7 @@ extern "C" FILE *fopen_utf8(const char *_Filename, const char *_Mode);
 #endif
 
 //  Entry point of a dll (DllMain)
-typedef BOOL (APIENTRY *EntryFunc)(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved);
+typedef int (APIENTRY *EntryFunc)(HINSTANCE hinstDLL, DWORD fdwReason, void* lpvReserved);
 
 
 #ifdef TARGET_POSIX
@@ -198,11 +186,11 @@ void DllLoader::PrintImportLookupTable(unsigned long ImportLookupTable_RVA)
     if (*Table & 0x80000000)
     {
       // Process Ordinal...
-      CLog::Log(LOGDEBUG, "            Ordinal: %01lX\n", *Table & 0x7fffffff);
+      CLog::Log(LOGDEBUG, "            Ordinal: %01lX", *Table & 0x7fffffff);
     }
     else
     {
-      CLog::Log(LOGDEBUG, "            Don't process Hint/Name Table yet...\n");
+      CLog::Log(LOGDEBUG, "            Don't process Hint/Name Table yet...");
     }
     Table++;
   }
@@ -213,7 +201,7 @@ void DllLoader::PrintImportTable(ImportDirTable_t *ImportDirTable)
   ImportDirTable_t *Imp = ImportDirTable;
   int HavePrinted = 0;
 
-  CLog::Log(LOGDEBUG, "The Coff Image contains the following imports:\n\n");
+  CLog::Log(LOGDEBUG, "The Coff Image contains the following imports:");
   while ( Imp->ImportLookupTable_RVA != 0 ||
           Imp->TimeStamp != 0 ||
           Imp->ForwarderChain != 0 ||
@@ -225,14 +213,14 @@ void DllLoader::PrintImportTable(ImportDirTable_t *ImportDirTable)
 
     Name = (char*)RVA2Data(Imp->Name_RVA);
 
-    CLog::Log(LOGDEBUG, "    %s:\n", Name);
-    CLog::Log(LOGDEBUG, "        ImportAddressTable:     %04lX\n", Imp->ImportAddressTable_RVA);
-    CLog::Log(LOGDEBUG, "        ImportLookupTable:      %04lX\n", Imp->ImportLookupTable_RVA);
-    CLog::Log(LOGDEBUG, "        TimeStamp:              %01lX\n", Imp->TimeStamp);
-    CLog::Log(LOGDEBUG, "        Forwarder Chain:        %01lX\n", Imp->ForwarderChain);
+    CLog::Log(LOGDEBUG, "    %s:", Name);
+    CLog::Log(LOGDEBUG, "        ImportAddressTable:     %04lX", Imp->ImportAddressTable_RVA);
+    CLog::Log(LOGDEBUG, "        ImportLookupTable:      %04lX", Imp->ImportLookupTable_RVA);
+    CLog::Log(LOGDEBUG, "        TimeStamp:              %01lX", Imp->TimeStamp);
+    CLog::Log(LOGDEBUG, "        Forwarder Chain:        %01lX", Imp->ForwarderChain);
 
     PrintImportLookupTable(Imp->ImportLookupTable_RVA);
-    CLog::Log(LOGDEBUG, "\n");
+    CLog::Log(LOGDEBUG, "");
     Imp++;
   }
   if (!HavePrinted) CLog::Log(LOGDEBUG, "None.");
@@ -247,22 +235,22 @@ void DllLoader::PrintExportTable(ExportDirTable_t *ExportDirTable)
   unsigned short *OrdinalTable = (unsigned short*)RVA2Data(ExportDirTable->OrdinalTable_RVA);
 
 
-  CLog::Log(LOGDEBUG, "Export Table for %s:\n", Name);
+  CLog::Log(LOGDEBUG, "Export Table for %s:", Name);
 
-  CLog::Log(LOGDEBUG, "ExportFlags:    %04lX\n", ExportDirTable->ExportFlags);
-  CLog::Log(LOGDEBUG, "TimeStamp:      %04lX\n", ExportDirTable->TimeStamp);
-  CLog::Log(LOGDEBUG, "Major Ver:      %02X\n", ExportDirTable->MajorVersion);
-  CLog::Log(LOGDEBUG, "Minor Ver:      %02X\n", ExportDirTable->MinorVersion);
-  CLog::Log(LOGDEBUG, "Name RVA:       %04lX\n", ExportDirTable->Name_RVA);
-  CLog::Log(LOGDEBUG, "OrdinalBase     %lu\n", ExportDirTable->OrdinalBase);
-  CLog::Log(LOGDEBUG, "NumAddrTable    %lu\n", ExportDirTable->NumAddrTable);
-  CLog::Log(LOGDEBUG, "NumNamePtrs     %lu\n", ExportDirTable->NumNamePtrs);
-  CLog::Log(LOGDEBUG, "ExportAddressTable_RVA  %04lX\n", ExportDirTable->ExportAddressTable_RVA);
-  CLog::Log(LOGDEBUG, "NamePointerTable_RVA    %04lX\n", ExportDirTable->NamePointerTable_RVA);
-  CLog::Log(LOGDEBUG, "OrdinalTable_RVA        %04lX\n\n", ExportDirTable->OrdinalTable_RVA);
+  CLog::Log(LOGDEBUG, "ExportFlags:    %04lX", ExportDirTable->ExportFlags);
+  CLog::Log(LOGDEBUG, "TimeStamp:      %04lX", ExportDirTable->TimeStamp);
+  CLog::Log(LOGDEBUG, "Major Ver:      %02X", ExportDirTable->MajorVersion);
+  CLog::Log(LOGDEBUG, "Minor Ver:      %02X", ExportDirTable->MinorVersion);
+  CLog::Log(LOGDEBUG, "Name RVA:       %04lX", ExportDirTable->Name_RVA);
+  CLog::Log(LOGDEBUG, "OrdinalBase     %lu", ExportDirTable->OrdinalBase);
+  CLog::Log(LOGDEBUG, "NumAddrTable    %lu", ExportDirTable->NumAddrTable);
+  CLog::Log(LOGDEBUG, "NumNamePtrs     %lu", ExportDirTable->NumNamePtrs);
+  CLog::Log(LOGDEBUG, "ExportAddressTable_RVA  %04lX", ExportDirTable->ExportAddressTable_RVA);
+  CLog::Log(LOGDEBUG, "NamePointerTable_RVA    %04lX", ExportDirTable->NamePointerTable_RVA);
+  CLog::Log(LOGDEBUG, "OrdinalTable_RVA        %04lX", ExportDirTable->OrdinalTable_RVA);
 
-  CLog::Log(LOGDEBUG, "Public Exports:\n");
-  CLog::Log(LOGDEBUG, "    ordinal hint RVA      name\n");
+  CLog::Log(LOGDEBUG, "Public Exports:");
+  CLog::Log(LOGDEBUG, "    ordinal hint RVA      name");
   for (unsigned int i = 0; i < ExportDirTable->NumNamePtrs; i++)
   {
     char *Name = (char*)RVA2Data(NamePointerTable[i]);
@@ -270,7 +258,7 @@ void DllLoader::PrintExportTable(ExportDirTable_t *ExportDirTable)
     CLog::Log(LOGDEBUG, "          %lu", OrdinalTable[i] + ExportDirTable->OrdinalBase);
     CLog::Log(LOGDEBUG, "    %d", OrdinalTable[i]);
     CLog::Log(LOGDEBUG, " %08lX", ExportAddressTable[OrdinalTable[i]]);
-    CLog::Log(LOGDEBUG, " %s\n", Name);
+    CLog::Log(LOGDEBUG, " %s", Name);
   }
 }
 
@@ -312,7 +300,7 @@ int DllLoader::ResolveImports(void)
           {
             bResult = 0;
             char szBuf[128];
-            CLog::Log(LOGDEBUG,"Unable to resolve ordinal %s %lu\n", Name, *Table&0x7ffffff);
+            CLog::Log(LOGDEBUG, "Unable to resolve ordinal %s %lu", Name, *Table & 0x7ffffff);
             sprintf(szBuf, "%lu", *Table&0x7ffffff);
             *Addr = create_dummy_function(Name, szBuf);
             tracker_dll_data_track(this, *Addr);
@@ -333,7 +321,7 @@ int DllLoader::ResolveImports(void)
             *Addr=get_win_function_address(Name, ImpName);
             if(!*Addr)
             {
-              CLog::Log(LOGDEBUG,"Unable to resolve %s %s\n", Name, ImpName);
+              CLog::Log(LOGDEBUG, "Unable to resolve %s %s", Name, ImpName);
               *Addr = create_dummy_function(Name, ImpName);
               tracker_dll_data_track(this, *Addr);
               bResult = 0;
@@ -355,7 +343,7 @@ int DllLoader::ResolveImports(void)
 
 const char* DllLoader::ResolveReferencedDll(const char* dll)
 {
-  DllLoader* pDll = (DllLoader*) DllLoaderContainer::LoadModule(dll, GetPath(), m_bLoadSymbols);
+  DllLoader* pDll = static_cast<DllLoader*>(DllLoaderContainer::LoadModule(dll, GetPath(), m_bLoadSymbols));
 
   if (!pDll)
   {
@@ -383,8 +371,8 @@ int DllLoader::LoadExports()
     PrintExportTable(ExportDirTable);
 #endif
 
-    // TODO - Validate all pointers are valid. Is a zero RVA valid or not? I'd guess not as it would
-    // point to the coff file header, thus not right.
+    //! @todo Validate all pointers are valid. Is a zero RVA valid or not? I'd guess not as it would
+    //! point to the coff file header, thus not right.
 
     unsigned long *ExportAddressTable = (unsigned long*)RVA2Data(ExportDirTable->ExportAddressTable_RVA);
     unsigned long *NamePointerTable = (unsigned long*)RVA2Data(ExportDirTable->NamePointerTable_RVA);
@@ -501,7 +489,7 @@ Export* DllLoader::GetExportByFunctionName(const char* sFunctionName)
 
 int DllLoader::ResolveOrdinal(const char *sName, unsigned long ordinal, void **fixup)
 {
-  DllLoader* pDll = (DllLoader*) DllLoaderContainer::GetModule(sName);
+  DllLoader* pDll = static_cast<DllLoader*>(DllLoaderContainer::GetModule(sName));
 
   if (pDll)
   {
@@ -522,7 +510,7 @@ int DllLoader::ResolveOrdinal(const char *sName, unsigned long ordinal, void **f
 
 int DllLoader::ResolveName(const char *sName, char* sFunction, void **fixup)
 {
-  DllLoader* pDll = (DllLoader*) DllLoaderContainer::GetModule(sName);
+  DllLoader* pDll = static_cast<DllLoader*>(DllLoaderContainer::GetModule(sName));
 
   if (pDll)
   {
@@ -565,7 +553,7 @@ void DllLoader::AddExport(char* sFunctionName, unsigned long ordinal, void* func
   entry->exp.ordinal = ordinal;
   entry->exp.track_function = track_function;
   entry->exp.name = ((char*)(entry)) + len;
-  strcpy((char*)entry->exp.name, sFunctionName);
+  strcpy(const_cast<char*>(entry->exp.name), sFunctionName);
 
   entry->next = m_pExportHead;
   m_pExportHead = entry;
@@ -582,7 +570,7 @@ void DllLoader::AddExport(char* sFunctionName, void* function, void* track_funct
   entry->exp.ordinal = -1;
   entry->exp.track_function = track_function;
   entry->exp.name = ((char*)(entry)) + len;
-  strcpy((char*)entry->exp.name, sFunctionName);
+  strcpy(const_cast<char*>(entry->exp.name), sFunctionName);
 
   entry->next = m_pExportHead;
   m_pExportHead = entry;
@@ -602,64 +590,6 @@ bool DllLoader::Load()
   // only execute DllMain if no EntryPoint is found
   if (!EntryAddress)
     ResolveExport("DllMain", (void**)&EntryAddress);
-
-  // patch some unwanted calls in memory
-  if (strstr(GetName(), "QuickTime.qts"))
-  {
-    int i;
-    uintptr_t dispatch_addr;
-    uintptr_t imagebase_addr;
-    uintptr_t dispatch_rva;
-
-    ResolveExport("theQuickTimeDispatcher", (void **)&dispatch_addr);
-    imagebase_addr = (uintptr_t)hModule;
-    CLog::Log(LOGDEBUG,
-              "Virtual Address of theQuickTimeDispatcher = %p",
-              (void *)dispatch_addr);
-    CLog::Log(LOGDEBUG, "ImageBase of %s = %p",
-              GetName(), (void *)imagebase_addr);
-
-    dispatch_rva = dispatch_addr - imagebase_addr;
-
-    CLog::Log(LOGDEBUG,
-              "Relative Virtual Address of theQuickTimeDispatcher = %p",
-              (void *)dispatch_rva);
-
-    uintptr_t base = imagebase_addr;
-    if (dispatch_rva == 0x124C30)
-    {
-      CLog::Log(LOGINFO, "QuickTime5 DLLs found\n");
-      for (i = 0;i < 5;i++) ((BYTE*)base + 0x19e842)[i] = 0x90; // make_new_region ?
-      for (i = 0;i < 28;i++) ((BYTE*)base + 0x19e86d)[i] = 0x90; // call__call_CreateCompatibleDC ?
-      for (i = 0;i < 5;i++) ((BYTE*)base + 0x19e898)[i] = 0x90; // jmp_to_call_loadbitmap ?
-      for (i = 0;i < 9;i++) ((BYTE*)base + 0x19e8ac)[i] = 0x90; // call__calls_OLE_shit ?
-      for (i = 0;i < 106;i++) ((BYTE*)base + 0x261B10)[i] = 0x90; // disable threads
-    }
-    else if (dispatch_rva == 0x13B330)
-    {
-      CLog::Log(LOGINFO, "QuickTime6 DLLs found\n");
-      for (i = 0;i < 5;i++) ((BYTE*)base + 0x2730CC)[i] = 0x90; // make_new_region
-      for (i = 0;i < 28;i++) ((BYTE*)base + 0x2730f7)[i] = 0x90; // call__call_CreateCompatibleDC
-      for (i = 0;i < 5;i++) ((BYTE*)base + 0x273122)[i] = 0x90; // jmp_to_call_loadbitmap
-      for (i = 0;i < 9;i++) ((BYTE*)base + 0x273131)[i] = 0x90; // call__calls_OLE_shit
-      for (i = 0;i < 96;i++) ((BYTE*)base + 0x2AC852)[i] = 0x90; // disable threads
-    }
-    else if (dispatch_rva == 0x13C3E0)
-    {
-      CLog::Log(LOGINFO, "QuickTime6.3 DLLs found\n");
-      for (i = 0;i < 5;i++) ((BYTE*)base + 0x268F6C)[i] = 0x90; // make_new_region
-      for (i = 0;i < 28;i++) ((BYTE*)base + 0x268F97)[i] = 0x90; // call__call_CreateCompatibleDC
-      for (i = 0;i < 5;i++) ((BYTE*)base + 0x268FC2)[i] = 0x90; // jmp_to_call_loadbitmap
-      for (i = 0;i < 9;i++) ((BYTE*)base + 0x268FD1)[i] = 0x90; // call__calls_OLE_shit
-      for (i = 0;i < 96;i++) ((BYTE*)base + 0x2B4722)[i] = 0x90; // disable threads
-    }
-    else
-    {
-      CLog::Log(LOGERROR, "Unsupported QuickTime version");
-    }
-
-    CLog::Log(LOGINFO, "QuickTime.qts patched!!!\n");
-  }
 
 #ifdef LOGALL
   CLog::Log(LOGDEBUG, "Executing EntryPoint with DLL_PROCESS_ATTACH at: 0x%x - Dll: %s", pLoader->EntryAddress, sName);
@@ -690,7 +620,7 @@ bool DllLoader::Load()
       // but the export isn't really needed for normal operation
       // and dll works anyway, so let's ignore it
 
-      if(stricmp(GetName(), "vp7vfw.dll") != 0)
+      if (StringUtils::CompareNoCase(GetName(), "vp7vfw.dll") != 0)
         return false;
 
 
@@ -806,7 +736,7 @@ void DllLoader::UnloadSymbols()
   RtlInitAnsiString(&name, GetName());
   InitializeObjectAttributes(&attributes, &name, OBJ_CASE_INSENSITIVE, NULL);
 
-  // Try to unload the sybols from vs.net debugger
+  // Try to unload the symbols from vs.net debugger
   DbgUnLoadImageSymbols(&name, (ULONG)hModule, 0xFFFFFFFF);
 
   LPVOID pBaseAddress=GetXbdmBaseAddress();

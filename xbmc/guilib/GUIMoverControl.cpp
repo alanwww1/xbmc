@@ -1,26 +1,15 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "GUIMoverControl.h"
-#include "GUIWindowManager.h"
-#include "Key.h"
+
+#include "GUIMessage.h"
+#include "input/Key.h"
 #include "utils/TimeUtils.h"
 
 // time to reset accelerated cursors (digital movement)
@@ -34,16 +23,15 @@ CGUIMoverControl::CGUIMoverControl(int parentID, int controlID, float posX, floa
   m_frameCounter = 0;
   m_lastMoveTime = 0;
   m_fSpeed = 1.0;
-  m_fAnalogSpeed = 2.0f; // TODO: implement correct analog speed
-  m_fAcceleration = 0.2f; // TODO: implement correct computation of acceleration
-  m_fMaxSpeed = 10.0;  // TODO: implement correct computation of maxspeed
+  m_fAnalogSpeed = 2.0f; //! @todo implement correct analog speed
+  m_fAcceleration = 0.2f; //! @todo implement correct computation of acceleration
+  m_fMaxSpeed = 10.0;  //! @todo implement correct computation of maxspeed
   ControlType = GUICONTROL_MOVER;
   SetLimits(0, 0, 720, 576); // defaults
   SetLocation(0, 0, false);  // defaults
 }
 
-CGUIMoverControl::~CGUIMoverControl(void)
-{}
+CGUIMoverControl::~CGUIMoverControl(void) = default;
 
 void CGUIMoverControl::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions)
 {
@@ -245,7 +233,7 @@ void CGUIMoverControl::SetPosition(float posX, float posY)
 
 bool CGUIMoverControl::SetAlpha(unsigned char alpha)
 {
-  return m_imgFocus.SetAlpha(alpha) | 
+  return m_imgFocus.SetAlpha(alpha) |
          m_imgNoFocus.SetAlpha(alpha);
 }
 

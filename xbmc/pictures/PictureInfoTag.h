@@ -1,123 +1,148 @@
-#pragma once
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
+#pragma once
+
+#include "XBDateTime.h"
+#include "libexif.h"
+#include "utils/IArchivable.h"
 #include "utils/ISerializable.h"
 #include "utils/ISortable.h"
-#include "utils/IArchivable.h"
-#include "DllLibExif.h"
-#include "XBDateTime.h"
 
-#define SLIDE_FILE_NAME             900         // Note that not all image tags will be present for each image
-#define SLIDE_FILE_PATH             901
-#define SLIDE_FILE_SIZE             902
-#define SLIDE_FILE_DATE             903
-#define SLIDE_INDEX                 904
-#define SLIDE_RESOLUTION            905
-#define SLIDE_COMMENT               906
-#define SLIDE_COLOUR                907
-#define SLIDE_PROCESS               908
+#include <string>
+#include <vector>
 
-#define SLIDE_EXIF_LONG_DATE        917
-#define SLIDE_EXIF_LONG_DATE_TIME   918
-#define SLIDE_EXIF_DATE             919 /* Implementation only to just get
-                                           localized date */
-#define SLIDE_EXIF_DATE_TIME        920
-#define SLIDE_EXIF_DESCRIPTION      921
-#define SLIDE_EXIF_CAMERA_MAKE      922
-#define SLIDE_EXIF_CAMERA_MODEL     923
-#define SLIDE_EXIF_COMMENT          924
-#define SLIDE_EXIF_SOFTWARE         925
-#define SLIDE_EXIF_APERTURE         926
-#define SLIDE_EXIF_FOCAL_LENGTH     927
-#define SLIDE_EXIF_FOCUS_DIST       928
-#define SLIDE_EXIF_EXPOSURE         929
-#define SLIDE_EXIF_EXPOSURE_TIME    930
-#define SLIDE_EXIF_EXPOSURE_BIAS    931
-#define SLIDE_EXIF_EXPOSURE_MODE    932
-#define SLIDE_EXIF_FLASH_USED       933
-#define SLIDE_EXIF_WHITE_BALANCE    934
-#define SLIDE_EXIF_LIGHT_SOURCE     935
-#define SLIDE_EXIF_METERING_MODE    936
-#define SLIDE_EXIF_ISO_EQUIV        937
-#define SLIDE_EXIF_DIGITAL_ZOOM     938
-#define SLIDE_EXIF_CCD_WIDTH        939
-#define SLIDE_EXIF_GPS_LATITUDE     940
-#define SLIDE_EXIF_GPS_LONGITUDE    941
-#define SLIDE_EXIF_GPS_ALTITUDE     942
-#define SLIDE_EXIF_ORIENTATION      943
-
-#define SLIDE_IPTC_SUBLOCATION      957
-#define SLIDE_IPTC_IMAGETYPE        958
-#define SLIDE_IPTC_TIMECREATED      959
-#define SLIDE_IPTC_SUP_CATEGORIES   960
-#define SLIDE_IPTC_KEYWORDS         961
-#define SLIDE_IPTC_CAPTION          962
-#define SLIDE_IPTC_AUTHOR           963
-#define SLIDE_IPTC_HEADLINE         964
-#define SLIDE_IPTC_SPEC_INSTR       965
-#define SLIDE_IPTC_CATEGORY         966
-#define SLIDE_IPTC_BYLINE           967
-#define SLIDE_IPTC_BYLINE_TITLE     968
-#define SLIDE_IPTC_CREDIT           969
-#define SLIDE_IPTC_SOURCE           970
-#define SLIDE_IPTC_COPYRIGHT_NOTICE 971
-#define SLIDE_IPTC_OBJECT_NAME      972
-#define SLIDE_IPTC_CITY             973
-#define SLIDE_IPTC_STATE            974
-#define SLIDE_IPTC_COUNTRY          975
-#define SLIDE_IPTC_TX_REFERENCE     976
-#define SLIDE_IPTC_DATE             977
-#define SLIDE_IPTC_URGENCY          978
-#define SLIDE_IPTC_COUNTRY_CODE     979
-#define SLIDE_IPTC_REF_SERVICE      980
+class CVariant;
 
 class CPictureInfoTag : public IArchivable, public ISerializable, public ISortable
 {
+  // Mimic structs from libexif.h but with C++ types instead of arrays
+  struct ExifInfo
+  {
+    ExifInfo() = default;
+    ExifInfo(const ExifInfo&) = default;
+    ExifInfo(ExifInfo&&) = default;
+    ExifInfo(const ExifInfo_t& other);
+
+    ExifInfo& operator=(const ExifInfo&) = default;
+    ExifInfo& operator=(ExifInfo&&) = default;
+
+    std::string CameraMake;
+    std::string CameraModel;
+    std::string DateTime;
+    int Height{};
+    int Width{};
+    int Orientation{};
+    int IsColor{};
+    int Process{};
+    int FlashUsed{};
+    float FocalLength{};
+    float ExposureTime{};
+    float ApertureFNumber{};
+    float Distance{};
+    float CCDWidth{};
+    float ExposureBias{};
+    float DigitalZoomRatio{};
+    int FocalLength35mmEquiv{};
+    int Whitebalance{};
+    int MeteringMode{};
+    int ExposureProgram{};
+    int ExposureMode{};
+    int ISOequivalent{};
+    int LightSource{};
+    int CommentsCharset{};
+    int XPCommentsCharset{};
+    std::string Comments;
+    std::string FileComment;
+    std::string XPComment;
+    std::string Description;
+
+    unsigned ThumbnailOffset{};
+    unsigned ThumbnailSize{};
+    unsigned LargestExifOffset{};
+
+    char ThumbnailAtEnd{};
+    int ThumbnailSizeOffset{};
+
+    std::vector<int> DateTimeOffsets;
+
+    int GpsInfoPresent{};
+    std::string GpsLat;
+    std::string GpsLong;
+    std::string GpsAlt;
+
+  private:
+    static std::string Convert(int charset, const char* data);
+  };
+
+  struct IPTCInfo
+  {
+    IPTCInfo() = default;
+    IPTCInfo(const IPTCInfo&) = default;
+    IPTCInfo(IPTCInfo&&) = default;
+    IPTCInfo(const IPTCInfo_t& other);
+
+    IPTCInfo& operator=(const IPTCInfo&) = default;
+    IPTCInfo& operator=(IPTCInfo&&) = default;
+
+    std::string RecordVersion;
+    std::string SupplementalCategories;
+    std::string Keywords;
+    std::string Caption;
+    std::string Author;
+    std::string Headline;
+    std::string SpecialInstructions;
+    std::string Category;
+    std::string Byline;
+    std::string BylineTitle;
+    std::string Credit;
+    std::string Source;
+    std::string CopyrightNotice;
+    std::string ObjectName;
+    std::string City;
+    std::string State;
+    std::string Country;
+    std::string TransmissionReference;
+    std::string Date;
+    std::string Urgency;
+    std::string ReferenceService;
+    std::string CountryCode;
+    std::string TimeCreated;
+    std::string SubLocation;
+    std::string ImageType;
+  };
+
 public:
   CPictureInfoTag() { Reset(); };
+  virtual ~CPictureInfoTag() = default;
   void Reset();
-  virtual void Archive(CArchive& ar);
-  virtual void Serialize(CVariant& value) const;
-  virtual void ToSortable(SortItem& sortable, Field field) const;
-  const CPictureInfoTag& operator=(const CPictureInfoTag& item);
+  void Archive(CArchive& ar) override;
+  void Serialize(CVariant& value) const override;
+  void ToSortable(SortItem& sortable, Field field) const override;
   const std::string GetInfo(int info) const;
 
   bool Loaded() const { return m_isLoaded; };
   bool Load(const std::string &path);
 
-  static int TranslateString(const std::string &info);
-
-  void SetInfo(int info, const std::string& value);
+  void SetInfo(const std::string& key, const std::string& value);
 
   /**
    * GetDateTimeTaken() -- Returns the EXIF DateTimeOriginal for current picture
-   * 
+   *
    * The exif library returns DateTimeOriginal if available else the other
    * DateTime tags. See libexif CExifParse::ProcessDir for details.
    */
   const CDateTime& GetDateTimeTaken() const;
 private:
-  void GetStringFromArchive(CArchive &ar, char *string, size_t length);
-  ExifInfo_t m_exifInfo;
-  IPTCInfo_t m_iptcInfo;
+  static int TranslateString(const std::string &info);
+
+  ExifInfo m_exifInfo;
+  IPTCInfo m_iptcInfo;
   bool       m_isLoaded;             // Set to true if metadata has been loaded from the picture file successfully
   bool       m_isInfoSetExternally;  // Set to true if metadata has been set by an external call to SetInfo
   CDateTime  m_dateTimeTaken;

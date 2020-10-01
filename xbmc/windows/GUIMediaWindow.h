@@ -1,64 +1,72 @@
-#pragma once
-
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "guilib/GUIWindow.h"
-#include "filesystem/VirtualDirectory.h"
-#include "filesystem/DirectoryHistory.h"
-#include "view/GUIViewControl.h"
-#include "view/GUIViewState.h"
+#pragma once
+
 #include "dialogs/GUIDialogContextMenu.h"
+#include "filesystem/DirectoryHistory.h"
+#include "filesystem/VirtualDirectory.h"
+#include "guilib/GUIWindow.h"
 #include "playlists/SmartPlayList.h"
+#include "view/GUIViewControl.h"
+
+#include <atomic>
 
 class CFileItemList;
+class CGUIViewState;
+namespace
+{
+class CGetDirectoryItems;
+}
 
 // base class for all media windows
 class CGUIMediaWindow : public CGUIWindow
 {
 public:
   CGUIMediaWindow(int id, const char *xmlFile);
-  virtual ~CGUIMediaWindow(void);
-  virtual bool OnMessage(CGUIMessage& message);
-  virtual bool OnAction(const CAction &action);
-  virtual bool OnBack(int actionID);
-  virtual void OnWindowLoaded();
-  virtual void OnWindowUnload();
-  virtual void OnInitWindow();
-  virtual bool IsMediaWindow() const { return true; };
-  const CFileItemList &CurrentDirectory() const;
-  int GetViewContainerID() const { return m_viewControl.GetCurrentControl(); };
-  virtual bool HasListItems() const { return true; };
-  virtual CFileItemPtr GetCurrentListItem(int offset = 0);
-  const CGUIViewState *GetViewState() const;
+  ~CGUIMediaWindow(void) override;
 
+  // specializations of CGUIControl
+  bool OnAction(const CAction &action) override;
+  bool OnBack(int actionID) override;
+  bool OnMessage(CGUIMessage& message) override;
+
+  // specializations of CGUIWindow
+  void OnWindowLoaded() override;
+  void OnWindowUnload() override;
+  void OnInitWindow() override;
+  bool IsMediaWindow() const  override { return true; }
+  int GetViewContainerID() const  override { return m_viewControl.GetCurrentControl(); }
+  int GetViewCount() const  override { return m_viewControl.GetViewModeCount(); };
+  bool HasListItems() const  override { return true; }
+  CFileItemPtr GetCurrentListItem(int offset = 0) override;
+
+  // custom methods
   virtual bool CanFilterAdvanced() { return m_canFilterAdvanced; }
   virtual bool IsFiltered();
   virtual bool IsSameStartFolder(const std::string &dir);
 
+  virtual std::string GetRootPath() const { return ""; }
+
+  const CFileItemList &CurrentDirectory() const;
+  const CGUIViewState *GetViewState() const;
+  virtual bool UseFileDirectories() { return true; }
+
 protected:
-  virtual void LoadAdditionalTags(TiXmlElement *root);
-  CGUIControl *GetFirstFocusableControl(int id);
+  // specializations of CGUIControlGroup
+  CGUIControl *GetFirstFocusableControl(int id) override;
+
+  bool Load(TiXmlElement *pRootElement) override;
+
+  // custom methods
   virtual void SetupShares();
-  virtual void GoParentFolder();
-  virtual bool OnClick(int iItem);
+  virtual bool GoParentFolder();
+  virtual bool OnClick(int iItem, const std::string &player = "");
 
   /* \brief React to a "Select" action on an item in a view.
    \param item selected item.
@@ -66,10 +74,16 @@ protected:
    */
   virtual bool OnSelect(int item);
   virtual bool OnPopupMenu(int iItem);
+
   virtual void GetContextButtons(int itemNumber, CContextButtons &buttons);
   virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button);
+  virtual bool OnAddMediaSource() { return false; };
+
   virtual void FormatItemLabels(CFileItemList &items, const LABEL_MASKS &labelMasks);
   virtual void UpdateButtons();
+  void SaveControlStates() override;
+  void RestoreControlStates() override;
+
   virtual bool GetDirectory(const std::string &strDirectory, CFileItemList &items);
   /*! \brief Retrieves the items from the given path and updates the list
    \param strDirectory The path to the directory to get the items from
@@ -86,6 +100,7 @@ protected:
    \sa GetDirectory
    */
   virtual bool Refresh(bool clearCache = false);
+
   virtual void FormatAndSort(CFileItemList &items);
   virtual void OnPrepareFileItems(CFileItemList &items);
   virtual void OnCacheFileItems(CFileItemList &items);
@@ -131,21 +146,25 @@ protected:
 
   // check for a disc or connection
   virtual bool HaveDiscOrConnection(const std::string& strPath, int iDriveType);
-  void ShowShareErrorMessage(CFileItem* pItem);
+  void ShowShareErrorMessage(CFileItem* pItem) const;
 
-  void GetDirectoryHistoryString(const CFileItem* pItem, std::string& strHistoryString);
+  void SaveSelectedItemInHistory();
+  void RestoreSelectedItemFromHistory();
+  void GetDirectoryHistoryString(const CFileItem* pItem, std::string& strHistoryString) const;
   void SetHistoryForPath(const std::string& strDirectory);
   virtual void LoadPlayList(const std::string& strFileName) {}
-  virtual bool OnPlayMedia(int iItem);
-  virtual bool OnPlayAndQueueMedia(const CFileItemPtr &item);
+  virtual bool OnPlayMedia(int iItem, const std::string &player = "");
+  virtual bool OnPlayAndQueueMedia(const CFileItemPtr &item, std::string player = "");
   void UpdateFileList();
   virtual void OnDeleteItem(int iItem);
   void OnRenameItem(int iItem);
-
   bool WaitForNetwork() const;
+  bool GetDirectoryItems(CURL &url, CFileItemList &items, bool useDir);
+  bool WaitGetDirectoryItems(CGetDirectoryItems &items);
+  void CancelUpdateItems();
 
   /*! \brief Translate the folder to start in from the given quick path
-   \param dir the folder the user wants
+   \param url the folder the user wants
    \return the resulting path */
   virtual std::string GetStartFolder(const std::string &url);
 
@@ -156,6 +175,8 @@ protected:
    */
   static std::string RemoveParameterFromPath(const std::string &strDirectory, const std::string &strParameter);
 
+  bool ProcessRenderLoop(bool renderOnly);
+
   XFILE::CVirtualDirectory m_rootDir;
   CGUIViewControl m_viewControl;
 
@@ -164,10 +185,27 @@ protected:
   CFileItemList* m_unfilteredItems;        ///< \brief items prior to filtering using FilterItems()
   CDirectoryHistory m_history;
   std::unique_ptr<CGUIViewState> m_guiState;
+  std::atomic_bool m_vecItemsUpdating = {false};
+  class CUpdateGuard
+  {
+  public:
+    CUpdateGuard(std::atomic_bool &update) : m_update(update)
+    {
+      m_update = true;
+    }
+    ~CUpdateGuard()
+    {
+      m_update = false;
+    }
+  protected:
+    std::atomic_bool &m_update;
+  };
+  CEvent m_updateEvent;
+  std::atomic_bool m_updateAborted = {false};
+  std::atomic_bool m_updateJobActive = {false};
 
   // save control state on window exit
   int m_iLastControl;
-  int m_iSelectedItem;
   std::string m_startDirectory;
 
   CSmartPlaylist m_filter;
@@ -185,4 +223,5 @@ protected:
    \sa Update
    */
   std::string m_strFilterPath;
+  bool m_backgroundLoad = false;
 };

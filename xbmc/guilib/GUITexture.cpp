@@ -1,30 +1,18 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "GUITexture.h"
-#include "GraphicContext.h"
-#include "TextureManager.h"
-#include "GUILargeTextureManager.h"
-#include "utils/MathUtils.h"
 
-using namespace std;
+#include "GUILargeTextureManager.h"
+#include "TextureManager.h"
+#include "utils/MathUtils.h"
+#include "utils/StringUtils.h"
+#include "windowing/GraphicContext.h"
 
 CTextureInfo::CTextureInfo()
 {
@@ -37,17 +25,6 @@ CTextureInfo::CTextureInfo(const std::string &file):
 {
   orientation = 0;
   useLarge = false;
-}
-
-CTextureInfo& CTextureInfo::operator=(const CTextureInfo &right)
-{
-  border = right.border;
-  orientation = right.orientation;
-  diffuse = right.diffuse;
-  filename = right.filename;
-  useLarge = right.useLarge;
-  diffuseColor = right.diffuseColor;
-  return *this;
 }
 
 CGUITextureBase::CGUITextureBase(float posX, float posY, float width, float height, const CTextureInfo& texture) :
@@ -75,9 +52,7 @@ CGUITextureBase::CGUITextureBase(float posX, float posY, float width, float heig
   m_diffuseScaleV = 1.0f;
 
   // anim gifs
-  m_currentFrame = 0;
-  m_frameCounter = (unsigned int) -1;
-  m_currentLoop = 0;
+  ResetAnimState();
 
   m_allocateDynamically = false;
   m_isAllocated = NO;
@@ -114,17 +89,13 @@ CGUITextureBase::CGUITextureBase(const CGUITextureBase &right) :
   m_diffuseScaleU = 1.0f;
   m_diffuseScaleV = 1.0f;
 
-  m_currentFrame = 0;
-  m_frameCounter = (unsigned int) -1;
-  m_currentLoop = 0;
+  ResetAnimState();
 
   m_isAllocated = NO;
   m_invalid = true;
 }
 
-CGUITextureBase::~CGUITextureBase(void)
-{
-}
+CGUITextureBase::~CGUITextureBase(void) = default;
 
 bool CGUITextureBase::AllocateOnDemand()
 {
@@ -138,9 +109,7 @@ bool CGUITextureBase::AllocateOnDemand()
     if (m_allocateDynamically && IsAllocated())
       FreeResources();
     // reset animated textures (animgifs)
-    m_currentLoop = 0;
-    m_currentFrame = 0;
-    m_frameCounter = 0;
+    ResetAnimState();
   }
 
   return false;
@@ -153,10 +122,13 @@ bool CGUITextureBase::Process(unsigned int currentTime)
   changed |= AllocateOnDemand();
 
   if (m_texture.size() > 1)
-    changed |= UpdateAnimFrame();
+    changed |= UpdateAnimFrame(currentTime);
 
   if (m_invalid)
     changed |= CalculateSize();
+
+  if (m_isAllocated)
+    changed |= !ReadyToRender();
 
   return changed;
 }
@@ -169,7 +141,7 @@ void CGUITextureBase::Render()
   // see if we need to clip the image
   if (m_vertex.Width() > m_width || m_vertex.Height() > m_height)
   {
-    if (!g_graphicsContext.SetClipRegion(m_posX, m_posY, m_width, m_height))
+    if (!CServiceBroker::GetWinSystem()->GetGfxContext().SetClipRegion(m_posX, m_posY, m_width, m_height))
       return;
   }
 
@@ -177,11 +149,11 @@ void CGUITextureBase::Render()
   #define MIX_ALPHA(a,c) (((a * (c >> 24)) / 255) << 24) | (c & 0x00ffffff)
 
   // diffuse color
-  color_t color = (m_info.diffuseColor) ? (color_t)m_info.diffuseColor : m_diffuseColor;
+  UTILS::Color color = (m_info.diffuseColor) ? (UTILS::Color)m_info.diffuseColor : m_diffuseColor;
   if (m_alpha != 0xFF)
 	  color = MIX_ALPHA(m_alpha, color);
 
-  color = g_graphicsContext.MergeAlpha(color);
+  color = CServiceBroker::GetWinSystem()->GetGfxContext().MergeAlpha(color);
 
   // setup our renderer
   Begin(color);
@@ -205,9 +177,9 @@ void CGUITextureBase::Render()
     v3 *= m_texCoordsScaleV;
   }
 
-  // TODO: The diffuse coloring applies to all vertices, which will
-  //       look weird for stuff with borders, as will the -ve height/width
-  //       for flipping
+  //! @todo The diffuse coloring applies to all vertices, which will
+  //!      look weird for stuff with borders, as will the -ve height/width
+  //!       for flipping
 
   // left segment (0,0,u1,v3)
   if (m_info.border.x1)
@@ -238,7 +210,7 @@ void CGUITextureBase::Render()
   End();
 
   if (m_vertex.Width() > m_width || m_vertex.Height() > m_height)
-    g_graphicsContext.RestoreClipRegion();
+    CServiceBroker::GetWinSystem()->GetGfxContext().RestoreClipRegion();
 }
 
 void CGUITextureBase::Render(float left, float top, float right, float bottom, float u1, float v1, float u2, float v2, float u3, float v3)
@@ -246,7 +218,7 @@ void CGUITextureBase::Render(float left, float top, float right, float bottom, f
   CRect diffuse(u1, v1, u2, v2);
   CRect texture(u1, v1, u2, v2);
   CRect vertex(left, top, right, bottom);
-  g_graphicsContext.ClipRect(vertex, texture, m_diffuse.size() ? &diffuse : NULL);
+  CServiceBroker::GetWinSystem()->GetGfxContext().ClipRect(vertex, texture, m_diffuse.size() ? &diffuse : NULL);
 
   if (vertex.IsEmpty())
     return; // nothing to render
@@ -268,21 +240,23 @@ void CGUITextureBase::Render(float left, float top, float right, float bottom, f
 
 #define ROUND_TO_PIXEL(x) (float)(MathUtils::round_int(x))
 
-  x[0] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalXCoord(vertex.x1, vertex.y1));
-  y[0] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalYCoord(vertex.x1, vertex.y1));
-  z[0] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalZCoord(vertex.x1, vertex.y1));
-  x[1] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalXCoord(vertex.x2, vertex.y1));
-  y[1] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalYCoord(vertex.x2, vertex.y1));
-  z[1] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalZCoord(vertex.x2, vertex.y1));
-  x[2] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalXCoord(vertex.x2, vertex.y2));
-  y[2] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalYCoord(vertex.x2, vertex.y2));
-  z[2] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalZCoord(vertex.x2, vertex.y2));
-  x[3] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalXCoord(vertex.x1, vertex.y2));
-  y[3] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalYCoord(vertex.x1, vertex.y2));
-  z[3] = ROUND_TO_PIXEL(g_graphicsContext.ScaleFinalZCoord(vertex.x1, vertex.y2));
+  x[0] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalXCoord(vertex.x1, vertex.y1));
+  y[0] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalYCoord(vertex.x1, vertex.y1));
+  z[0] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalZCoord(vertex.x1, vertex.y1));
+  x[1] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalXCoord(vertex.x2, vertex.y1));
+  y[1] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalYCoord(vertex.x2, vertex.y1));
+  z[1] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalZCoord(vertex.x2, vertex.y1));
+  x[2] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalXCoord(vertex.x2, vertex.y2));
+  y[2] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalYCoord(vertex.x2, vertex.y2));
+  z[2] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalZCoord(vertex.x2, vertex.y2));
+  x[3] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalXCoord(vertex.x1, vertex.y2));
+  y[3] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalYCoord(vertex.x1, vertex.y2));
+  z[3] = ROUND_TO_PIXEL(CServiceBroker::GetWinSystem()->GetGfxContext().ScaleFinalZCoord(vertex.x1, vertex.y2));
 
-  if (y[2] == y[0]) y[2] += 1.0f; if (x[2] == x[0]) x[2] += 1.0f;
-  if (y[3] == y[1]) y[3] += 1.0f; if (x[3] == x[1]) x[3] += 1.0f;
+  if (y[2] == y[0]) y[2] += 1.0f;
+  if (x[2] == x[0]) x[2] += 1.0f;
+  if (y[3] == y[1]) y[3] += 1.0f;
+  if (x[3] == x[1]) x[3] += 1.0f;
 
   Draw(x, y, z, texture, diffuse, orientation);
 }
@@ -296,18 +270,16 @@ bool CGUITextureBase::AllocResources()
     return false; // already have our texture
 
   // reset our animstate
-  m_frameCounter = 0;
-  m_currentFrame = 0;
-  m_currentLoop = 0;
+  ResetAnimState();
 
   bool changed = false;
-  bool useLarge = m_info.useLarge || !g_TextureManager.CanLoad(m_info.filename);
+  bool useLarge = m_info.useLarge || !CServiceBroker::GetGUI()->GetTextureManager().CanLoad(m_info.filename);
   if (useLarge)
   { // we want to use the large image loader, but we first check for bundled textures
     if (!IsAllocated())
     {
       CTextureArray texture;
-      texture = g_TextureManager.Load(m_info.filename, true);
+      texture = CServiceBroker::GetGUI()->GetTextureManager().Load(m_info.filename, true);
       if (texture.size())
       {
         m_isAllocated = NORMAL;
@@ -318,7 +290,7 @@ bool CGUITextureBase::AllocResources()
     if (m_isAllocated != NORMAL)
     { // use our large image background loader
       CTextureArray texture;
-      if (g_largeTextureManager.GetImage(m_info.filename, texture, !IsAllocated(), m_use_cache))
+      if (CServiceBroker::GetGUI()->GetLargeTextureManager().GetImage(m_info.filename, texture, !IsAllocated(), m_use_cache))
       {
         m_isAllocated = LARGE;
 
@@ -335,7 +307,7 @@ bool CGUITextureBase::AllocResources()
   }
   else if (!IsAllocated())
   {
-    CTextureArray texture = g_TextureManager.Load(m_info.filename);
+    CTextureArray texture = CServiceBroker::GetGUI()->GetTextureManager().Load(m_info.filename);
 
     // set allocated to true even if we couldn't load the image to save
     // us hitting the disk every frame
@@ -351,7 +323,7 @@ bool CGUITextureBase::AllocResources()
   // load the diffuse texture (if necessary)
   if (!m_info.diffuse.empty())
   {
-    m_diffuse = g_TextureManager.Load(m_info.diffuse);
+    m_diffuse = CServiceBroker::GetGUI()->GetTextureManager().Load(m_info.diffuse);
   }
 
   CalculateSize();
@@ -383,7 +355,7 @@ bool CGUITextureBase::CalculateSize()
   if (m_aspect.ratio != CAspectRatio::AR_STRETCH && m_frameWidth && m_frameHeight)
   {
     // to get the pixel ratio, we must use the SCALED output sizes
-    float pixelRatio = g_graphicsContext.GetScalingPixelRatio();
+    float pixelRatio = CServiceBroker::GetWinSystem()->GetGfxContext().GetScalingPixelRatio();
 
     float fSourceFrameRatio = m_frameWidth / m_frameHeight;
     if (GetOrientation() & 4)
@@ -418,7 +390,7 @@ bool CGUITextureBase::CalculateSize()
     else
       newPosY = m_posY + (m_height - newHeight) * 0.5f;
   }
-  
+
   m_vertex.SetRect(newPosX, newPosY, newPosX + newWidth, newPosY + newHeight);
 
   // scale the diffuse coords as well
@@ -441,7 +413,7 @@ bool CGUITextureBase::CalculateSize()
       m_diffuseScaleV = m_diffuseV;
       m_diffuseOffset = CPoint(0,0);
     }
-    else // stretch'ing diffuse
+    else // stretching diffuse
     { // scale diffuse up or down to match output rect size, rather than image size
       //(m_fX, mfY) -> (m_fX + m_fNW, m_fY + m_fNH)
       //(0,0) -> (m_fU*m_diffuseScaleU, m_fV*m_diffuseScaleV)
@@ -460,18 +432,18 @@ bool CGUITextureBase::CalculateSize()
 void CGUITextureBase::FreeResources(bool immediately /* = false */)
 {
   if (m_isAllocated == LARGE || m_isAllocated == LARGE_FAILED)
-    g_largeTextureManager.ReleaseImage(m_info.filename, immediately || (m_isAllocated == LARGE_FAILED));
+    CServiceBroker::GetGUI()->GetLargeTextureManager().ReleaseImage(m_info.filename, immediately || (m_isAllocated == LARGE_FAILED));
   else if (m_isAllocated == NORMAL && m_texture.size())
-    g_TextureManager.ReleaseTexture(m_info.filename, immediately);
+    CServiceBroker::GetGUI()->GetTextureManager().ReleaseTexture(m_info.filename, immediately);
 
   if (m_diffuse.size())
-    g_TextureManager.ReleaseTexture(m_info.diffuse, immediately);
+    CServiceBroker::GetGUI()->GetTextureManager().ReleaseTexture(m_info.diffuse, immediately);
   m_diffuse.Reset();
 
   m_texture.Reset();
 
-  m_currentFrame = 0;
-  m_currentLoop = 0;
+  ResetAnimState();
+
   m_texCoordsScaleU = 1.0f;
   m_texCoordsScaleV = 1.0f;
 
@@ -491,38 +463,45 @@ void CGUITextureBase::SetInvalid()
   m_invalid = true;
 }
 
-bool CGUITextureBase::UpdateAnimFrame()
+bool CGUITextureBase::UpdateAnimFrame(unsigned int currentTime)
 {
   bool changed = false;
-
-  m_frameCounter++;
   unsigned int delay = m_texture.m_delays[m_currentFrame];
-  if (!delay) delay = 100;
-  if (m_frameCounter * 40 >= delay)
+
+  if (m_lasttime == 0)
   {
-    m_frameCounter = 0;
-    if (m_currentFrame + 1 >= m_texture.size())
+    m_lasttime = currentTime;
+  }
+  else
+  {
+    if ((currentTime - m_lasttime) >= delay)
     {
-      if (m_texture.m_loops > 0)
+      if (m_currentFrame + 1 >= m_texture.size())
       {
-        if (m_currentLoop + 1 < m_texture.m_loops)
+        if (m_texture.m_loops > 0)
         {
-          m_currentLoop++;
+          if (m_currentLoop + 1 < m_texture.m_loops)
+          {
+            m_currentLoop++;
+            m_currentFrame = 0;
+            m_lasttime = currentTime;
+            changed = true;
+          }
+        }
+        else
+        {
+          // 0 == loop forever
           m_currentFrame = 0;
+          m_lasttime = currentTime;
           changed = true;
         }
       }
       else
       {
-        // 0 == loop forever
-        m_currentFrame = 0;
+        m_currentFrame++;
+        m_lasttime = currentTime;
         changed = true;
       }
-    }
-    else
-    {
-      m_currentFrame++;
-      changed = true;
     }
   }
 
@@ -543,7 +522,7 @@ bool CGUITextureBase::SetAlpha(unsigned char alpha)
   return changed;
 }
 
-bool CGUITextureBase::SetDiffuseColor(color_t color)
+bool CGUITextureBase::SetDiffuseColor(UTILS::Color color)
 {
   bool changed = m_diffuseColor != color;
   m_diffuseColor = color;
@@ -591,6 +570,13 @@ void CGUITextureBase::OrientateTexture(CRect &rect, float width, float height, i
     rect.x2 = rect.y2 * width/height;
     rect.y2 = temp * height/width;
   }
+}
+
+void CGUITextureBase::ResetAnimState()
+{
+  m_lasttime = 0;
+  m_currentFrame = 0;
+  m_currentLoop = 0;
 }
 
 bool CGUITextureBase::SetWidth(float width)
@@ -653,6 +639,14 @@ bool CGUITextureBase::SetFileName(const std::string& filename)
   // filenames mid-animation
   FreeResources();
   m_info.filename = filename;
+
+  // disable large loader and cache for gifs
+  if (StringUtils::EndsWithNoCase(m_info.filename, ".gif"))
+  {
+    m_info.useLarge = false;
+    SetUseCache(false);
+  }
+
   // Don't allocate resources here as this is done at render time
   return true;
 }

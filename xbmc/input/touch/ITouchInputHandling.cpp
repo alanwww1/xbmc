@@ -1,26 +1,14 @@
 /*
- *      Copyright (C) 2012-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2012-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "ITouchInputHandling.h"
 
-void ITouchInputHandling::RegisterHandler(ITouchActionHandler *touchHandler)
+void ITouchInputHandling::RegisterHandler(ITouchActionHandler* touchHandler)
 {
   m_handler = touchHandler;
 }
@@ -52,7 +40,8 @@ bool ITouchInputHandling::OnSingleTouchHold(float x, float y)
   return true;
 }
 
-bool ITouchInputHandling::OnSingleTouchMove(float x, float y, float offsetX, float offsetY, float velocityX, float velocityY)
+bool ITouchInputHandling::OnSingleTouchMove(
+    float x, float y, float offsetX, float offsetY, float velocityX, float velocityY)
 {
   if (m_handler)
     return m_handler->OnSingleTouchMove(x, y, offsetX, offsetY, velocityX, velocityY);
@@ -84,7 +73,13 @@ bool ITouchInputHandling::OnMultiTouchHold(float x, float y, int32_t pointers /*
   return true;
 }
 
-bool ITouchInputHandling::OnMultiTouchMove(float x, float y, float offsetX, float offsetY, float velocityX, float velocityY, int32_t pointer)
+bool ITouchInputHandling::OnMultiTouchMove(float x,
+                                           float y,
+                                           float offsetX,
+                                           float offsetY,
+                                           float velocityX,
+                                           float velocityY,
+                                           int32_t pointer)
 {
   if (m_handler)
     return m_handler->OnMultiTouchMove(x, y, offsetX, offsetY, velocityX, velocityY, pointer);
@@ -108,7 +103,8 @@ bool ITouchInputHandling::OnTouchGestureStart(float x, float y)
   return true;
 }
 
-bool ITouchInputHandling::OnTouchGesturePan(float x, float y, float offsetX, float offsetY, float velocityX, float velocityY)
+bool ITouchInputHandling::OnTouchGesturePan(
+    float x, float y, float offsetX, float offsetY, float velocityX, float velocityY)
 {
   if (m_handler)
     return m_handler->OnTouchGesturePan(x, y, offsetX, offsetY, velocityX, velocityY);
@@ -116,7 +112,8 @@ bool ITouchInputHandling::OnTouchGesturePan(float x, float y, float offsetX, flo
   return true;
 }
 
-bool ITouchInputHandling::OnTouchGestureEnd(float x, float y, float offsetX, float offsetY, float velocityX, float velocityY)
+bool ITouchInputHandling::OnTouchGestureEnd(
+    float x, float y, float offsetX, float offsetY, float velocityX, float velocityY)
 {
   if (m_handler)
     return m_handler->OnTouchGestureEnd(x, y, offsetX, offsetY, velocityX, velocityY);
@@ -136,7 +133,14 @@ void ITouchInputHandling::OnLongPress(float x, float y, int32_t pointers /* = 1 
     m_handler->OnLongPress(x, y, pointers);
 }
 
-void ITouchInputHandling::OnSwipe(TouchMoveDirection direction, float xDown, float yDown, float xUp, float yUp, float velocityX, float velocityY, int32_t pointers /* = 1 */)
+void ITouchInputHandling::OnSwipe(TouchMoveDirection direction,
+                                  float xDown,
+                                  float yDown,
+                                  float xUp,
+                                  float yUp,
+                                  float velocityX,
+                                  float velocityY,
+                                  int32_t pointers /* = 1 */)
 {
   if (m_handler)
     m_handler->OnSwipe(direction, xDown, yDown, xUp, yUp, velocityX, velocityY, pointers);

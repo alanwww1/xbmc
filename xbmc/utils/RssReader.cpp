@@ -1,49 +1,33 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "network/Network.h"
-#include "threads/SystemClock.h"
 #include "RssReader.h"
-#include "utils/HTMLUtil.h"
-#include "Application.h"
+
 #include "CharsetConverter.h"
-#include "StringUtils.h"
+#include "ServiceBroker.h"
 #include "URL.h"
-#include "filesystem/File.h"
 #include "filesystem/CurlFile.h"
-#if defined(TARGET_DARWIN)
-#include "osx/CocoaInterface.h"
-#endif
-#include "settings/AdvancedSettings.h"
-#include "guilib/LocalizeStrings.h"
+#include "filesystem/File.h"
 #include "guilib/GUIRSSControl.h"
-#include "utils/TimeUtils.h"
-#include "threads/SingleLock.h"
+#include "guilib/LocalizeStrings.h"
 #include "log.h"
-#include "utils/FileUtils.h"
+#include "network/Network.h"
+#include "settings/AdvancedSettings.h"
+#include "settings/SettingsComponent.h"
+#include "threads/SingleLock.h"
+#include "threads/SystemClock.h"
+#include "utils/HTMLUtil.h"
+#include "utils/XTimeUtils.h"
 
 #define RSS_COLOR_BODY      0
 #define RSS_COLOR_HEADLINE  1
 #define RSS_COLOR_CHANNEL   2
 
-using namespace std;
 using namespace XFILE;
 
 //////////////////////////////////////////////////////////////////////
@@ -69,7 +53,7 @@ CRssReader::~CRssReader()
     delete m_vecTimeStamps[i];
 }
 
-void CRssReader::Create(IRssObserver* aObserver, const vector<string>& aUrls, const vector<int> &times, int spacesBetweenFeeds, bool rtl)
+void CRssReader::Create(IRssObserver* aObserver, const std::vector<std::string>& aUrls, const std::vector<int> &times, int spacesBetweenFeeds, bool rtl)
 {
   CSingleLock lock(m_critical);
 
@@ -87,8 +71,8 @@ void CRssReader::Create(IRssObserver* aObserver, const vector<string>& aUrls, co
   for (unsigned int i = 0; i < m_vecUpdateTimes.size(); ++i)
   {
     AddToQueue(i);
-    SYSTEMTIME* time = new SYSTEMTIME;
-    GetLocalTime(time);
+    KODI::TIME::SystemTime* time = new KODI::TIME::SystemTime;
+    KODI::TIME::GetLocalTime(time);
     m_vecTimeStamps.push_back(time);
   }
 }
@@ -107,7 +91,7 @@ void CRssReader::AddToQueue(int iAdd)
   {
     StopThread();
     m_bIsRunning = true;
-    CThread::Create(false, THREAD_MINSTACKSIZE);
+    CThread::Create(false);
   }
 }
 
@@ -135,7 +119,7 @@ void CRssReader::Process()
     m_strColors[iFeed].clear();
 
     CCurlFile http;
-    http.SetUserAgent(g_advancedSettings.m_userAgent);
+    http.SetUserAgent(CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_userAgent);
     http.SetTimeout(2);
     std::string strXML;
     std::string strUrl = m_vecUrls[iFeed];
@@ -147,7 +131,7 @@ void CRssReader::Process()
 
     // we wait for the network to come up
     if ((url.IsProtocol("http") || url.IsProtocol("https")) &&
-        !g_application.getNetwork().IsAvailable(true))
+        !CServiceBroker::GetNetwork().IsAvailable())
     {
       CLog::Log(LOGWARNING, "RSS: No network connection");
       strXML = "<rss><item><title>"+g_localizeStrings.Get(15301)+"</title></item></rss>";
@@ -159,8 +143,7 @@ void CRssReader::Process()
       {
         if (timeout.IsTimePast())
         {
-          CLog::Log(LOGERROR, "Timeout whilst retrieving %s", strUrl.c_str());
-          http.Cancel();
+          CLog::Log(LOGERROR, "Timeout while retrieving rss feed: %s", strUrl.c_str());
           break;
         }
         nRetries--;
@@ -176,12 +159,18 @@ void CRssReader::Process()
           }
         }
         else
+        {
           if (http.Get(strUrl, strXML))
           {
-            fileCharset = http.GetServerReportedCharset();
+            fileCharset = http.GetProperty(XFILE::FILE_PROPERTY_CONTENT_CHARSET);
             CLog::Log(LOGDEBUG, "Got rss feed: %s", strUrl.c_str());
             break;
           }
+          else if (nRetries > 0)
+            CThread::Sleep(5000); // Network problems? Retry, but not immediately.
+          else
+            CLog::Log(LOGERROR, "Unable to obtain rss feed: %s", strUrl.c_str());
+        }
       }
       http.Cancel();
     }
@@ -242,7 +231,7 @@ void CRssReader::AddString(std::wstring aString, int aColour, int iFeed)
   size_t nStringLength = aString.size();
 
   for (size_t i = 0;i < nStringLength;i++)
-    aString[i] = (CHAR) (48 + aColour);
+    aString[i] = static_cast<char>(48 + aColour);
 
   if (m_rtlText)
     m_strColors[iFeed] = aString + m_strColors[iFeed];
@@ -255,9 +244,9 @@ void CRssReader::GetNewsItems(TiXmlElement* channelXmlNode, int iFeed)
   HTML::CHTMLUtil html;
 
   TiXmlElement * itemNode = channelXmlNode->FirstChildElement("item");
-  map <std::string, std::wstring> mTagElements;
-  typedef pair <std::string, std::wstring> StrPair;
-  list <std::string>::iterator i;
+  std::map<std::string, std::wstring> mTagElements;
+  typedef std::pair<std::string, std::wstring> StrPair;
+  std::list<std::string>::iterator i;
 
   // Add the title tag in if we didn't pass any tags in at all
   // Represents default behaviour before configurability
@@ -265,11 +254,11 @@ void CRssReader::GetNewsItems(TiXmlElement* channelXmlNode, int iFeed)
   if (m_tagSet.empty())
     AddTag("title");
 
-  while (itemNode > 0)
+  while (itemNode != nullptr)
   {
     TiXmlNode* childNode = itemNode->FirstChild();
     mTagElements.clear();
-    while (childNode > 0)
+    while (childNode != nullptr)
     {
       std::string strName = childNode->ValueStr();
 
@@ -301,7 +290,7 @@ void CRssReader::GetNewsItems(TiXmlElement* channelXmlNode, int iFeed)
     int rsscolour = RSS_COLOR_HEADLINE;
     for (i = m_tagSet.begin(); i != m_tagSet.end(); ++i)
     {
-      map <std::string, std::wstring>::iterator j = mTagElements.find(*i);
+      std::map<std::string, std::wstring>::iterator j = mTagElements.find(*i);
 
       if (j == mTagElements.end())
         continue;
@@ -394,9 +383,9 @@ void CRssReader::UpdateObserver()
 
   vecText feed;
   getFeed(feed);
-  if (feed.size() > 0)
+  if (!feed.empty())
   {
-    CSingleLock lock(g_graphicsContext);
+    CSingleLock lock(CServiceBroker::GetWinSystem()->GetGfxContext());
     if (m_pObserver) // need to check again when locked to make sure observer wasnt removed
       m_pObserver->OnFeedUpdate(feed);
   }
@@ -404,16 +393,18 @@ void CRssReader::UpdateObserver()
 
 void CRssReader::CheckForUpdates()
 {
-  SYSTEMTIME time;
-  GetLocalTime(&time);
+  KODI::TIME::SystemTime time;
+  KODI::TIME::GetLocalTime(&time);
 
   for (unsigned int i = 0;i < m_vecUpdateTimes.size(); ++i )
   {
-    if (m_requestRefresh ||
-       ((time.wDay * 24 * 60) + (time.wHour * 60) + time.wMinute) - ((m_vecTimeStamps[i]->wDay * 24 * 60) + (m_vecTimeStamps[i]->wHour * 60) + m_vecTimeStamps[i]->wMinute) > m_vecUpdateTimes[i])
+    if (m_requestRefresh || ((time.day * 24 * 60) + (time.hour * 60) + time.minute) -
+                                    ((m_vecTimeStamps[i]->day * 24 * 60) +
+                                     (m_vecTimeStamps[i]->hour * 60) + m_vecTimeStamps[i]->minute) >
+                                m_vecUpdateTimes[i])
     {
       CLog::Log(LOGDEBUG, "Updating RSS");
-      GetLocalTime(m_vecTimeStamps[i]);
+      KODI::TIME::GetLocalTime(m_vecTimeStamps[i]);
       AddToQueue(i);
     }
   }

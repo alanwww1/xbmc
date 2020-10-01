@@ -1,32 +1,20 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
-
-#ifndef RENDER_SYSTEM_GLES_H
-#define RENDER_SYSTEM_GLES_H
 
 #pragma once
 
-#include "system.h"
-#include "system_gl.h"
+#include "GLESShader.h"
 #include "rendering/RenderSystem.h"
-#include "xbmc/guilib/GUIShader.h"
+#include "utils/Color.h"
+
+#include <array>
+
+#include "system_gl.h"
 
 enum ESHADERMETHOD
 {
@@ -41,49 +29,50 @@ enum ESHADERMETHOD
   SM_TEXTURE_RGBA_BLENDCOLOR,
   SM_TEXTURE_RGBA_BOB,
   SM_TEXTURE_RGBA_BOB_OES,
-  SM_ESHADERCOUNT
+  SM_TEXTURE_NOALPHA,
+  SM_MAX
 };
 
 class CRenderSystemGLES : public CRenderSystemBase
 {
 public:
   CRenderSystemGLES();
-  virtual ~CRenderSystemGLES();
+  ~CRenderSystemGLES() override = default;
 
-  virtual bool InitRenderSystem();
-  virtual bool DestroyRenderSystem();
-  virtual bool ResetRenderSystem(int width, int height, bool fullScreen, float refreshRate);
+  bool InitRenderSystem() override;
+  bool DestroyRenderSystem() override;
+  bool ResetRenderSystem(int width, int height) override;
 
-  virtual bool BeginRender();
-  virtual bool EndRender();
-  virtual bool PresentRender(const CDirtyRegionList &dirty);
-  virtual bool ClearBuffers(color_t color);
-  virtual bool IsExtSupported(const char* extension);
+  bool BeginRender() override;
+  bool EndRender() override;
+  void PresentRender(bool rendered, bool videoLayer) override;
+  bool ClearBuffers(UTILS::Color color) override;
+  bool IsExtSupported(const char* extension) const override;
 
-  virtual void SetVSync(bool vsync);
+  void SetVSync(bool vsync);
+  void ResetVSync() { m_bVsyncInit = false; }
 
-  virtual void SetViewPort(CRect& viewPort);
-  virtual void GetViewPort(CRect& viewPort);
+  void SetViewPort(const CRect& viewPort) override;
+  void GetViewPort(CRect& viewPort) override;
 
-  virtual bool ScissorsCanEffectClipping();
-  virtual CRect ClipRectToScissorRect(const CRect &rect);
-  virtual void SetScissors(const CRect& rect);
-  virtual void ResetScissors();
+  bool ScissorsCanEffectClipping() override;
+  CRect ClipRectToScissorRect(const CRect &rect) override;
+  void SetScissors(const CRect& rect) override;
+  void ResetScissors() override;
 
-  virtual void CaptureStateBlock();
-  virtual void ApplyStateBlock();
+  void CaptureStateBlock() override;
+  void ApplyStateBlock() override;
 
-  virtual void SetCameraPosition(const CPoint &camera, int screenWidth, int screenHeight);
+  void SetCameraPosition(const CPoint &camera, int screenWidth, int screenHeight, float stereoFactor = 0.0f) override;
 
-  virtual void ApplyHardwareTransform(const TransformMatrix &matrix);
-  virtual void RestoreHardwareTransform();
-  virtual bool SupportsStereo(RENDER_STEREO_MODE mode);
+  bool SupportsStereo(RENDER_STEREO_MODE mode) const override;
 
-  virtual bool TestRender();
+  void Project(float &x, float &y, float &z) override;
 
-  virtual void Project(float &x, float &y, float &z);
+  std::string GetShaderPath(const std::string &filename) override { return "GLES/2.0/"; }
 
-  void InitialiseGUIShader();
+  void InitialiseShaders();
+  void ReleaseShaders();
   void EnableGUIShader(ESHADERMETHOD method);
   void DisableGUIShader();
 
@@ -101,24 +90,18 @@ public:
 
 protected:
   virtual void SetVSyncImpl(bool enable) = 0;
-  virtual bool PresentRenderImpl(const CDirtyRegionList &dirty) = 0;
+  virtual void PresentRenderImpl(bool rendered) = 0;
   void CalculateMaxTexturesize();
 
-  int        m_iVSyncMode;
-  int        m_iVSyncErrors;
-  int64_t    m_iSwapStamp;
-  int64_t    m_iSwapRate;
-  int64_t    m_iSwapTime;
-  bool       m_bVsyncInit;
-  int        m_width;
-  int        m_height;
+  bool m_bVsyncInit{false};
+  int m_width;
+  int m_height;
 
   std::string m_RenderExtensions;
 
-  CGUIShader  **m_pGUIshader;  // One GUI shader for each method
-  ESHADERMETHOD m_method;      // Current GUI Shader method
+  std::array<std::unique_ptr<CGLESShader>, SM_MAX> m_pShader;
+  ESHADERMETHOD m_method = SM_DEFAULT;
 
   GLint      m_viewPort[4];
 };
 
-#endif // RENDER_SYSTEM_H

@@ -1,49 +1,56 @@
-#pragma once
 /*
- *      Copyright (C) 2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2013-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "ILanguageInvoker.h"
+#pragma once
+
+#include "interfaces/generic/ILanguageInvoker.h"
 #include "threads/Thread.h"
+
+#include <string>
+#include <vector>
 
 class CScriptInvocationManager;
 
 class CLanguageInvokerThread : public ILanguageInvoker, protected CThread
 {
 public:
-  CLanguageInvokerThread(ILanguageInvoker *invoker, CScriptInvocationManager *invocationManager);
-  ~CLanguageInvokerThread();
+  CLanguageInvokerThread(LanguageInvokerPtr invoker,
+                         CScriptInvocationManager* invocationManager,
+                         bool reuseable);
+  ~CLanguageInvokerThread() override;
 
-  virtual InvokerState GetState();
+  virtual InvokerState GetState() const;
+
+  const std::string& GetScript() const { return m_script; };
+  LanguageInvokerPtr GetInvoker() const { return m_invoker; };
+  bool Reuseable(const std::string& script) const
+  {
+    return !m_bStop && m_reusable && GetState() == InvokerStateScriptDone && m_script == script;
+  };
+  virtual void Release();
 
 protected:
-  virtual bool execute(const std::string &script, const std::vector<std::string> &arguments);
-  virtual bool stop(bool wait);
+  bool execute(const std::string &script, const std::vector<std::string> &arguments) override;
+  bool stop(bool wait) override;
 
-  virtual void OnStartup();
-  virtual void Process();
-  virtual void OnExit();
-  virtual void OnException();
+  void OnStartup() override;
+  void Process() override;
+  void OnExit() override;
+  void OnException() override;
 
 private:
-  ILanguageInvoker *m_invoker;
+  LanguageInvokerPtr m_invoker;
   CScriptInvocationManager *m_invocationManager;
   std::string m_script;
   std::vector<std::string> m_args;
+
+  std::mutex m_mutex;
+  std::condition_variable m_condition;
+  bool m_restart = false;
+  bool m_reusable = false;
 };

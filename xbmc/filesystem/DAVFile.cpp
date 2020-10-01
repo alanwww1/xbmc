@@ -1,46 +1,29 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
-
-#include "system.h"
 
 #include "DAVFile.h"
 
 #include "DAVCommon.h"
-#include "URL.h"
-#include "utils/log.h"
 #include "DllLibCurl.h"
-#include "utils/XBMCTinyXML.h"
+#include "URL.h"
 #include "utils/RegExp.h"
+#include "utils/XBMCTinyXML.h"
+#include "utils/log.h"
 
 using namespace XFILE;
 using namespace XCURL;
 
 CDAVFile::CDAVFile(void)
   : CCurlFile()
-  , lastResponseCode(0)
 {
 }
 
-CDAVFile::~CDAVFile(void)
-{
-}
+CDAVFile::~CDAVFile(void) = default;
 
 bool CDAVFile::Execute(const CURL& url)
 {
@@ -51,7 +34,7 @@ bool CDAVFile::Execute(const CURL& url)
 
   assert(!(!m_state->m_easyHandle ^ !m_state->m_multiHandle));
   if( m_state->m_easyHandle == NULL )
-    g_curlInterface.easy_aquire(url2.GetProtocol().c_str(),
+    g_curlInterface.easy_acquire(url2.GetProtocol().c_str(),
                                 url2.GetHostName().c_str(),
                                 &m_state->m_easyHandle,
                                 &m_state->m_multiHandle);
@@ -60,15 +43,15 @@ bool CDAVFile::Execute(const CURL& url)
   SetCommonOptions(m_state);
   SetRequestHeaders(m_state);
 
-  lastResponseCode = m_state->Connect(m_bufferSize);
-  if( lastResponseCode < 0 || lastResponseCode >= 400)
+  m_lastResponseCode = m_state->Connect(m_bufferSize);
+  if (m_lastResponseCode < 0 || m_lastResponseCode >= 400)
     return false;
 
   char* efurl;
   if (CURLE_OK == g_curlInterface.easy_getinfo(m_state->m_easyHandle, CURLINFO_EFFECTIVE_URL,&efurl) && efurl)
     m_url = efurl;
 
-  if (lastResponseCode == 207)
+  if (m_lastResponseCode == 207)
   {
     std::string strResponse;
     ReadData(strResponse);
@@ -78,7 +61,7 @@ bool CDAVFile::Execute(const CURL& url)
 
     if (!davResponse.Parse(strResponse))
     {
-      CLog::Log(LOGERROR, "%s - Unable to process dav response (%s)", __FUNCTION__, m_url.c_str());
+      CLog::Log(LOGERROR, "CDAVFile::Execute - Unable to process dav response (%s)", CURL(m_url).GetRedacted().c_str());
       Close();
       return false;
     }
@@ -91,13 +74,13 @@ bool CDAVFile::Execute(const CURL& url)
       {
         std::string sRetCode = CDAVCommon::GetStatusTag(pChild->ToElement());
         CRegExp rxCode;
-        rxCode.RegComp("HTTP/1\\.1\\s(\\d+)\\s.*"); 
+        rxCode.RegComp("HTTP/.+\\s(\\d+)\\s.*");
         if (rxCode.RegFind(sRetCode) >= 0)
         {
           if (rxCode.GetSubCount())
           {
-            lastResponseCode = atoi(rxCode.GetMatch(1).c_str());
-            if( lastResponseCode < 0 || lastResponseCode >= 400)
+            m_lastResponseCode = atoi(rxCode.GetMatch(1).c_str());
+            if (m_lastResponseCode < 0 || m_lastResponseCode >= 400)
               return false;
           }
         }
@@ -118,10 +101,11 @@ bool CDAVFile::Delete(const CURL& url)
   std::string strRequest = "DELETE";
 
   dav.SetCustomRequest(strRequest);
- 
+
+  CLog::Log(LOGDEBUG, "CDAVFile::Delete - Execute DELETE (%s)", url.GetRedacted().c_str());
   if (!dav.Execute(url))
   {
-    CLog::Log(LOGERROR, "%s - Unable to delete dav resource (%s)", __FUNCTION__, url.Get().c_str());
+    CLog::Log(LOGERROR, "CDAVFile::Delete - Unable to delete dav resource (%s)", url.GetRedacted().c_str());
     return false;
   }
 
@@ -145,9 +129,10 @@ bool CDAVFile::Rename(const CURL& url, const CURL& urlnew)
   dav.SetCustomRequest(strRequest);
   dav.SetRequestHeader("Destination", url2.GetWithoutUserDetails());
 
+  CLog::Log(LOGDEBUG, "CDAVFile::Rename - Execute MOVE (%s -> %s)", url.GetRedacted().c_str(), url2.GetRedacted().c_str());
   if (!dav.Execute(url))
   {
-    CLog::Log(LOGERROR, "%s - Unable to rename dav resource (%s)", __FUNCTION__, url.Get().c_str());
+    CLog::Log(LOGERROR, "CDAVFile::Rename - Unable to rename dav resource (%s -> %s)", url.GetRedacted().c_str(), url2.GetRedacted().c_str());
     return false;
   }
 

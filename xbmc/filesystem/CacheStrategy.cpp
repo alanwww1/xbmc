@@ -1,38 +1,27 @@
 /*
- *      Copyright (C) 2005-2014 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "threads/SystemClock.h"
 #include "CacheStrategy.h"
 #include "IFile.h"
+#ifdef TARGET_POSIX
+#include "PlatformDefs.h"
+#include "platform/posix/ConvUtils.h"
+#endif
 #include "Util.h"
 #include "utils/log.h"
-#include "threads/SingleLock.h"
-#include "utils/TimeUtils.h"
 #include "SpecialProtocol.h"
-#include "PlatformDefs.h" //for PRIdS, PRId64
 #include "URL.h"
 #if defined(TARGET_POSIX)
-#include "posix/PosixFile.h"
+#include "platform/posix/filesystem/PosixFile.h"
 #define CacheLocalFile CPosixFile
 #elif defined(TARGET_WINDOWS)
-#include "win32/Win32File.h"
+#include "platform/win32/filesystem/Win32File.h"
 #define CacheLocalFile CWin32File
 #endif // TARGET_WINDOWS
 
@@ -41,14 +30,7 @@
 
 using namespace XFILE;
 
-CCacheStrategy::CCacheStrategy() : m_bEndOfInput(false)
-{
-}
-
-
-CCacheStrategy::~CCacheStrategy()
-{
-}
+CCacheStrategy::~CCacheStrategy() = default;
 
 void CCacheStrategy::EndOfInput() {
   m_bEndOfInput = true;
@@ -68,9 +50,7 @@ CSimpleFileCache::CSimpleFileCache()
   : m_cacheFileRead(new CacheLocalFile())
   , m_cacheFileWrite(new CacheLocalFile())
   , m_hDataAvailEvent(NULL)
-  , m_nStartPosition(0)
-  , m_nWritePosition(0)
-  , m_nReadPosition(0) {
+{
 }
 
 CSimpleFileCache::~CSimpleFileCache()
@@ -123,7 +103,7 @@ void CSimpleFileCache::Close()
   m_cacheFileWrite->Close();
   m_cacheFileRead->Close();
 
-  if (!m_cacheFileRead->Delete(CURL(m_filename)))
+  if (!m_filename.empty() && !m_cacheFileRead->Delete(CURL(m_filename)))
     CLog::LogF(LOGWARNING, "failed to delete temporary file \"%s\"", m_filename.c_str());
 
   m_filename.clear();
@@ -139,7 +119,8 @@ int CSimpleFileCache::WriteToCache(const char *pBuffer, size_t iSize)
   size_t written = 0;
   while (iSize > 0)
   {
-    const ssize_t lastWritten = m_cacheFileWrite->Write(pBuffer, (iSize > SSIZE_MAX) ? SSIZE_MAX : iSize);
+    const ssize_t lastWritten =
+        m_cacheFileWrite->Write(pBuffer, std::min(iSize, static_cast<size_t>(SSIZE_MAX)));
     if (lastWritten <= 0)
     {
       CLog::LogF(LOGERROR, "failed to write to file");
@@ -165,14 +146,16 @@ int CSimpleFileCache::ReadFromCache(char *pBuffer, size_t iMaxSize)
 {
   int64_t iAvailable = GetAvailableRead();
   if ( iAvailable <= 0 )
-    return m_bEndOfInput? 0 : CACHE_RC_WOULD_BLOCK;
+    return m_bEndOfInput ? 0 : CACHE_RC_WOULD_BLOCK;
 
-  size_t toRead = ((int64_t)iMaxSize > iAvailable) ? (size_t)iAvailable : iMaxSize;
+  size_t toRead = std::min(iMaxSize, static_cast<size_t>(iAvailable));
 
   size_t readBytes = 0;
   while (toRead > 0)
   {
-    const ssize_t lastRead = m_cacheFileRead->Read(pBuffer, (toRead > SSIZE_MAX) ? SSIZE_MAX : toRead);
+    const ssize_t lastRead =
+      m_cacheFileRead->Read(pBuffer, std::min(toRead, static_cast<size_t>(SSIZE_MAX)));
+
     if (lastRead == 0)
       break;
     if (lastRead < 0)

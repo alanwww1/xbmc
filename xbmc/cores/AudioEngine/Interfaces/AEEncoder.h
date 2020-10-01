@@ -1,28 +1,17 @@
-#pragma once
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
 
 #include "cores/AudioEngine/Utils/AEAudioFormat.h"
 
 extern "C" {
-#include "libavcodec/avcodec.h"
+#include <libavcodec/avcodec.h>
 }
 
 /**
@@ -34,12 +23,12 @@ public:
   /**
    * Constructor
    */
-  IAEEncoder() {};
+  IAEEncoder() = default;
 
   /**
    * Destructor
    */
-  virtual ~IAEEncoder() {};
+  virtual ~IAEEncoder() = default;
 
   /**
    * Return true if the supplied format is compatible with the current open encoder.
@@ -80,22 +69,14 @@ public:
   virtual unsigned int GetFrames() = 0;
 
   /**
-   * Encodes the supplied samples
-   * @param data the PCM samples in float format
-   * @param frames the number of audio frames in data (bytes / bits per sample = samples / channels = frames)
-   * @return the number of samples consumed
-   */
-  virtual int Encode(float *data, unsigned int frames) = 0;
-
-  /**
    * Encodes the supplied samples into a provided buffer
    * @param in the PCM samples encoder requested format
    * @param in_size input buffer size
    * @param output buffer
    * @param out_size output buffer size
-   * @return the number of samples consumed
+   * @return size of encoded data
    */
-  virtual int Encode (uint8_t *in, int in_size, uint8_t *out, int out_size) { return 0; };
+  virtual int Encode (uint8_t *in, int in_size, uint8_t *out, int out_size) = 0;
 
   /**
    * Get the encoded data

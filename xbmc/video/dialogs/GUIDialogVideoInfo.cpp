@@ -1,72 +1,71 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "GUIDialogVideoInfo.h"
+
 #include "Application.h"
-#include "guilib/GUIWindow.h"
-#include "Util.h"
-#include "guilib/GUIImage.h"
-#include "utils/StringUtils.h"
-#include "utils/URIUtils.h"
-#include "video/windows/GUIWindowVideoNav.h"
-#include "dialogs/GUIDialogFileBrowser.h"
-#include "video/VideoInfoScanner.h"
-#include "ApplicationMessenger.h"
-#include "video/VideoInfoTag.h"
-#include "guilib/GUIKeyboardFactory.h"
-#include "guilib/GUIWindowManager.h"
-#include "dialogs/GUIDialogOK.h"
-#include "dialogs/GUIDialogYesNo.h"
-#include "dialogs/GUIDialogSelect.h"
-#include "dialogs/GUIDialogProgress.h"
-#include "filesystem/File.h"
+#include "ContextMenuManager.h"
 #include "FileItem.h"
-#include "storage/MediaManager.h"
-#include "utils/AsyncFileCopy.h"
-#include "profiles/ProfilesManager.h"
-#include "settings/AdvancedSettings.h"
-#include "settings/MediaSourceSettings.h"
-#include "settings/Settings.h"
-#include "guilib/Key.h"
-#include "guilib/LocalizeStrings.h"
+#include "GUIPassword.h"
 #include "GUIUserMessages.h"
+#include "ServiceBroker.h"
 #include "TextureCache.h"
-#include "music/MusicDatabase.h"
-#include "URL.h"
-#include "video/VideoThumbLoader.h"
+#include "Util.h"
+#include "dialogs/GUIDialogFileBrowser.h"
+#include "dialogs/GUIDialogProgress.h"
+#include "dialogs/GUIDialogSelect.h"
+#include "dialogs/GUIDialogYesNo.h"
 #include "filesystem/Directory.h"
+#include "filesystem/File.h"
 #include "filesystem/VideoDatabaseDirectory.h"
 #include "filesystem/VideoDatabaseDirectory/QueryParams.h"
-#ifdef HAS_UPNP
-#include "network/upnp/UPnP.h"
-#endif
+#include "guilib/GUIComponent.h"
+#include "guilib/GUIImage.h"
+#include "guilib/GUIKeyboardFactory.h"
+#include "guilib/GUIWindow.h"
+#include "guilib/GUIWindowManager.h"
+#include "guilib/LocalizeStrings.h"
+#include "input/Key.h"
+#include "messaging/ApplicationMessenger.h"
+#include "messaging/helpers/DialogOKHelper.h"
+#include "music/MusicDatabase.h"
+#include "profiles/ProfileManager.h"
+#include "settings/AdvancedSettings.h"
+#include "settings/MediaSourceSettings.h"
+#include "settings/SettingUtils.h"
+#include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
+#include "settings/lib/Setting.h"
+#include "storage/MediaManager.h"
+#include "utils/FileExtensionProvider.h"
 #include "utils/FileUtils.h"
+#include "utils/SortUtils.h"
+#include "utils/StringUtils.h"
+#include "utils/URIUtils.h"
+#include "utils/Variant.h"
+#include "video/VideoInfoScanner.h"
+#include "video/VideoInfoTag.h"
+#include "video/VideoThumbLoader.h"
+#include "video/tags/VideoTagLoaderFFmpeg.h"
+#include "video/windows/GUIWindowVideoNav.h"
 
-using namespace std;
+#include <iterator>
+#include <string>
+
 using namespace XFILE::VIDEODATABASEDIRECTORY;
 using namespace XFILE;
+using namespace KODI::MESSAGING;
 
 #define CONTROL_IMAGE                3
 #define CONTROL_TEXTAREA             4
 #define CONTROL_BTN_TRACKS           5
 #define CONTROL_BTN_REFRESH          6
+#define CONTROL_BTN_USERRATING       7
 #define CONTROL_BTN_PLAY             8
 #define CONTROL_BTN_RESUME           9
 #define CONTROL_BTN_GET_THUMB       10
@@ -77,19 +76,16 @@ using namespace XFILE;
 #define CONTROL_LIST                50
 
 // predicate used by sorting and set_difference
-bool compFileItemsByDbId(const CFileItemPtr& lhs, const CFileItemPtr& rhs) 
+bool compFileItemsByDbId(const CFileItemPtr& lhs, const CFileItemPtr& rhs)
 {
   return lhs->HasVideoInfoTag() && rhs->HasVideoInfoTag() && lhs->GetVideoInfoTag()->m_iDbId < rhs->GetVideoInfoTag()->m_iDbId;
 }
 
 CGUIDialogVideoInfo::CGUIDialogVideoInfo(void)
-    : CGUIDialog(WINDOW_DIALOG_VIDEO_INFO, "DialogVideoInfo.xml")
-    , m_movieItem(new CFileItem)
+  : CGUIDialog(WINDOW_DIALOG_VIDEO_INFO, "DialogVideoInfo.xml"),
+  m_movieItem(new CFileItem),
+  m_castList(new CFileItemList)
 {
-  m_bRefreshAll = true;
-  m_bRefresh = false;
-  m_hasUpdatedThumb = false;
-  m_castList = new CFileItemList;
   m_loadType = KEEP_IN_MEMORY;
 }
 
@@ -105,6 +101,17 @@ bool CGUIDialogVideoInfo::OnMessage(CGUIMessage& message)
   case GUI_MSG_WINDOW_DEINIT:
     {
       ClearCastList();
+
+      if (m_startUserrating != m_movieItem->GetVideoInfoTag()->m_iUserRating)
+      {
+        CVideoDatabase db;
+        if (db.Open())
+        {
+          m_hasUpdatedUserrating = true;
+          db.SetVideoUserRating(m_movieItem->GetVideoInfoTag()->m_iDbId, m_movieItem->GetVideoInfoTag()->m_iUserRating, m_movieItem->GetVideoInfoTag()->m_type);
+          db.Close();
+        }
+      }
     }
     break;
 
@@ -116,7 +123,7 @@ bool CGUIDialogVideoInfo::OnMessage(CGUIMessage& message)
         if (m_movieItem->GetVideoInfoTag()->m_type == MediaTypeTvShow)
         {
           bool bCanceled=false;
-          if (CGUIDialogYesNo::ShowAndGetInput(20377,20378,-1,-1,bCanceled))
+          if (CGUIDialogYesNo::ShowAndGetInput(CVariant{20377}, CVariant{20378}, bCanceled, CVariant{ "" }, CVariant{ "" }, CGUIDialogYesNo::NO_TIMEOUT))
           {
             m_bRefreshAll = true;
             CVideoDatabase db;
@@ -145,6 +152,10 @@ bool CGUIDialogVideoInfo::OnMessage(CGUIMessage& message)
       {
         Play();
       }
+      else if (iControl == CONTROL_BTN_USERRATING)
+      {
+        OnSetUserrating();
+      }
       else if (iControl == CONTROL_BTN_RESUME)
       {
         Play(true);
@@ -163,8 +174,28 @@ bool CGUIDialogVideoInfo::OnMessage(CGUIMessage& message)
       }
       else if (iControl == CONTROL_BTN_DIRECTOR)
       {
-        std::string strDirector = StringUtils::Join(m_movieItem->GetVideoInfoTag()->m_director, g_advancedSettings.m_videoItemSeparator);
-        OnSearch(strDirector);
+        auto directors = m_movieItem->GetVideoInfoTag()->m_director;
+        if (directors.size() == 0)
+          return true;
+        if (directors.size() == 1)
+          OnSearch(directors[0]);
+        else
+        {
+          auto pDlgSelect = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(WINDOW_DIALOG_SELECT);
+          if (pDlgSelect)
+          {
+            pDlgSelect->Reset();
+            pDlgSelect->SetHeading(CVariant{22080});
+            for (const auto &director: directors)
+              pDlgSelect->Add(director);
+            pDlgSelect->Open();
+
+            int iItem = pDlgSelect->GetSelectedItem();
+            if (iItem < 0)
+              return true;
+            OnSearch(directors[iItem]);
+          }
+        }
       }
       else if (iControl == CONTROL_LIST)
       {
@@ -177,7 +208,14 @@ bool CGUIDialogVideoInfo::OnMessage(CGUIMessage& message)
           if (iItem < 0 || iItem >= m_castList->Size())
             break;
           std::string strItem = m_castList->Get(iItem)->GetLabel();
-          OnSearch(strItem);
+          if (m_movieItem->GetVideoInfoTag()->m_type == MediaTypeVideoCollection)
+          {
+            SetMovie(m_castList->Get(iItem).get());
+            Close();
+            Open();
+          }
+          else
+            OnSearch(strItem);
         }
       }
     }
@@ -206,23 +244,31 @@ void CGUIDialogVideoInfo::OnInitWindow()
   m_bRefresh = false;
   m_bRefreshAll = true;
   m_hasUpdatedThumb = false;
+  m_hasUpdatedUserrating = false;
   m_bViewReview = true;
 
-  CVideoDatabase database;
-  ADDON::ScraperPtr scraper;
+  const std::shared_ptr<CProfileManager> profileManager = CServiceBroker::GetSettingsComponent()->GetProfileManager();
 
-  if(database.Open())
-  {
-    scraper = database.GetScraperForPath(m_movieItem->GetVideoInfoTag()->GetPath());
-    database.Close();
-  }
+  const std::string uniqueId = m_movieItem->GetProperty("xxuniqueid").asString();
+  if (uniqueId.empty() || !StringUtils::StartsWithNoCase(uniqueId.c_str(), "xx"))
+    CONTROL_ENABLE_ON_CONDITION(CONTROL_BTN_REFRESH,
+        (profileManager->GetCurrentProfile().canWriteDatabases() ||
+        g_passwordManager.bMasterUser));
+  else
+    CONTROL_DISABLE(CONTROL_BTN_REFRESH);
+  CONTROL_ENABLE_ON_CONDITION(CONTROL_BTN_GET_THUMB,
+      (profileManager->GetCurrentProfile().canWriteDatabases() || g_passwordManager.bMasterUser) &&
+      !StringUtils::StartsWithNoCase(m_movieItem->GetVideoInfoTag()->
+      GetUniqueID().c_str(), "plugin"));
+  // Disable video user rating button for plugins and sets as they don't have tables to save this
+  CONTROL_ENABLE_ON_CONDITION(CONTROL_BTN_USERRATING, !m_movieItem->IsPlugin() && m_movieItem->GetVideoInfoTag()->m_type != MediaTypeVideoCollection);
 
-  CONTROL_ENABLE_ON_CONDITION(CONTROL_BTN_REFRESH, (CProfilesManager::Get().GetCurrentProfile().canWriteDatabases() || g_passwordManager.bMasterUser) && !StringUtils::StartsWithNoCase(m_movieItem->GetVideoInfoTag()->m_strIMDBNumber, "xx") && scraper);
-  CONTROL_ENABLE_ON_CONDITION(CONTROL_BTN_GET_THUMB, (CProfilesManager::Get().GetCurrentProfile().canWriteDatabases() || g_passwordManager.bMasterUser) && !StringUtils::StartsWithNoCase(m_movieItem->GetVideoInfoTag()->m_strIMDBNumber.c_str() + 2, "plugin"));
-
-  VIDEODB_CONTENT_TYPE type = (VIDEODB_CONTENT_TYPE)m_movieItem->GetVideoContentType();
+  VIDEODB_CONTENT_TYPE type = static_cast<VIDEODB_CONTENT_TYPE>(m_movieItem->GetVideoContentType());
   if (type == VIDEODB_CONTENT_TVSHOWS || type == VIDEODB_CONTENT_MOVIES)
-    CONTROL_ENABLE_ON_CONDITION(CONTROL_BTN_GET_FANART, (CProfilesManager::Get().GetCurrentProfile().canWriteDatabases() || g_passwordManager.bMasterUser) && !StringUtils::StartsWithNoCase(m_movieItem->GetVideoInfoTag()->m_strIMDBNumber.c_str() + 2, "plugin"));
+    CONTROL_ENABLE_ON_CONDITION(CONTROL_BTN_GET_FANART, (profileManager->
+        GetCurrentProfile().canWriteDatabases() || g_passwordManager.bMasterUser) &&
+        !StringUtils::StartsWithNoCase(m_movieItem->GetVideoInfoTag()->
+        GetUniqueID().c_str(), "plugin"));
   else
     CONTROL_DISABLE(CONTROL_BTN_GET_FANART);
 
@@ -233,7 +279,18 @@ void CGUIDialogVideoInfo::OnInitWindow()
 
 bool CGUIDialogVideoInfo::OnAction(const CAction &action)
 {
-  if (action.GetID() == ACTION_SHOW_INFO)
+  int userrating = m_movieItem->GetVideoInfoTag()->m_iUserRating;
+  if (action.GetID() == ACTION_INCREASE_RATING)
+  {
+    SetUserrating(userrating + 1);
+    return true;
+  }
+  else if (action.GetID() == ACTION_DECREASE_RATING)
+  {
+    SetUserrating(userrating - 1);
+    return true;
+  }
+  else if (action.GetID() == ACTION_SHOW_INFO)
   {
     Close();
     return true;
@@ -241,16 +298,36 @@ bool CGUIDialogVideoInfo::OnAction(const CAction &action)
   return CGUIDialog::OnAction(action);
 }
 
+void CGUIDialogVideoInfo::SetUserrating(int userrating) const
+{
+  userrating = std::max(userrating, 0);
+  userrating = std::min(userrating, 10);
+  if (userrating != m_movieItem->GetVideoInfoTag()->m_iUserRating)
+  {
+    m_movieItem->GetVideoInfoTag()->SetUserrating(userrating);
+
+    // send a message to all windows to tell them to update the fileitem (eg playlistplayer, media windows)
+    CGUIMessage msg(GUI_MSG_NOTIFY_ALL, 0, 0, GUI_MSG_UPDATE_ITEM, 0, m_movieItem);
+    CServiceBroker::GetGUI()->GetWindowManager().SendMessage(msg);
+  }
+}
+
 void CGUIDialogVideoInfo::SetMovie(const CFileItem *item)
 {
   *m_movieItem = *item;
-  // setup cast list + determine type.  We need to do this here as it makes
-  // sure that content type (among other things) is set correctly for the
-  // old fixed id labels that we have floating around (they may be using
-  // content type to determine visibility, so we'll set the wrong label)
+
+  // setup cast list
   ClearCastList();
-  VIDEODB_CONTENT_TYPE type = (VIDEODB_CONTENT_TYPE)m_movieItem->GetVideoContentType();
-  if (type == VIDEODB_CONTENT_MUSICVIDEOS)
+
+  // When the scraper throws an error, the video tag can be null here
+  if (!item->HasVideoInfoTag())
+    return;
+
+  MediaType type = item->GetVideoInfoTag()->m_type;
+
+  m_startUserrating = m_movieItem->GetVideoInfoTag()->m_iUserRating;
+
+  if (type == MediaTypeMusicVideo)
   { // music video
     CMusicDatabase database;
     database.Open();
@@ -262,10 +339,21 @@ void CGUIDialogVideoInfo::SetMovie(const CFileItem *item)
       CFileItemPtr item(new CFileItem(*it));
       if (!thumb.empty())
         item->SetArt("thumb", thumb);
-      item->SetIconImage("DefaultArtist.png");
+      item->SetArt("icon", "DefaultArtist.png");
       m_castList->Add(item);
     }
-    m_castList->SetContent("musicvideos");
+  }
+  else if (type == MediaTypeVideoCollection)
+  {
+    CVideoDatabase database;
+    database.Open();
+    database.GetMoviesNav(m_movieItem->GetPath(), *m_castList, -1, -1, -1, -1, -1, -1,
+                          m_movieItem->GetVideoInfoTag()->m_set.id, -1,
+                          SortDescription(), VideoDbDetailsAll);
+    m_castList->Sort(SortBySortTitle, SortOrderDescending);
+    CVideoThumbLoader loader;
+    for (auto& item : *m_castList)
+      loader.LoadItem(item.get());
   }
   else
   { // movie/show/episode
@@ -274,91 +362,48 @@ void CGUIDialogVideoInfo::SetMovie(const CFileItem *item)
       CFileItemPtr item(new CFileItem(it->strName));
       if (!it->thumb.empty())
         item->SetArt("thumb", it->thumb);
-      else if (CSettings::Get().GetBool("videolibrary.actorthumbs"))
+      else if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_VIDEOLIBRARY_ACTORTHUMBS))
       { // backward compatibility
-        std::string thumb = CScraperUrl::GetThumbURL(it->thumbUrl.GetFirstThumb());
+        std::string thumb = CScraperUrl::GetThumbUrl(it->thumbUrl.GetFirstUrlByType());
         if (!thumb.empty())
         {
           item->SetArt("thumb", thumb);
-          CTextureCache::Get().BackgroundCacheImage(thumb);
+          CTextureCache::GetInstance().BackgroundCacheImage(thumb);
         }
       }
-      item->SetIconImage("DefaultActor.png");
+      item->SetArt("icon", "DefaultActor.png");
       item->SetLabel(it->strName);
       item->SetLabel2(it->strRole);
       m_castList->Add(item);
     }
-    // determine type:
-    if (type == VIDEODB_CONTENT_TVSHOWS)
-    {
-      m_castList->SetContent("tvshows");
-      // special case stuff for shows (not currently retrieved from the library in filemode (ref: GetTvShowInfo vs GetTVShowsByWhere)
-      m_movieItem->m_dateTime = m_movieItem->GetVideoInfoTag()->m_premiered;
-      if(m_movieItem->GetVideoInfoTag()->m_iYear == 0 && m_movieItem->m_dateTime.IsValid())
-        m_movieItem->GetVideoInfoTag()->m_iYear = m_movieItem->m_dateTime.GetYear();
-      if (!m_movieItem->HasProperty("totalepisodes"))
-      {
-        m_movieItem->SetProperty("totalepisodes", m_movieItem->GetVideoInfoTag()->m_iEpisode);
-        m_movieItem->SetProperty("numepisodes", m_movieItem->GetVideoInfoTag()->m_iEpisode); // info view has no concept of current watched/unwatched filter as we could come here from files view, but set for consistency
-        m_movieItem->SetProperty("watchedepisodes", m_movieItem->GetVideoInfoTag()->m_playCount);
-        m_movieItem->SetProperty("unwatchedepisodes", m_movieItem->GetVideoInfoTag()->m_iEpisode - m_movieItem->GetVideoInfoTag()->m_playCount);
-        m_movieItem->GetVideoInfoTag()->m_playCount = (m_movieItem->GetVideoInfoTag()->m_iEpisode == m_movieItem->GetVideoInfoTag()->m_playCount) ? 1 : 0;
-      }
-    }
-    else if (type == VIDEODB_CONTENT_EPISODES)
-    {
-      m_castList->SetContent("episodes");
-      // special case stuff for episodes (not currently retrieved from the library in filemode (ref: GetEpisodeInfo vs GetEpisodesByWhere)
-      m_movieItem->m_dateTime = m_movieItem->GetVideoInfoTag()->m_firstAired;
-      if(m_movieItem->GetVideoInfoTag()->m_iYear == 0 && m_movieItem->m_dateTime.IsValid())
-        m_movieItem->GetVideoInfoTag()->m_iYear = m_movieItem->m_dateTime.GetYear();
-      // retrieve the season thumb.
-      // TODO: should we use the thumbloader for this?
-      CVideoDatabase db;
-      if (db.Open())
-      {
-        if (m_movieItem->GetVideoInfoTag()->m_iSeason > -1)
-        {
-          int seasonID = m_movieItem->GetVideoInfoTag()->m_iIdSeason;
-          if (seasonID < 0)
-            seasonID = db.GetSeasonId(m_movieItem->GetVideoInfoTag()->m_iIdShow,
-                                      m_movieItem->GetVideoInfoTag()->m_iSeason);
-          CGUIListItem::ArtMap thumbs;
-          if (db.GetArtForItem(seasonID, MediaTypeSeason, thumbs))
-          {
-            for (CGUIListItem::ArtMap::iterator i = thumbs.begin(); i != thumbs.end(); ++i)
-              m_movieItem->SetArt("season." + i->first, i->second);
-          }
-        }
-        db.Close();
-      }
-    }
-    else if (type == VIDEODB_CONTENT_MOVIES)
-    {
-      m_castList->SetContent("movies");
+  }
 
-      // local trailers should always override non-local, so check 
-      // for a local one if the registered trailer is online
-      if (m_movieItem->GetVideoInfoTag()->m_strTrailer.empty() ||
-          URIUtils::IsInternetStream(m_movieItem->GetVideoInfoTag()->m_strTrailer))
+  if (type == MediaTypeMovie)
+  {
+    // local trailers should always override non-local, so check
+    // for a local one if the registered trailer is online
+    if (m_movieItem->GetVideoInfoTag()->m_strTrailer.empty() ||
+        URIUtils::IsInternetStream(m_movieItem->GetVideoInfoTag()->m_strTrailer))
+    {
+      std::string localTrailer = m_movieItem->FindTrailer();
+      if (!localTrailer.empty())
       {
-        std::string localTrailer = m_movieItem->FindTrailer();
-        if (!localTrailer.empty())
+        m_movieItem->GetVideoInfoTag()->m_strTrailer = localTrailer;
+        CVideoDatabase database;
+        if (database.Open())
         {
-          m_movieItem->GetVideoInfoTag()->m_strTrailer = localTrailer;
-          CVideoDatabase database;
-          if(database.Open())
-          {
-            database.SetSingleValue(VIDEODB_CONTENT_MOVIES, VIDEODB_ID_TRAILER,
-                                    m_movieItem->GetVideoInfoTag()->m_iDbId,
-                                    m_movieItem->GetVideoInfoTag()->m_strTrailer);
-            database.Close();
-            CUtil::DeleteVideoDatabaseDirectoryCache();
-          }
+          database.SetSingleValue(VIDEODB_CONTENT_MOVIES, VIDEODB_ID_TRAILER,
+                                  m_movieItem->GetVideoInfoTag()->m_iDbId,
+                                  m_movieItem->GetVideoInfoTag()->m_strTrailer);
+          database.Close();
+          CUtil::DeleteVideoDatabaseDirectoryCache();
         }
       }
     }
   }
+
+  m_castList->SetContent(CMediaTypes::ToPlural(type));
+
   CVideoThumbLoader loader;
   loader.LoadItem(m_movieItem.get());
 }
@@ -366,9 +411,17 @@ void CGUIDialogVideoInfo::SetMovie(const CFileItem *item)
 void CGUIDialogVideoInfo::Update()
 {
   // setup plot text area
+  std::shared_ptr<CSettingList> setting(std::dynamic_pointer_cast<CSettingList>( 
+    CServiceBroker::GetSettingsComponent()->GetSettings()->GetSetting(CSettings::SETTING_VIDEOLIBRARY_SHOWUNWATCHEDPLOTS)));
   std::string strTmp = m_movieItem->GetVideoInfoTag()->m_strPlot;
   if (m_movieItem->GetVideoInfoTag()->m_type != MediaTypeTvShow)
-    if (m_movieItem->GetVideoInfoTag()->m_playCount == 0 && !CSettings::Get().GetBool("videolibrary.showunwatchedplots"))
+    if (m_movieItem->GetVideoInfoTag()->GetPlayCount() == 0 && setting &&
+        ((m_movieItem->GetVideoInfoTag()->m_type == MediaTypeMovie &&
+          !CSettingUtils::FindIntInList(setting,
+                                        CSettings::VIDEOLIBRARY_PLOTS_SHOW_UNWATCHED_MOVIES)) ||
+         (m_movieItem->GetVideoInfoTag()->m_type == MediaTypeEpisode &&
+          !CSettingUtils::FindIntInList(
+              setting, CSettings::VIDEOLIBRARY_PLOTS_SHOW_UNWATCHED_TVSHOWEPISODES))))
       strTmp = g_localizeStrings.Get(20370);
 
   StringUtils::Trim(strTmp);
@@ -384,6 +437,10 @@ void CGUIDialogVideoInfo::Update()
       if (!m_movieItem->GetVideoInfoTag()->m_artist.empty())
       {
         SET_CONTROL_LABEL(CONTROL_BTN_TRACKS, 133);
+      }
+      else if (m_movieItem->GetVideoInfoTag()->m_type == MediaTypeVideoCollection)
+      {
+        SET_CONTROL_LABEL(CONTROL_BTN_TRACKS, 20342);
       }
       else
       {
@@ -403,7 +460,7 @@ void CGUIDialogVideoInfo::Update()
   }
 
   // Check for resumability
-  if (m_movieItem->GetVideoInfoTag()->m_resumePoint.timeInSeconds > 0.0)
+  if (m_movieItem->GetVideoInfoTag()->GetResumePoint().timeInSeconds > 0.0)
     CONTROL_ENABLE(CONTROL_BTN_RESUME);
   else
     CONTROL_DISABLE(CONTROL_BTN_RESUME);
@@ -411,10 +468,10 @@ void CGUIDialogVideoInfo::Update()
   CONTROL_ENABLE(CONTROL_BTN_PLAY);
 
   // update the thumbnail
-  const CGUIControl* pControl = GetControl(CONTROL_IMAGE);
+  CGUIControl* pControl = GetControl(CONTROL_IMAGE);
   if (pControl)
   {
-    CGUIImage* pImageControl = (CGUIImage*)pControl;
+    CGUIImage* pImageControl = static_cast<CGUIImage*>(pControl);
     pImageControl->FreeResources();
     pImageControl->SetFileName(m_movieItem->GetArt("thumb"));
   }
@@ -423,7 +480,7 @@ void CGUIDialogVideoInfo::Update()
   if (m_hasUpdatedThumb)
   {
     CGUIMessage reload(GUI_MSG_NOTIFY_ALL, 0, 0, GUI_MSG_REFRESH_THUMBS);
-    g_windowManager.SendMessage(reload);
+    CServiceBroker::GetGUI()->GetWindowManager().SendMessage(reload);
   }
 }
 
@@ -437,17 +494,16 @@ bool CGUIDialogVideoInfo::RefreshAll() const
   return m_bRefreshAll;
 }
 
-/// \brief Search the current directory for a string got from the virtual keyboard
 void CGUIDialogVideoInfo::OnSearch(std::string& strSearch)
 {
-  CGUIDialogProgress *progress = (CGUIDialogProgress *)g_windowManager.GetWindow(WINDOW_DIALOG_PROGRESS);
+  CGUIDialogProgress *progress = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogProgress>(WINDOW_DIALOG_PROGRESS);
   if (progress)
   {
-    progress->SetHeading(194);
-    progress->SetLine(0, strSearch);
-    progress->SetLine(1, "");
-    progress->SetLine(2, "");
-    progress->StartModal();
+    progress->SetHeading(CVariant{194});
+    progress->SetLine(0, CVariant{strSearch});
+    progress->SetLine(1, CVariant{""});
+    progress->SetLine(2, CVariant{""});
+    progress->Open();
     progress->Progress();
   }
   CFileItemList items;
@@ -458,38 +514,40 @@ void CGUIDialogVideoInfo::OnSearch(std::string& strSearch)
 
   if (items.Size())
   {
-    CGUIDialogSelect* pDlgSelect = (CGUIDialogSelect*)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
-    pDlgSelect->Reset();
-    pDlgSelect->SetHeading(283);
-
-    for (int i = 0; i < (int)items.Size(); i++)
+    CGUIDialogSelect* pDlgSelect = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(WINDOW_DIALOG_SELECT);
+    if (pDlgSelect)
     {
-      CFileItemPtr pItem = items[i];
-      pDlgSelect->Add(pItem->GetLabel());
+      pDlgSelect->Reset();
+      pDlgSelect->SetHeading(CVariant{283});
+
+      CVideoThumbLoader loader;
+      for (int i = 0; i < items.Size(); i++)
+      {
+        if (items[i]->HasVideoInfoTag() &&
+          items[i]->GetVideoInfoTag()->GetPlayCount() > 0)
+          items[i]->SetLabel2(g_localizeStrings.Get(16102));
+
+        loader.LoadItem(items[i].get());
+        pDlgSelect->Add(*items[i]);
+      }
+
+      pDlgSelect->SetUseDetails(true);
+      pDlgSelect->Open();
+
+      int iItem = pDlgSelect->GetSelectedItem();
+      if (iItem < 0)
+        return;
+
+      OnSearchItemFound(items[iItem].get());
     }
-
-    pDlgSelect->DoModal();
-
-    int iItem = pDlgSelect->GetSelectedLabel();
-    if (iItem < 0)
-      return;
-
-    CFileItem* pSelItem = new CFileItem(*items[iItem]);
-
-    OnSearchItemFound(pSelItem);
-
-    delete pSelItem;
   }
   else
   {
-    CGUIDialogOK::ShowAndGetInput(194, 284, 0, 0);
+    HELPERS::ShowOKDialogText(CVariant{194}, CVariant{284});
   }
 }
 
-/// \brief Make the actual search for the OnSearch function.
-/// \param strSearch The search string
-/// \param items Items Found
-void CGUIDialogVideoInfo::DoSearch(std::string& strSearch, CFileItemList& items)
+void CGUIDialogVideoInfo::DoSearch(std::string& strSearch, CFileItemList& items) const
 {
   CVideoDatabase db;
   if (!db.Open())
@@ -500,8 +558,8 @@ void CGUIDialogVideoInfo::DoSearch(std::string& strSearch, CFileItemList& items)
   for (int i = 0; i < movies.Size(); ++i)
   {
     std::string label = movies[i]->GetVideoInfoTag()->m_strTitle;
-    if (movies[i]->GetVideoInfoTag()->m_iYear > 0)
-      label += StringUtils::Format(" (%i)", movies[i]->GetVideoInfoTag()->m_iYear);
+    if (movies[i]->GetVideoInfoTag()->HasYear())
+      label += StringUtils::Format(" (%i)", movies[i]->GetVideoInfoTag()->GetYear());
     movies[i]->SetLabel(label);
   }
   CGUIWindowVideoBase::AppendAndClearSearchItems(movies, "[" + g_localizeStrings.Get(20338) + "] ", items);
@@ -510,8 +568,8 @@ void CGUIDialogVideoInfo::DoSearch(std::string& strSearch, CFileItemList& items)
   for (int i = 0; i < movies.Size(); ++i)
   {
     std::string label = movies[i]->GetVideoInfoTag()->m_strShowTitle;
-    if (movies[i]->GetVideoInfoTag()->m_iYear > 0)
-      label += StringUtils::Format(" (%i)", movies[i]->GetVideoInfoTag()->m_iYear);
+    if (movies[i]->GetVideoInfoTag()->HasYear())
+      label += StringUtils::Format(" (%i)", movies[i]->GetVideoInfoTag()->GetYear());
     movies[i]->SetLabel(label);
   }
   CGUIWindowVideoBase::AppendAndClearSearchItems(movies, "[" + g_localizeStrings.Get(20364) + "] ", items);
@@ -527,20 +585,18 @@ void CGUIDialogVideoInfo::DoSearch(std::string& strSearch, CFileItemList& items)
   db.GetMusicVideosByArtist(strSearch, movies);
   for (int i = 0; i < movies.Size(); ++i)
   {
-    std::string label = StringUtils::Join(movies[i]->GetVideoInfoTag()->m_artist, g_advancedSettings.m_videoItemSeparator) + " - " + movies[i]->GetVideoInfoTag()->m_strTitle;
-    if (movies[i]->GetVideoInfoTag()->m_iYear > 0)
-      label += StringUtils::Format(" (%i)", movies[i]->GetVideoInfoTag()->m_iYear);
+    std::string label = StringUtils::Join(movies[i]->GetVideoInfoTag()->m_artist, CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_videoItemSeparator) + " - " + movies[i]->GetVideoInfoTag()->m_strTitle;
+    if (movies[i]->GetVideoInfoTag()->HasYear())
+      label += StringUtils::Format(" (%i)", movies[i]->GetVideoInfoTag()->GetYear());
     movies[i]->SetLabel(label);
   }
   CGUIWindowVideoBase::AppendAndClearSearchItems(movies, "[" + g_localizeStrings.Get(20391) + "] ", items);
   db.Close();
 }
 
-/// \brief React on the selected search item
-/// \param pItem Search result item
 void CGUIDialogVideoInfo::OnSearchItemFound(const CFileItem* pItem)
 {
-  VIDEODB_CONTENT_TYPE type = (VIDEODB_CONTENT_TYPE)pItem->GetVideoContentType();
+  VIDEODB_CONTENT_TYPE type = static_cast<VIDEODB_CONTENT_TYPE>(pItem->GetVideoContentType());
 
   CVideoDatabase db;
   if (!db.Open())
@@ -562,7 +618,7 @@ void CGUIDialogVideoInfo::OnSearchItemFound(const CFileItem* pItem)
   SetMovie(&item);
   // refresh our window entirely
   Close();
-  DoModal();
+  Open();
 }
 
 void CGUIDialogVideoInfo::ClearCastList()
@@ -574,103 +630,187 @@ void CGUIDialogVideoInfo::ClearCastList()
 
 void CGUIDialogVideoInfo::Play(bool resume)
 {
-  if (!m_movieItem->GetVideoInfoTag()->m_strEpisodeGuide.empty())
+  if (m_movieItem->GetVideoInfoTag()->m_type == MediaTypeTvShow)
   {
-    std::string strPath = StringUtils::Format("videodb://tvshows/titles/%i/",m_movieItem->GetVideoInfoTag()->m_iDbId);
-    Close();
-    g_windowManager.ActivateWindow(WINDOW_VIDEO_NAV,strPath);
+    std::string strPath;
+    if (m_movieItem->IsPlugin())
+    {
+      strPath = m_movieItem->GetPath();
+      Close();
+      if (CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow() == WINDOW_VIDEO_NAV)
+      {
+        CGUIMessage message(GUI_MSG_NOTIFY_ALL, CServiceBroker::GetGUI()->
+                            GetWindowManager().GetActiveWindow(), 0, GUI_MSG_UPDATE, 0);
+        message.SetStringParam(strPath);
+        CServiceBroker::GetGUI()->GetWindowManager().SendMessage(message);
+      }
+      else
+        CServiceBroker::GetGUI()->GetWindowManager().ActivateWindow(WINDOW_VIDEO_NAV,strPath);
+    }
+    else
+    {
+      strPath = StringUtils::Format("videodb://tvshows/titles/%i/",
+                                    m_movieItem->GetVideoInfoTag()->m_iDbId);
+      Close();
+      CServiceBroker::GetGUI()->GetWindowManager().ActivateWindow(WINDOW_VIDEO_NAV,strPath);
+    }
     return;
   }
 
-  CFileItem movie(*m_movieItem->GetVideoInfoTag());
-  if (m_movieItem->GetVideoInfoTag()->m_strFileNameAndPath.empty())
-    movie.SetPath(m_movieItem->GetPath());
-  CGUIWindowVideoNav* pWindow = (CGUIWindowVideoNav*)g_windowManager.GetWindow(WINDOW_VIDEO_NAV);
+  if (m_movieItem->GetVideoInfoTag()->m_type == MediaTypeVideoCollection)
+  {
+    std::string strPath = StringUtils::Format("videodb://movies/sets/%i/?setid=%i",m_movieItem->GetVideoInfoTag()->m_iDbId,m_movieItem->GetVideoInfoTag()->m_iDbId);
+    Close();
+    CServiceBroker::GetGUI()->GetWindowManager().ActivateWindow(WINDOW_VIDEO_NAV, strPath);
+    return;
+  }
+
+  CGUIWindowVideoNav* pWindow = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIWindowVideoNav>(WINDOW_VIDEO_NAV);
   if (pWindow)
   {
     // close our dialog
     Close(true);
     if (resume)
-      movie.m_lStartOffset = STARTOFFSET_RESUME;
-    else if (!CGUIWindowVideoBase::ShowResumeMenu(movie)) 
+      m_movieItem->m_lStartOffset = STARTOFFSET_RESUME;
+    else if (!CGUIWindowVideoBase::ShowResumeMenu(*m_movieItem))
     {
       // The Resume dialog was closed without any choice
-      DoModal();
+      Open();
       return;
     }
-    pWindow->PlayMovie(&movie);
+    pWindow->PlayMovie(m_movieItem.get());
   }
 }
 
-string CGUIDialogVideoInfo::ChooseArtType(const CFileItem &videoItem, map<string, string> &currentArt)
+namespace
+{
+// Add art types required in Kodi and configured by the user
+void AddHardCodedAndExtendedArtTypes(std::vector<std::string>& artTypes, const CVideoInfoTag& tag)
+{
+  for (const auto& artType : CVideoThumbLoader::GetArtTypes(tag.m_type))
+  {
+    if (find(artTypes.cbegin(), artTypes.cend(), artType) == artTypes.cend())
+      artTypes.emplace_back(artType);
+  }
+}
+
+// Add art types currently assigned to the media item
+void AddCurrentArtTypes(std::vector<std::string>& artTypes, const CVideoInfoTag& tag,
+  CVideoDatabase& db)
+{
+  std::map<std::string, std::string> currentArt;
+  db.GetArtForItem(tag.m_iDbId, tag.m_type, currentArt);
+  for (const auto& art : currentArt)
+  {
+    if (!art.second.empty() && find(artTypes.cbegin(), artTypes.cend(), art.first) == artTypes.cend())
+      artTypes.push_back(art.first);
+  }
+}
+
+// Add art types that exist for other media items of the same type
+void AddMediaTypeArtTypes(std::vector<std::string>& artTypes, const CVideoInfoTag& tag,
+  CVideoDatabase& db)
+{
+  std::vector<std::string> dbArtTypes;
+  db.GetArtTypes(tag.m_type, dbArtTypes);
+  for (const auto& artType : dbArtTypes)
+  {
+    if (find(artTypes.cbegin(), artTypes.cend(), artType) == artTypes.cend())
+      artTypes.push_back(artType);
+  }
+}
+
+// Add art types from available but unassigned artwork for this media item
+void AddAvailableArtTypes(std::vector<std::string>& artTypes, const CVideoInfoTag& tag,
+  CVideoDatabase& db)
+{
+  for (const auto& artType : db.GetAvailableArtTypesForItem(tag.m_iDbId, tag.m_type))
+  {
+    if (find(artTypes.cbegin(), artTypes.cend(), artType) == artTypes.cend())
+      artTypes.push_back(artType);
+  }
+}
+
+std::vector<std::string> GetArtTypesList(const CVideoInfoTag& tag)
+{
+  CVideoDatabase db;
+  db.Open();
+
+  std::vector<std::string> artTypes;
+
+  AddHardCodedAndExtendedArtTypes(artTypes, tag);
+  AddCurrentArtTypes(artTypes, tag, db);
+  AddMediaTypeArtTypes(artTypes, tag, db);
+  AddAvailableArtTypes(artTypes, tag, db);
+
+  db.Close();
+  return artTypes;
+}
+}
+
+std::string CGUIDialogVideoInfo::ChooseArtType(const CFileItem &videoItem)
 {
   // prompt for choice
-  CGUIDialogSelect *dialog = (CGUIDialogSelect*)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
+  CGUIDialogSelect *dialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(WINDOW_DIALOG_SELECT);
   if (!dialog || !videoItem.HasVideoInfoTag())
     return "";
 
   CFileItemList items;
-  dialog->SetHeading(13511);
+  dialog->SetHeading(CVariant{13511});
   dialog->Reset();
   dialog->SetUseDetails(true);
   dialog->EnableButton(true, 13516);
 
-  CVideoDatabase db;
-  db.Open();
+  std::vector<std::string> artTypes = GetArtTypesList(*videoItem.GetVideoInfoTag());
 
-  vector<string> artTypes = CVideoThumbLoader::GetArtTypes(videoItem.GetVideoInfoTag()->m_type);
-
-  // add in any stored art for this item that is non-empty.
-  db.GetArtForItem(videoItem.GetVideoInfoTag()->m_iDbId, videoItem.GetVideoInfoTag()->m_type, currentArt);
-  for (CGUIListItem::ArtMap::iterator i = currentArt.begin(); i != currentArt.end(); ++i)
+  for (std::vector<std::string>::const_iterator i = artTypes.begin(); i != artTypes.end(); ++i)
   {
-    if (!i->second.empty() && find(artTypes.begin(), artTypes.end(), i->first) == artTypes.end())
-      artTypes.push_back(i->first);
-  }
-
-  // add any art types that exist for other media items of the same type
-  vector<string> dbArtTypes;
-  db.GetArtTypes(videoItem.GetVideoInfoTag()->m_type, dbArtTypes);
-  for (vector<string>::const_iterator it = dbArtTypes.begin(); it != dbArtTypes.end(); ++it)
-  {
-    if (find(artTypes.begin(), artTypes.end(), *it) == artTypes.end())
-      artTypes.push_back(*it);
-  }
-
-  for (vector<string>::const_iterator i = artTypes.begin(); i != artTypes.end(); ++i)
-  {
-    string type = *i;
-    CFileItemPtr item(new CFileItem(type, "false"));
-    item->SetLabel(type);
+    std::string type = *i;
+    CFileItemPtr item(new CFileItem(type, false));
+    if (type == "banner")
+      item->SetLabel(g_localizeStrings.Get(20020));
+    else if (type == "fanart")
+      item->SetLabel(g_localizeStrings.Get(20445));
+    else if (type == "poster")
+      item->SetLabel(g_localizeStrings.Get(20021));
+    else if (type == "thumb")
+      item->SetLabel(g_localizeStrings.Get(21371));
+    else
+      item->SetLabel(type);
+    item->SetProperty("type", type);
     if (videoItem.HasArt(type))
       item->SetArt("thumb", videoItem.GetArt(type));
     items.Add(item);
   }
 
-  dialog->SetItems(&items);
-  dialog->DoModal();
+  dialog->SetItems(items);
+  dialog->Open();
 
   if (dialog->IsButtonPressed())
   {
     // Get the new artwork name
     std::string strArtworkName;
-    if (!CGUIKeyboardFactory::ShowAndGetInput(strArtworkName, g_localizeStrings.Get(13516), false))
+    if (!CGUIKeyboardFactory::ShowAndGetInput(strArtworkName, CVariant{g_localizeStrings.Get(13516)}, false))
       return "";
 
     return strArtworkName;
   }
 
-  return dialog->GetSelectedItem()->GetLabel();
+  return dialog->GetSelectedFileItem()->GetProperty("type").asString();
 }
 
 void CGUIDialogVideoInfo::OnGetArt()
 {
-  map<string, string> currentArt;
-  string type = ChooseArtType(*m_movieItem, currentArt);
+  if (m_movieItem->GetVideoInfoTag()->m_type == MediaTypeVideoCollection)
+  {
+    ManageVideoItemArtwork(m_movieItem, m_movieItem->GetVideoInfoTag()->m_type);
+    return;
+  }
+  std::string type = ChooseArtType(*m_movieItem);
   if (type.empty())
     return; // cancelled
 
-  // TODO: this can be removed once these are unified.
+  //! @todo this can be removed once these are unified.
   if (type == "fanart")
     OnGetFanart();
   else
@@ -682,32 +822,55 @@ void CGUIDialogVideoInfo::OnGetArt()
     {
       CFileItemPtr item(new CFileItem("thumb://Current", false));
       item->SetArt("thumb", m_movieItem->GetArt(type));
+      item->SetArt("icon", "DefaultPicture.png");
       item->SetLabel(g_localizeStrings.Get(13512));
       items.Add(item);
     }
-    else if ((type == "poster" || type == "banner") && currentArt.find("thumb") != currentArt.end())
+    else if ((type == "poster" || type == "banner") && m_movieItem->HasArt("thumb"))
     { // add the 'thumb' type in
       CFileItemPtr item(new CFileItem("thumb://Thumb", false));
-      item->SetArt("thumb", currentArt["thumb"]);
+      item->SetArt("thumb", m_movieItem->GetArt("thumb"));
+      item->SetArt("icon", "DefaultPicture.png");
       item->SetLabel(g_localizeStrings.Get(13512));
       items.Add(item);
     }
 
+    std::string embeddedArt;
+    if (URIUtils::HasExtension(m_movieItem->GetVideoInfoTag()->m_strFileNameAndPath, ".mkv"))
+    {
+      CFileItem item(m_movieItem->GetVideoInfoTag()->m_strFileNameAndPath, false);
+      CVideoTagLoaderFFmpeg loader(item, nullptr, false);
+      CVideoInfoTag tag;
+      loader.Load(tag, false, nullptr);
+      for (const auto& it : tag.m_coverArt)
+      {
+        if (it.m_type == type)
+        {
+          CFileItemPtr itemF(new CFileItem("thumb://Embedded", false));
+          embeddedArt = CTextureUtils::GetWrappedImageURL(item.GetPath(), "video_" + type);
+          itemF->SetArt("thumb", embeddedArt);
+          itemF->SetLabel(g_localizeStrings.Get(13519));
+          items.Add(itemF);
+        }
+      }
+    }
+
     // Grab the thumbnails from the web
-    vector<std::string> thumbs;
+    m_movieItem->GetVideoInfoTag()->m_strPictureURL.Parse();
+    std::vector<std::string> thumbs;
     int season = (m_movieItem->GetVideoInfoTag()->m_type == MediaTypeSeason) ? m_movieItem->GetVideoInfoTag()->m_iSeason : -1;
-    m_movieItem->GetVideoInfoTag()->m_strPictureURL.GetThumbURLs(thumbs, type, season);
+    m_movieItem->GetVideoInfoTag()->m_strPictureURL.GetThumbUrls(thumbs, type, season);
 
     for (unsigned int i = 0; i < thumbs.size(); ++i)
     {
       std::string strItemPath = StringUtils::Format("thumb://Remote%i", i);
       CFileItemPtr item(new CFileItem(strItemPath, false));
       item->SetArt("thumb", thumbs[i]);
-      item->SetIconImage("DefaultPicture.png");
+      item->SetArt("icon", "DefaultPicture.png");
       item->SetLabel(g_localizeStrings.Get(13513));
 
-      // TODO: Do we need to clear the cached image?
-      //    CTextureCache::Get().ClearCachedImage(thumb);
+      //! @todo Do we need to clear the cached image?
+      //    CTextureCache::GetInstance().ClearCachedImage(thumb);
       items.Add(item);
     }
 
@@ -716,6 +879,7 @@ void CGUIDialogVideoInfo::OnGetArt()
     {
       CFileItemPtr item(new CFileItem("thumb://Local", false));
       item->SetArt("thumb", localThumb);
+      item->SetArt("icon", "DefaultPicture.png");
       item->SetLabel(g_localizeStrings.Get(13514));
       items.Add(item);
     }
@@ -724,15 +888,15 @@ void CGUIDialogVideoInfo::OnGetArt()
       // which is probably the IMDb thumb.  These could be wrong, so allow the user
       // to delete the incorrect thumb
       CFileItemPtr item(new CFileItem("thumb://None", false));
-      item->SetIconImage("DefaultVideo.png");
+      item->SetArt("icon", "DefaultPicture.png");
       item->SetLabel(g_localizeStrings.Get(13515));
       items.Add(item);
     }
 
     std::string result;
-    VECSOURCES sources(*CMediaSourceSettings::Get().GetSources("video"));
+    VECSOURCES sources(*CMediaSourceSettings::GetInstance().GetSources("video"));
     AddItemPathToFileBrowserSources(sources, *m_movieItem);
-    g_mediaManager.GetLocalDrives(sources);
+    CServiceBroker::GetMediaManager().GetLocalDrives(sources);
     if (CGUIDialogFileBrowser::ShowAndGetImage(items, sources, g_localizeStrings.Get(13511), result) &&
         result != "thumb://Current") // user didn't choose the one they have
     {
@@ -743,9 +907,11 @@ void CGUIDialogVideoInfo::OnGetArt()
         newThumb = thumbs[number];
       }
       else if (result == "thumb://Thumb")
-        newThumb = currentArt["thumb"];
+        newThumb = m_movieItem->GetArt("thumb");
       else if (result == "thumb://Local")
         newThumb = localThumb;
+      else if (result == "thumb://Embedded")
+        newThumb = embeddedArt;
       else if (CFile::Exists(result))
         newThumb = result;
       else // none
@@ -788,22 +954,45 @@ void CGUIDialogVideoInfo::OnGetFanart()
   {
     CFileItemPtr itemCurrent(new CFileItem("fanart://Current",false));
     itemCurrent->SetArt("thumb", m_movieItem->GetArt("fanart"));
+    itemCurrent->SetArt("icon", "DefaultPicture.png");
     itemCurrent->SetLabel(g_localizeStrings.Get(20440));
     items.Add(itemCurrent);
+  }
+
+  std::string embeddedArt;
+  if (URIUtils::HasExtension(m_movieItem->GetVideoInfoTag()->m_strFileNameAndPath, ".mkv"))
+  {
+    CFileItem item(m_movieItem->GetVideoInfoTag()->m_strFileNameAndPath, false);
+    CVideoTagLoaderFFmpeg loader(item, nullptr, false);
+    CVideoInfoTag tag;
+    loader.Load(tag, false, nullptr);
+    for (const auto& it : tag.m_coverArt)
+    {
+      if (it.m_type == "fanart")
+      {
+        CFileItemPtr itemF(new CFileItem("fanart://Embedded", false));
+        embeddedArt = CTextureUtils::GetWrappedImageURL(item.GetPath(), "video_fanart");
+        itemF->SetArt("thumb", embeddedArt);
+        itemF->SetLabel(g_localizeStrings.Get(13520));
+        items.Add(itemF);
+      }
+    }
   }
 
   // Grab the thumbnails from the web
   for (unsigned int i = 0; i < m_movieItem->GetVideoInfoTag()->m_fanart.GetNumFanarts(); i++)
   {
+    if (URIUtils::IsProtocol(m_movieItem->GetVideoInfoTag()->m_fanart.GetPreviewURL(i), "image"))
+      continue;
     std::string strItemPath = StringUtils::Format("fanart://Remote%i",i);
     CFileItemPtr item(new CFileItem(strItemPath, false));
     std::string thumb = m_movieItem->GetVideoInfoTag()->m_fanart.GetPreviewURL(i);
     item->SetArt("thumb", CTextureUtils::GetWrappedThumbURL(thumb));
-    item->SetIconImage("DefaultPicture.png");
+    item->SetArt("icon", "DefaultPicture.png");
     item->SetLabel(g_localizeStrings.Get(20441));
 
-    // TODO: Do we need to clear the cached image?
-//    CTextureCache::Get().ClearCachedImage(thumb);
+    //! @todo Do we need to clear the cached image?
+//    CTextureCache::GetInstance().ClearCachedImage(thumb);
     items.Add(item);
   }
 
@@ -813,24 +1002,25 @@ void CGUIDialogVideoInfo::OnGetFanart()
   {
     CFileItemPtr itemLocal(new CFileItem("fanart://Local",false));
     itemLocal->SetArt("thumb", strLocal);
+    itemLocal->SetArt("icon", "DefaultPicture.png");
     itemLocal->SetLabel(g_localizeStrings.Get(20438));
 
-    // TODO: Do we need to clear the cached image?
-    CTextureCache::Get().ClearCachedImage(strLocal);
+    //! @todo Do we need to clear the cached image?
+    CTextureCache::GetInstance().ClearCachedImage(strLocal);
     items.Add(itemLocal);
   }
   else
   {
     CFileItemPtr itemNone(new CFileItem("fanart://None", false));
-    itemNone->SetIconImage("DefaultVideo.png");
+    itemNone->SetArt("icon", "DefaultPicture.png");
     itemNone->SetLabel(g_localizeStrings.Get(20439));
     items.Add(itemNone);
   }
 
   std::string result;
-  VECSOURCES sources(*CMediaSourceSettings::Get().GetSources("video"));
+  VECSOURCES sources(*CMediaSourceSettings::GetInstance().GetSources("video"));
   AddItemPathToFileBrowserSources(sources, item);
-  g_mediaManager.GetLocalDrives(sources);
+  CServiceBroker::GetMediaManager().GetLocalDrives(sources);
   bool flip=false;
   if (!CGUIDialogFileBrowser::ShowAndGetImage(items, sources, g_localizeStrings.Get(20437), result, &flip, 20445) ||
     StringUtils::EqualsNoCase(result, "fanart://Current"))
@@ -838,6 +1028,30 @@ void CGUIDialogVideoInfo::OnGetFanart()
 
   if (StringUtils::EqualsNoCase(result, "fanart://Local"))
     result = strLocal;
+
+  if (StringUtils::EqualsNoCase(result, "fanart://Embedded"))
+  {
+    unsigned int current = m_movieItem->GetVideoInfoTag()->m_fanart.GetNumFanarts();
+    int found = -1;
+    for (size_t i = 0; i < current; ++i)
+      if (URIUtils::IsProtocol(m_movieItem->GetVideoInfoTag()->m_fanart.GetImageURL(), "image"))
+        found = i;
+    if (found != -1)
+    {
+      m_movieItem->GetVideoInfoTag()->m_fanart.AddFanart(embeddedArt, "", "");
+      found = current;
+    }
+
+    m_movieItem->GetVideoInfoTag()->m_fanart.SetPrimaryFanart(found);
+
+    CVideoDatabase db;
+    if (db.Open())
+    {
+      db.UpdateFanart(*m_movieItem, static_cast<VIDEODB_CONTENT_TYPE>(m_movieItem->GetVideoContentType()));
+      db.Close();
+    }
+    result = embeddedArt;
+  }
 
   if (StringUtils::StartsWith(result, "fanart://Remote"))
   {
@@ -847,7 +1061,7 @@ void CGUIDialogVideoInfo::OnGetFanart()
     CVideoDatabase db;
     if (db.Open())
     {
-      db.UpdateFanart(*m_movieItem, (VIDEODB_CONTENT_TYPE)m_movieItem->GetVideoContentType());
+      db.UpdateFanart(*m_movieItem, static_cast<VIDEODB_CONTENT_TYPE>(m_movieItem->GetVideoContentType()));
       db.Close();
     }
     result = m_movieItem->GetVideoInfoTag()->m_fanart.GetImageURL();
@@ -873,6 +1087,28 @@ void CGUIDialogVideoInfo::OnGetFanart()
   Update();
 }
 
+void CGUIDialogVideoInfo::OnSetUserrating() const
+{
+  CGUIDialogSelect *dialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(WINDOW_DIALOG_SELECT);
+  if (dialog)
+  {
+    dialog->SetHeading(CVariant{ 38023 });
+    dialog->Add(g_localizeStrings.Get(38022));
+    for (int i = 1; i <= 10; i++)
+      dialog->Add(StringUtils::Format("%s: %i", g_localizeStrings.Get(563).c_str(), i));
+
+    dialog->SetSelected(m_movieItem->GetVideoInfoTag()->m_iUserRating);
+
+    dialog->Open();
+
+    int iItem = dialog->GetSelectedItem();
+    if (iItem < 0)
+      return;
+
+    SetUserrating(iItem);
+  }
+}
+
 void CGUIDialogVideoInfo::PlayTrailer()
 {
   CFileItem item;
@@ -882,7 +1118,7 @@ void CGUIDialogVideoInfo::PlayTrailer()
   item.GetVideoInfoTag()->m_strTitle = StringUtils::Format("%s (%s)",
                                                            m_movieItem->GetVideoInfoTag()->m_strTitle.c_str(),
                                                            g_localizeStrings.Get(20410).c_str());
-  CVideoThumbLoader::SetArt(item, m_movieItem->GetArt());
+  item.SetArt(m_movieItem->GetArt());
   item.GetVideoInfoTag()->m_iDbId = -1;
   item.GetVideoInfoTag()->m_iFileId = -1;
 
@@ -890,9 +1126,13 @@ void CGUIDialogVideoInfo::PlayTrailer()
   Close(true);
 
   if (item.IsPlayList())
-    CApplicationMessenger::Get().MediaPlay(item);
+  {
+    CFileItemList *l = new CFileItemList; //don't delete,
+    l->Add(std::make_shared<CFileItem>(item));
+    CApplicationMessenger::GetInstance().PostMsg(TMSG_MEDIA_PLAY, -1, -1, static_cast<void*>(l));
+  }
   else
-    CApplicationMessenger::Get().PlayFile(item);
+    CApplicationMessenger::GetInstance().PostMsg(TMSG_MEDIA_PLAY, 0, 0, static_cast<void*>(new CFileItem(item)));
 }
 
 void CGUIDialogVideoInfo::SetLabel(int iControl, const std::string &strLabel)
@@ -912,13 +1152,14 @@ std::string CGUIDialogVideoInfo::GetThumbnail() const
   return m_movieItem->GetArt("thumb");
 }
 
-void CGUIDialogVideoInfo::AddItemPathToFileBrowserSources(VECSOURCES &sources, const CFileItem &item)
+namespace
+{
+std::string GetItemPathForBrowserSource(const CFileItem& item)
 {
   if (!item.HasVideoInfoTag())
-    return;
+    return "";
 
   std::string itemDir = item.GetVideoInfoTag()->m_basePath;
-
   //season
   if (itemDir.empty())
     itemDir = item.GetVideoInfoTag()->GetPath();
@@ -927,18 +1168,32 @@ void CGUIDialogVideoInfo::AddItemPathToFileBrowserSources(VECSOURCES &sources, c
   if (itemTmp.IsVideo())
     itemDir = URIUtils::GetParentPath(itemDir);
 
+  return itemDir;
+}
+
+void AddItemPathStringToFileBrowserSources(VECSOURCES& sources,
+    const std::string& itemDir, const std::string& label)
+{
   if (!itemDir.empty() && CDirectory::Exists(itemDir))
   {
     CMediaSource itemSource;
-    itemSource.strName = g_localizeStrings.Get(36041);
+    itemSource.strName = label;
     itemSource.strPath = itemDir;
     sources.push_back(itemSource);
   }
 }
+} // namespace
+
+void CGUIDialogVideoInfo::AddItemPathToFileBrowserSources(VECSOURCES& sources,
+    const CFileItem& item)
+{
+  std::string itemDir = GetItemPathForBrowserSource(item);
+  AddItemPathStringToFileBrowserSources(sources, itemDir, g_localizeStrings.Get(36041));
+}
 
 int CGUIDialogVideoInfo::ManageVideoItem(const CFileItemPtr &item)
 {
-  if (item == NULL || !item->IsVideoDb() || !item->HasVideoInfoTag() || item->GetVideoInfoTag()->m_iDbId < 0)
+  if (item == nullptr || !item->IsVideoDb() || !item->HasVideoInfoTag() || item->GetVideoInfoTag()->m_iDbId < 0)
     return -1;
 
   CVideoDatabase database;
@@ -951,25 +1206,12 @@ int CGUIDialogVideoInfo::ManageVideoItem(const CFileItemPtr &item)
   CContextButtons buttons;
   if (type == MediaTypeMovie || type == MediaTypeVideoCollection ||
       type == MediaTypeTvShow || type == MediaTypeEpisode ||
+     (type == MediaTypeSeason && item->GetVideoInfoTag()->m_iSeason > 0) ||  // seasons without "all seasons" and "specials"
       type == MediaTypeMusicVideo)
     buttons.Add(CONTEXT_BUTTON_EDIT, 16105);
 
   if (type == MediaTypeMovie || type == MediaTypeTvShow)
     buttons.Add(CONTEXT_BUTTON_EDIT_SORTTITLE, 16107);
-
-  if (item->m_bIsFolder)
-  {
-    // Have both options for folders since we don't know whether all childs are watched/unwatched
-    buttons.Add(CONTEXT_BUTTON_MARK_UNWATCHED, 16104); //Mark as UnWatched
-    buttons.Add(CONTEXT_BUTTON_MARK_WATCHED, 16103);   //Mark as Watched
-  }
-  else
-  {
-    if (item->GetOverlayImage() == "OverlayWatched.png")
-      buttons.Add(CONTEXT_BUTTON_MARK_UNWATCHED, 16104); //Mark as UnWatched
-    else
-      buttons.Add(CONTEXT_BUTTON_MARK_WATCHED, 16103);   //Mark as Watched
-  }
 
   if (type == MediaTypeMovie)
   {
@@ -996,6 +1238,10 @@ int CGUIDialogVideoInfo::ManageVideoItem(const CFileItemPtr &item)
     buttons.Add(CONTEXT_BUTTON_MOVIESET_ADD_REMOVE_ITEMS, 20465);
   }
 
+  // seasons
+  if (item->m_bIsFolder && type == MediaTypeSeason)
+    buttons.Add(CONTEXT_BUTTON_SET_SEASON_ART, 13511);
+
   // tags
   if (item->m_bIsFolder && type == "tag")
   {
@@ -1009,13 +1255,21 @@ int CGUIDialogVideoInfo::ManageVideoItem(const CFileItemPtr &item)
     }
   }
 
-  buttons.Add(CONTEXT_BUTTON_DELETE, 646);
+  if (type != MediaTypeSeason)
+    buttons.Add(CONTEXT_BUTTON_DELETE, 646);
+
+  //temporary workaround until the context menu ids are removed
+  const int addonItemOffset = 10000;
+
+  auto addonItems = CServiceBroker::GetContextMenuManager().GetAddonItems(*item, CContextMenuManager::MANAGE);
+  for (size_t i = 0; i < addonItems.size(); ++i)
+    buttons.Add(addonItemOffset + i, addonItems[i]->GetLabel(*item));
 
   bool result = false;
   int button = CGUIDialogContextMenu::ShowAndGetChoice(buttons);
   if (button >= 0)
   {
-    switch ((CONTEXT_BUTTON)button)
+    switch (static_cast<CONTEXT_BUTTON>(button))
     {
       case CONTEXT_BUTTON_EDIT:
         result = UpdateVideoItemTitle(item);
@@ -1051,7 +1305,8 @@ int CGUIDialogVideoInfo::ManageVideoItem(const CFileItemPtr &item)
         break;
 
       case CONTEXT_BUTTON_SET_MOVIESET_ART:
-        result = ManageVideoItemArtwork(item, MediaTypeVideoCollection);
+      case CONTEXT_BUTTON_SET_SEASON_ART:
+        result = ManageVideoItemArtwork(item, type);
         break;
 
       case CONTEXT_BUTTON_MOVIESET_ADD_REMOVE_ITEMS:
@@ -1067,7 +1322,8 @@ int CGUIDialogVideoInfo::ManageVideoItem(const CFileItemPtr &item)
         break;
 
       default:
-        result = false;
+        if (button >= addonItemOffset)
+          result = CONTEXTMENU::LoopFrom(*addonItems[button - addonItemOffset], item);
         break;
     }
   }
@@ -1083,13 +1339,13 @@ int CGUIDialogVideoInfo::ManageVideoItem(const CFileItemPtr &item)
 //Add change a title's name
 bool CGUIDialogVideoInfo::UpdateVideoItemTitle(const CFileItemPtr &pItem)
 {
-  if (pItem == NULL || !pItem->HasVideoInfoTag())
+  if (pItem == nullptr || !pItem->HasVideoInfoTag())
     return false;
 
   // dont allow update while scanning
   if (g_application.IsVideoScanning())
   {
-    CGUIDialogOK::ShowAndGetInput(257, 0, 14057, 0);
+    HELPERS::ShowOKDialogText(CVariant{257}, CVariant{14057});
     return false;
   }
 
@@ -1098,30 +1354,64 @@ bool CGUIDialogVideoInfo::UpdateVideoItemTitle(const CFileItemPtr &pItem)
     return false;
 
   int iDbId = pItem->GetVideoInfoTag()->m_iDbId;
+  MediaType mediaType = pItem->GetVideoInfoTag()->m_type;
+
   CVideoInfoTag detail;
-  VIDEODB_CONTENT_TYPE iType = (VIDEODB_CONTENT_TYPE)pItem->GetVideoContentType();
-  if (iType == VIDEODB_CONTENT_MOVIES)
-    database.GetMovieInfo("", detail, iDbId);
-  else if (iType == VIDEODB_CONTENT_MOVIE_SETS)
+  std::string title;
+  if (mediaType == MediaTypeMovie)
+  {
+    database.GetMovieInfo("", detail, iDbId, VideoDbDetailsNone);
+    title = detail.m_strTitle;
+  }
+  else if (mediaType == MediaTypeVideoCollection)
+  {
     database.GetSetInfo(iDbId, detail);
-  else if (iType == VIDEODB_CONTENT_EPISODES)
-    database.GetEpisodeInfo(pItem->GetPath(), detail, iDbId);
-  else if (iType == VIDEODB_CONTENT_TVSHOWS)
-    database.GetTvShowInfo(pItem->GetVideoInfoTag()->m_strFileNameAndPath, detail, iDbId);
-  else if (iType == VIDEODB_CONTENT_MUSICVIDEOS)
-    database.GetMusicVideoInfo(pItem->GetVideoInfoTag()->m_strFileNameAndPath, detail, iDbId);
+    title = detail.m_strTitle;
+  }
+  else if (mediaType == MediaTypeEpisode)
+  {
+    database.GetEpisodeInfo(pItem->GetPath(), detail, iDbId, VideoDbDetailsNone);
+    title = detail.m_strTitle;
+  }
+  else if (mediaType == MediaTypeSeason)
+  {
+    database.GetSeasonInfo(iDbId, detail);
+    title = detail.m_strSortTitle;
+  }
+  else if (mediaType == MediaTypeTvShow)
+  {
+    database.GetTvShowInfo(pItem->GetVideoInfoTag()->m_strFileNameAndPath, detail, iDbId, 0, VideoDbDetailsNone);
+    title = detail.m_strTitle;
+  }
+  else if (mediaType == MediaTypeMusicVideo)
+  {
+    database.GetMusicVideoInfo(pItem->GetVideoInfoTag()->m_strFileNameAndPath, detail, iDbId, VideoDbDetailsNone);
+    title = detail.m_strTitle;
+  }
 
   // get the new title
-  if (!CGUIKeyboardFactory::ShowAndGetInput(detail.m_strTitle, g_localizeStrings.Get(16105), false))
+  if (!CGUIKeyboardFactory::ShowAndGetInput(title, CVariant{ g_localizeStrings.Get(16105) }, false))
     return false;
 
-  database.UpdateMovieTitle(iDbId, detail.m_strTitle, iType);
+  if (mediaType == MediaTypeSeason)
+  {
+    detail.m_strSortTitle = title;
+    std::map<std::string, std::string> artwork;
+    database.SetDetailsForSeason(detail, artwork, detail.m_iIdShow, detail.m_iDbId);
+  }
+  else
+  {
+    detail.m_strTitle = title;
+    VIDEODB_CONTENT_TYPE iType = static_cast<VIDEODB_CONTENT_TYPE>(pItem->GetVideoContentType());
+    database.UpdateMovieTitle(iDbId, detail.m_strTitle, iType);
+  }
+
   return true;
 }
 
 bool CGUIDialogVideoInfo::CanDeleteVideoItem(const CFileItemPtr &item)
 {
-  if (item == NULL || !item->HasVideoInfoTag())
+  if (item == nullptr || !item->HasVideoInfoTag())
     return false;
 
   CQueryParams params;
@@ -1137,23 +1427,23 @@ bool CGUIDialogVideoInfo::CanDeleteVideoItem(const CFileItemPtr &item)
 
 bool CGUIDialogVideoInfo::DeleteVideoItemFromDatabase(const CFileItemPtr &item, bool unavailable /* = false */)
 {
-  if (item == NULL || !item->HasVideoInfoTag() ||
+  if (item == nullptr || !item->HasVideoInfoTag() ||
       !CanDeleteVideoItem(item))
     return false;
 
   // dont allow update while scanning
   if (g_application.IsVideoScanning())
   {
-    CGUIDialogOK::ShowAndGetInput(257, 0, 14057, 0);
+    HELPERS::ShowOKDialogText(CVariant{257}, CVariant{14057});
     return false;
   }
 
-  CGUIDialogYesNo* pDialog = (CGUIDialogYesNo*)g_windowManager.GetWindow(WINDOW_DIALOG_YES_NO);
-  if (pDialog == NULL)
+  CGUIDialogYesNo* pDialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogYesNo>(WINDOW_DIALOG_YES_NO);
+  if (pDialog == nullptr)
     return false;
-  
+
   int heading = -1;
-  VIDEODB_CONTENT_TYPE type = (VIDEODB_CONTENT_TYPE)item->GetVideoContentType();
+  VIDEODB_CONTENT_TYPE type = static_cast<VIDEODB_CONTENT_TYPE>(item->GetVideoContentType());
   switch (type)
   {
     case VIDEODB_CONTENT_MOVIES:
@@ -1176,20 +1466,20 @@ bool CGUIDialogVideoInfo::DeleteVideoItemFromDatabase(const CFileItemPtr &item, 
       return false;
   }
 
-  pDialog->SetHeading(heading);
+  pDialog->SetHeading(CVariant{heading});
 
   if (unavailable)
   {
-    pDialog->SetLine(0, g_localizeStrings.Get(662));
-    pDialog->SetLine(1, g_localizeStrings.Get(663));
+    pDialog->SetLine(0, CVariant{g_localizeStrings.Get(662)});
+    pDialog->SetLine(1, CVariant{g_localizeStrings.Get(663)});
   }
   else
   {
-    pDialog->SetLine(0, StringUtils::Format(g_localizeStrings.Get(433).c_str(), item->GetLabel().c_str()));
-    pDialog->SetLine(1, "");
+    pDialog->SetLine(0, CVariant{StringUtils::Format(g_localizeStrings.Get(433).c_str(), item->GetLabel().c_str())});
+    pDialog->SetLine(1, CVariant{""});
   }
-  pDialog->SetLine(2, "");
-  pDialog->DoModal();
+  pDialog->SetLine(2, CVariant{""});
+  pDialog->Open();
 
   if (!pDialog->IsConfirmed())
     return false;
@@ -1225,18 +1515,20 @@ bool CGUIDialogVideoInfo::DeleteVideoItemFromDatabase(const CFileItemPtr &item, 
 
 bool CGUIDialogVideoInfo::DeleteVideoItem(const CFileItemPtr &item, bool unavailable /* = false */)
 {
-  if (item == NULL)
+  if (item == nullptr)
     return false;
 
   // delete the video item from the database
   if (!DeleteVideoItemFromDatabase(item, unavailable))
     return false;
 
+  const std::shared_ptr<CProfileManager> profileManager = CServiceBroker::GetSettingsComponent()->GetProfileManager();
+
   // check if the user is allowed to delete the actual file as well
-  if ((CProfilesManager::Get().GetCurrentProfile().getLockMode() == LOCK_MODE_EVERYONE ||
-       !CProfilesManager::Get().GetCurrentProfile().filesLocked() ||
-       g_passwordManager.IsMasterLockUnlocked(true)) &&
-      CSettings::Get().GetBool("filelists.allowfiledeletion"))
+  if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_FILELISTS_ALLOWFILEDELETION) &&
+      (profileManager->GetCurrentProfile().getLockMode() == LOCK_MODE_EVERYONE ||
+       !profileManager->GetCurrentProfile().filesLocked() ||
+       g_passwordManager.IsMasterLockUnlocked(true)))
   {
     std::string strDeletePath = item->GetVideoInfoTag()->GetPath();
 
@@ -1260,7 +1552,10 @@ bool CGUIDialogVideoInfo::DeleteVideoItem(const CFileItemPtr &item, bool unavail
       // HACK: stacked files need to be treated as folders in order to be deleted
       if (item->IsStack())
         item->m_bIsFolder = true;
-      CFileUtils::DeleteItem(item);
+
+      CGUIComponent *gui = CServiceBroker::GetGUI();
+      if (gui && gui->ConfirmDelete(item->GetPath()))
+        CFileUtils::DeleteItem(item);
     }
   }
 
@@ -1271,7 +1566,7 @@ bool CGUIDialogVideoInfo::DeleteVideoItem(const CFileItemPtr &item, bool unavail
 
 bool CGUIDialogVideoInfo::ManageMovieSets(const CFileItemPtr &item)
 {
-  if (item == NULL)
+  if (item == nullptr)
     return false;
 
   CFileItemList originalItems;
@@ -1285,7 +1580,7 @@ bool CGUIDialogVideoInfo::ManageMovieSets(const CFileItemPtr &item)
   std::sort(original.begin(), original.end(), compFileItemsByDbId);
   VECFILEITEMS selected = selectedItems.GetList();
   std::sort(selected.begin(), selected.end(), compFileItemsByDbId);
-  
+
   bool refreshNeeded = false;
   // update the "added" items
   VECFILEITEMS addedItems;
@@ -1312,34 +1607,34 @@ bool CGUIDialogVideoInfo::ManageMovieSets(const CFileItemPtr &item)
 
 bool CGUIDialogVideoInfo::GetMoviesForSet(const CFileItem *setItem, CFileItemList &originalMovies, CFileItemList &selectedMovies)
 {
-  if (setItem == NULL || !setItem->HasVideoInfoTag())
+  if (setItem == nullptr || !setItem->HasVideoInfoTag())
     return false;
 
   CVideoDatabase videodb;
   if (!videodb.Open())
     return false;
 
-  std::string strHeading = g_localizeStrings.Get(20457);
   std::string baseDir = StringUtils::Format("videodb://movies/sets/%d", setItem->GetVideoInfoTag()->m_iDbId);
 
-  if (!CDirectory::GetDirectory(baseDir, originalMovies) || originalMovies.Size() <= 0) // keep a copy of the original members of the set
+  if (!CDirectory::GetDirectory(baseDir, originalMovies, "", DIR_FLAG_DEFAULTS) ||
+      originalMovies.Size() <= 0) // keep a copy of the original members of the set
     return false;
 
   CFileItemList listItems;
   if (!videodb.GetSortedVideos(MediaTypeMovie, "videodb://movies", SortDescription(), listItems) || listItems.Size() <= 0)
     return false;
 
-  CGUIDialogSelect *dialog = (CGUIDialogSelect *)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
-  if (dialog == NULL)
+  CGUIDialogSelect *dialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(WINDOW_DIALOG_SELECT);
+  if (dialog == nullptr)
     return false;
 
-  listItems.Sort(SortByLabel, SortOrderAscending, SortAttributeIgnoreArticle);
+  listItems.Sort(SortByLabel, SortOrderAscending, CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_FILELISTS_IGNORETHEWHENSORTING) ? SortAttributeIgnoreArticle : SortAttributeNone);
 
   dialog->Reset();
   dialog->SetMultiSelection(true);
-  dialog->SetHeading(strHeading);
-  dialog->SetItems(&listItems);
-  vector<int> selectedIndices;
+  dialog->SetHeading(CVariant{g_localizeStrings.Get(20457)});
+  dialog->SetItems(listItems);
+  std::vector<int> selectedIndices;
   for (int i = 0; i < originalMovies.Size(); i++)
   {
     for (int listIndex = 0; listIndex < listItems.Size(); listIndex++)
@@ -1353,11 +1648,12 @@ bool CGUIDialogVideoInfo::GetMoviesForSet(const CFileItem *setItem, CFileItemLis
   }
   dialog->SetSelected(selectedIndices);
   dialog->EnableButton(true, 186);
-  dialog->DoModal();
+  dialog->Open();
 
   if (dialog->IsConfirmed())
   {
-    selectedMovies.Copy(dialog->GetSelectedItems());
+    for (int i : dialog->GetSelectedItems())
+      selectedMovies.Add(listItems.Get(i));
     return (selectedMovies.Size() > 0);
   }
   else
@@ -1366,7 +1662,7 @@ bool CGUIDialogVideoInfo::GetMoviesForSet(const CFileItem *setItem, CFileItemLis
 
 bool CGUIDialogVideoInfo::GetSetForMovie(const CFileItem *movieItem, CFileItemPtr &selectedSet)
 {
-  if (movieItem == NULL || !movieItem->HasVideoInfoTag())
+  if (movieItem == nullptr || !movieItem->HasVideoInfoTag())
     return false;
 
   CVideoDatabase videodb;
@@ -1374,22 +1670,37 @@ bool CGUIDialogVideoInfo::GetSetForMovie(const CFileItem *movieItem, CFileItemPt
     return false;
 
   CFileItemList listItems;
-  std::string baseDir = "videodb://movies/sets/";
-  if (!CDirectory::GetDirectory(baseDir, listItems))
+
+  // " ignoreSingleMovieSets=false " as an option in the url is needed here
+  // to override the gui-setting "Include sets containing a single movie"
+  // and retrieve all moviesets
+
+  std::string baseDir = "videodb://movies/sets/?ignoreSingleMovieSets=false";
+
+  if (!CDirectory::GetDirectory(baseDir, listItems, "", DIR_FLAG_DEFAULTS))
     return false;
-  listItems.Sort(SortByLabel, SortOrderAscending, SortAttributeIgnoreArticle);
+  listItems.Sort(SortByLabel, SortOrderAscending, CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_FILELISTS_IGNORETHEWHENSORTING) ? SortAttributeIgnoreArticle : SortAttributeNone);
 
   int currentSetId = 0;
   std::string currentSetLabel;
 
-  if (movieItem->GetVideoInfoTag()->m_iSetId > currentSetId)
+  if (movieItem->GetVideoInfoTag()->m_set.id > currentSetId)
   {
-    currentSetId = movieItem->GetVideoInfoTag()->m_iSetId;
+    currentSetId = movieItem->GetVideoInfoTag()->m_set.id;
     currentSetLabel = videodb.GetSetById(currentSetId);
   }
 
   if (currentSetId > 0)
   {
+    // remove duplicate entry
+    for (int listIndex = 0; listIndex < listItems.Size(); listIndex++)
+    {
+      if (listItems.Get(listIndex)->GetVideoInfoTag()->m_iDbId == currentSetId)
+      {
+        listItems.Remove(listIndex);
+        break;
+      }
+    }
     // add clear item
     std::string strClear = StringUtils::Format(g_localizeStrings.Get(20467).c_str(), currentSetLabel.c_str());
     CFileItemPtr clearItem(new CFileItem(strClear));
@@ -1402,17 +1713,16 @@ bool CGUIDialogVideoInfo::GetSetForMovie(const CFileItem *movieItem, CFileItemPt
     listItems.AddFront(keepItem, 1);
   }
 
-  CGUIDialogSelect *dialog = (CGUIDialogSelect *)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
-  if (dialog == NULL)
+  CGUIDialogSelect *dialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(WINDOW_DIALOG_SELECT);
+  if (dialog == nullptr)
     return false;
 
-  std::string strHeading = g_localizeStrings.Get(20466);
   dialog->Reset();
-  dialog->SetHeading(strHeading);
-  dialog->SetItems(&listItems);
+  dialog->SetHeading(CVariant{g_localizeStrings.Get(20466)});
+  dialog->SetItems(listItems);
   if (currentSetId >= 0)
   {
-    for (int listIndex = 0; listIndex < listItems.Size(); listIndex++) 
+    for (int listIndex = 0; listIndex < listItems.Size(); listIndex++)
     {
       if (listItems.Get(listIndex)->GetVideoInfoTag()->m_iDbId == currentSetId)
       {
@@ -1422,15 +1732,15 @@ bool CGUIDialogVideoInfo::GetSetForMovie(const CFileItem *movieItem, CFileItemPt
     }
   }
   dialog->EnableButton(true, 20468); // new set via button
-  dialog->DoModal();
+  dialog->Open();
 
   if (dialog->IsButtonPressed())
   { // creating new set
     std::string newSetTitle;
-    if (!CGUIKeyboardFactory::ShowAndGetInput(newSetTitle, g_localizeStrings.Get(20468), false))
+    if (!CGUIKeyboardFactory::ShowAndGetInput(newSetTitle, CVariant{g_localizeStrings.Get(20468)}, false))
       return false;
     int idSet = videodb.AddSet(newSetTitle);
-    map<string, string> movieArt, setArt;
+    std::map<std::string, std::string> movieArt, setArt;
     if (!videodb.GetArtForItem(idSet, MediaTypeVideoCollection, setArt))
     {
       videodb.GetArtForItem(movieItem->GetVideoInfoTag()->m_iDbId, MediaTypeMovie, movieArt);
@@ -1443,8 +1753,8 @@ bool CGUIDialogVideoInfo::GetSetForMovie(const CFileItem *movieItem, CFileItemPt
   }
   else if (dialog->IsConfirmed())
   {
-    selectedSet = dialog->GetSelectedItem();
-    return (selectedSet != NULL);
+    selectedSet = dialog->GetSelectedFileItem();
+    return (selectedSet != nullptr);
   }
   else
     return false;
@@ -1452,8 +1762,8 @@ bool CGUIDialogVideoInfo::GetSetForMovie(const CFileItem *movieItem, CFileItemPt
 
 bool CGUIDialogVideoInfo::SetMovieSet(const CFileItem *movieItem, const CFileItem *selectedSet)
 {
-  if (movieItem == NULL || !movieItem->HasVideoInfoTag() ||
-      selectedSet == NULL || !selectedSet->HasVideoInfoTag())
+  if (movieItem == nullptr || !movieItem->HasVideoInfoTag() ||
+      selectedSet == nullptr || !selectedSet->HasVideoInfoTag())
     return false;
 
   CVideoDatabase videodb;
@@ -1503,33 +1813,34 @@ bool CGUIDialogVideoInfo::GetItemsForTag(const std::string &strHeading, const st
     if (!showAll)
       videoUrl.AddOption("tagid", idTag);
     else
-      filter.where = videodb.PrepareSQL("%s_view.%s NOT IN (SELECT tag_link.media_type FROM tag_link WHERE tag_link.tag_id = %d AND tag_link.media_type = '%s')", type.c_str(), idColumn.c_str(), idTag, type.c_str());
+      filter.where = videodb.PrepareSQL("%s_view.%s NOT IN (SELECT tag_link.media_id FROM tag_link WHERE tag_link.tag_id = %d AND tag_link.media_type = '%s')", type.c_str(), idColumn.c_str(), idTag, type.c_str());
   }
 
   CFileItemList listItems;
   if (!videodb.GetSortedVideos(mediaType, videoUrl.ToString(), SortDescription(), listItems, filter) || listItems.Size() <= 0)
     return false;
 
-  CGUIDialogSelect *dialog = (CGUIDialogSelect *)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
-  if (dialog == NULL)
+  CGUIDialogSelect *dialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(WINDOW_DIALOG_SELECT);
+  if (dialog == nullptr)
     return false;
 
-  listItems.Sort(SortByLabel, SortOrderAscending, SortAttributeIgnoreArticle);
+  listItems.Sort(SortByLabel, SortOrderAscending, CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_FILELISTS_IGNORETHEWHENSORTING) ? SortAttributeIgnoreArticle : SortAttributeNone);
 
   dialog->Reset();
   dialog->SetMultiSelection(true);
-  dialog->SetHeading(strHeading);
-  dialog->SetItems(&listItems);
+  dialog->SetHeading(CVariant{strHeading});
+  dialog->SetItems(listItems);
   dialog->EnableButton(true, 186);
-  dialog->DoModal();
+  dialog->Open();
 
-  items.Copy(dialog->GetSelectedItems());
+  for (int i : dialog->GetSelectedItems())
+    items.Add(listItems.Get(i));
   return items.Size() > 0;
 }
 
 bool CGUIDialogVideoInfo::AddItemsToTag(const CFileItemPtr &tagItem)
 {
-  if (tagItem == NULL || !tagItem->HasVideoInfoTag())
+  if (tagItem == nullptr || !tagItem->HasVideoInfoTag())
     return false;
 
   CVideoDbUrl videoUrl;
@@ -1562,7 +1873,7 @@ bool CGUIDialogVideoInfo::AddItemsToTag(const CFileItemPtr &tagItem)
 
 bool CGUIDialogVideoInfo::RemoveItemsFromTag(const CFileItemPtr &tagItem)
 {
-  if (tagItem == NULL || !tagItem->HasVideoInfoTag())
+  if (tagItem == nullptr || !tagItem->HasVideoInfoTag())
     return false;
 
   CVideoDbUrl videoUrl;
@@ -1593,9 +1904,32 @@ bool CGUIDialogVideoInfo::RemoveItemsFromTag(const CFileItemPtr &tagItem)
   return true;
 }
 
+namespace
+{
+std::string FindLocalMovieSetArtworkFile(const CFileItemPtr& item, const std::string& artType)
+{
+  std::string infoFolder = VIDEO::CVideoInfoScanner::GetMovieSetInfoFolder(item->GetLabel());
+  if (infoFolder.empty())
+    return "";
+
+  CFileItemList availableArtFiles;
+  CDirectory::GetDirectory(infoFolder, availableArtFiles,
+      CServiceBroker::GetFileExtensionProvider().GetPictureExtensions(),
+      DIR_FLAG_NO_FILE_DIRS | DIR_FLAG_READ_CACHE | DIR_FLAG_NO_FILE_INFO);
+  for (const auto& artFile : availableArtFiles)
+  {
+    std::string candidate = URIUtils::GetFileName(artFile->GetPath());
+    URIUtils::RemoveExtension(candidate);
+    if (StringUtils::EqualsNoCase(candidate, artType))
+      return artFile->GetPath();
+  }
+  return "";
+}
+} // namespace
+
 bool CGUIDialogVideoInfo::ManageVideoItemArtwork(const CFileItemPtr &item, const MediaType &type)
 {
-  if (item == NULL || !item->HasVideoInfoTag() || type.empty())
+  if (item == nullptr || !item->HasVideoInfoTag() || type.empty())
     return false;
 
   CVideoDatabase videodb;
@@ -1608,15 +1942,22 @@ bool CGUIDialogVideoInfo::ManageVideoItemArtwork(const CFileItemPtr &item, const
   std::string currentThumb;
   int idArtist = -1;
   std::string artistPath;
-  string artType = "thumb";
+  std::string artistOldPath;
+  std::string artType = "thumb";
   if (type == MediaTypeArtist)
   {
     CMusicDatabase musicdb;
     if (musicdb.Open())
     {
-      idArtist = musicdb.GetArtistByName(item->GetLabel());
-      if (idArtist >= 0 && musicdb.GetArtistPath(idArtist, artistPath))
+      idArtist = musicdb.GetArtistByName(item->GetLabel()); // Fails when name not unique
+      if (idArtist >= 0 )
       {
+        // Get artist paths - possible locations for thumb - while music db open
+        musicdb.GetOldArtistPath(idArtist, artistOldPath);  // Old artist path, local to music files
+        CArtist artist;
+        musicdb.GetArtist(idArtist, artist); // Need name and mbid for artist folder name
+        musicdb.GetArtistPath(artist, artistPath);  // Artist path in artist info folder
+
         currentThumb = musicdb.GetArtForItem(idArtist, MediaTypeArtist, "thumb");
         if (currentThumb.empty())
           currentThumb = videodb.GetArtForItem(item->GetVideoInfoTag()->m_iDbId, item->GetVideoInfoTag()->m_type, artType);
@@ -1627,18 +1968,17 @@ bool CGUIDialogVideoInfo::ManageVideoItemArtwork(const CFileItemPtr &item, const
     currentThumb = videodb.GetArtForItem(item->GetVideoInfoTag()->m_iDbId, item->GetVideoInfoTag()->m_type, artType);
   else
   { // SEASON, SET
-    map<string, string> currentArt;
-    artType = ChooseArtType(*item, currentArt);
+    artType = ChooseArtType(*item);
     if (artType.empty())
       return false;
 
-    if (artType == "fanart")
+    if (artType == "fanart" && type != MediaTypeVideoCollection)
       return OnGetFanart(item);
 
-    if (currentArt.find(artType) != currentArt.end())
-      currentThumb = currentArt[artType];
-    else if ((artType == "poster" || artType == "banner") && currentArt.find("thumb") != currentArt.end())
-      currentThumb = currentArt["thumb"];
+    if (item->HasArt(artType))
+      currentThumb = item->GetArt(artType);
+    else if ((artType == "poster" || artType == "banner") && item->HasArt("thumb"))
+      currentThumb = item->GetArt("thumb");
   }
 
   if (!currentThumb.empty())
@@ -1648,18 +1988,19 @@ bool CGUIDialogVideoInfo::ManageVideoItemArtwork(const CFileItemPtr &item, const
     item->SetLabel(g_localizeStrings.Get(13512));
     items.Add(item);
   }
-  noneitem->SetIconImage("DefaultFolder.png");
+  noneitem->SetArt("icon", "DefaultFolder.png");
   noneitem->SetLabel(g_localizeStrings.Get(13515));
 
   bool local = false;
-  vector<std::string> thumbs;
+  std::vector<std::string> thumbs;
   if (type != MediaTypeArtist)
   {
     CVideoInfoTag tag;
     if (type == MediaTypeSeason)
     {
       videodb.GetTvShowInfo("", tag, item->GetVideoInfoTag()->m_iIdShow);
-      tag.m_strPictureURL.GetThumbURLs(thumbs, artType, item->GetVideoInfoTag()->m_iSeason);
+      tag.m_strPictureURL.Parse();
+      tag.m_strPictureURL.GetThumbUrls(thumbs, artType, item->GetVideoInfoTag()->m_iSeason);
     }
     else if (type == MediaTypeVideoCollection)
     {
@@ -1671,26 +2012,27 @@ bool CGUIDialogVideoInfo::ManageVideoItemArtwork(const CFileItemPtr &item, const
         {
           CVideoInfoTag* pTag = items[i]->GetVideoInfoTag();
           pTag->m_strPictureURL.Parse();
-          pTag->m_strPictureURL.GetThumbURLs(thumbs, artType);
+          pTag->m_strPictureURL.GetThumbUrls(thumbs, "set." + artType, -1, true);
         }
       }
     }
     else
     {
       tag = *item->GetVideoInfoTag();
-      tag.m_strPictureURL.GetThumbURLs(thumbs, artType);
+      tag.m_strPictureURL.Parse();
+      tag.m_strPictureURL.GetThumbUrls(thumbs, artType);
     }
 
     for (size_t i = 0; i < thumbs.size(); i++)
     {
-      CFileItemPtr item(new CFileItem(StringUtils::Format("thumb://Remote%" PRIuS, i), false));
+      CFileItemPtr item(new CFileItem(StringUtils::Format("thumb://Remote{0}", i), false));
       item->SetArt("thumb", thumbs[i]);
-      item->SetIconImage("DefaultPicture.png");
+      item->SetArt("icon", "DefaultPicture.png");
       item->SetLabel(g_localizeStrings.Get(13513));
       items.Add(item);
 
-      // TODO: Do we need to clear the cached image?
-      //    CTextureCache::Get().ClearCachedImage(thumbs[i]);
+      //! @todo Do we need to clear the cached image?
+      //    CTextureCache::GetInstance().ClearCachedImage(thumbs[i]);
     }
 
     if (type == "actor")
@@ -1706,16 +2048,42 @@ bool CGUIDialogVideoInfo::ManageVideoItemArtwork(const CFileItemPtr &item, const
         local = true;
       }
       else
-        noneitem->SetIconImage("DefaultActor.png");
+        noneitem->SetArt("icon", "DefaultActor.png");
     }
 
     if (type == MediaTypeVideoCollection)
-      noneitem->SetIconImage("DefaultVideo.png");
+    {
+      std::string localFile = FindLocalMovieSetArtworkFile(item, artType);
+      if (!localFile.empty())
+      {
+        CFileItemPtr pItem(new CFileItem(localFile, false));
+        pItem->SetLabel(g_localizeStrings.Get(13514));
+        pItem->SetArt("thumb", localFile);
+        items.Add(pItem);
+        local = true;
+      }
+      else
+        noneitem->SetArt("icon", "DefaultVideo.png");
+    }
   }
   else
   {
-    std::string strThumb = URIUtils::AddFileToFolder(artistPath, "folder.jpg");
-    if (XFILE::CFile::Exists(strThumb))
+    std::string strThumb;
+    bool existsThumb = false;
+    // First look for artist thumb in the primary location
+    if (!artistPath.empty())
+    {
+      strThumb = URIUtils::AddFileToFolder(artistPath, "folder.jpg");
+      existsThumb = CFile::Exists(strThumb);
+    }
+    // If not there fall back local to music files (historic location for those album artists with a unique folder)
+    if (!existsThumb && !artistOldPath.empty())
+    {
+      strThumb = URIUtils::AddFileToFolder(artistOldPath, "folder.jpg");
+      existsThumb = CFile::Exists(strThumb);
+    }
+
+    if (existsThumb)
     {
       CFileItemPtr pItem(new CFileItem(strThumb, false));
       pItem->SetLabel(g_localizeStrings.Get(13514));
@@ -1724,22 +2092,33 @@ bool CGUIDialogVideoInfo::ManageVideoItemArtwork(const CFileItemPtr &item, const
       local = true;
     }
     else
-      noneitem->SetIconImage("DefaultArtist.png");
+      noneitem->SetArt("icon", "DefaultArtist.png");
   }
 
   if (!local)
     items.Add(noneitem);
-  
+
   std::string result;
-  VECSOURCES sources=*CMediaSourceSettings::Get().GetSources("video");
-  g_mediaManager.GetLocalDrives(sources);
-  AddItemPathToFileBrowserSources(sources, *item);
+  VECSOURCES sources=*CMediaSourceSettings::GetInstance().GetSources("video");
+  CServiceBroker::GetMediaManager().GetLocalDrives(sources);
+  if (type == MediaTypeVideoCollection)
+  {
+    AddItemPathStringToFileBrowserSources(sources,
+        VIDEO::CVideoInfoScanner::GetMovieSetInfoFolder(item->GetLabel()),
+        g_localizeStrings.Get(36041));
+    AddItemPathStringToFileBrowserSources(sources,
+        CServiceBroker::GetSettingsComponent()->GetSettings()->GetString(
+            CSettings::SETTING_VIDEOLIBRARY_MOVIESETSFOLDER),
+        "* " + g_localizeStrings.Get(20226));
+  }
+  else
+    AddItemPathToFileBrowserSources(sources, *item);
   if (!CGUIDialogFileBrowser::ShowAndGetImage(items, sources, g_localizeStrings.Get(13511), result))
     return false;   // user cancelled
 
   if (result == "thumb://Current")
     result = currentThumb;   // user chose the one they have
-  
+
   // delete the thumbnail if that's what the user wants, else overwrite with the
   // new thumbnail
   if (result == "thumb://None")
@@ -1763,22 +2142,24 @@ bool CGUIDialogVideoInfo::ManageVideoItemArtwork(const CFileItemPtr &item, const
       musicdb.SetArtForItem(idArtist, MediaTypeArtist, artType, result);
   }
 
+  item->SetArt(artType, result);
+
   CUtil::DeleteVideoDatabaseDirectoryCache();
   CGUIMessage msg(GUI_MSG_NOTIFY_ALL, 0, 0, GUI_MSG_REFRESH_THUMBS);
-  g_windowManager.SendMessage(msg);
+  CServiceBroker::GetGUI()->GetWindowManager().SendMessage(msg);
 
   return true;
 }
 
 std::string CGUIDialogVideoInfo::GetLocalizedVideoType(const std::string &strType)
 {
-  if (MediaTypes::IsMediaType(strType, MediaTypeMovie))
+  if (CMediaTypes::IsMediaType(strType, MediaTypeMovie))
     return g_localizeStrings.Get(20342);
-  else if (MediaTypes::IsMediaType(strType, MediaTypeTvShow))
+  else if (CMediaTypes::IsMediaType(strType, MediaTypeTvShow))
     return g_localizeStrings.Get(20343);
-  else if (MediaTypes::IsMediaType(strType, MediaTypeEpisode))
+  else if (CMediaTypes::IsMediaType(strType, MediaTypeEpisode))
     return g_localizeStrings.Get(20359);
-  else if (MediaTypes::IsMediaType(strType, MediaTypeMusicVideo))
+  else if (CMediaTypes::IsMediaType(strType, MediaTypeMusicVideo))
     return g_localizeStrings.Get(20391);
 
   return "";
@@ -1789,7 +2170,7 @@ bool CGUIDialogVideoInfo::UpdateVideoItemSortTitle(const CFileItemPtr &pItem)
   // dont allow update while scanning
   if (g_application.IsVideoScanning())
   {
-    CGUIDialogOK::ShowAndGetInput(257, 0, 14057, 0);
+    HELPERS::ShowOKDialogText(CVariant{257}, CVariant{14057});
     return false;
   }
 
@@ -1799,20 +2180,20 @@ bool CGUIDialogVideoInfo::UpdateVideoItemSortTitle(const CFileItemPtr &pItem)
 
   int iDbId = pItem->GetVideoInfoTag()->m_iDbId;
   CVideoInfoTag detail;
-  VIDEODB_CONTENT_TYPE iType = (VIDEODB_CONTENT_TYPE)pItem->GetVideoContentType();
+  VIDEODB_CONTENT_TYPE iType = static_cast<VIDEODB_CONTENT_TYPE>(pItem->GetVideoContentType());
   if (iType == VIDEODB_CONTENT_MOVIES)
-    database.GetMovieInfo("", detail, iDbId);
+    database.GetMovieInfo("", detail, iDbId, VideoDbDetailsNone);
   else if (iType == VIDEODB_CONTENT_TVSHOWS)
-    database.GetTvShowInfo(pItem->GetVideoInfoTag()->m_strFileNameAndPath, detail, iDbId);
+    database.GetTvShowInfo(pItem->GetVideoInfoTag()->m_strFileNameAndPath, detail, iDbId, 0, VideoDbDetailsNone);
 
   std::string currentTitle;
   if (detail.m_strSortTitle.empty())
     currentTitle = detail.m_strTitle;
   else
     currentTitle = detail.m_strSortTitle;
-  
+
   // get the new sort title
-  if (!CGUIKeyboardFactory::ShowAndGetInput(currentTitle, g_localizeStrings.Get(16107), false))
+  if (!CGUIKeyboardFactory::ShowAndGetInput(currentTitle, CVariant{g_localizeStrings.Get(16107)}, false))
     return false;
 
   return database.UpdateVideoSortTitle(iDbId, currentTitle, iType);
@@ -1825,14 +2206,14 @@ bool CGUIDialogVideoInfo::LinkMovieToTvShow(const CFileItemPtr &item, bool bRemo
   CFileItemList list;
   if (bRemove)
   {
-    vector<int> ids;
+    std::vector<int> ids;
     if (!database.GetLinksToTvShow(dbId, ids))
       return false;
 
     for (unsigned int i = 0; i < ids.size(); ++i)
     {
       CVideoInfoTag tag;
-      database.GetTvShowInfo("", tag, ids[i]);
+      database.GetTvShowInfo("", tag, ids[i], 0 , VideoDbDetailsNone);
       CFileItemPtr show(new CFileItem(tag));
       list.Add(show);
     }
@@ -1842,7 +2223,7 @@ bool CGUIDialogVideoInfo::LinkMovieToTvShow(const CFileItemPtr &item, bool bRemo
     database.GetTvShowsNav("videodb://tvshows/titles", list);
 
     // remove already linked shows
-    vector<int> ids;
+    std::vector<int> ids;
     if (!database.GetLinksToTvShow(dbId, ids))
       return false;
 
@@ -1864,13 +2245,16 @@ bool CGUIDialogVideoInfo::LinkMovieToTvShow(const CFileItemPtr &item, bool bRemo
   int iSelectedLabel = 0;
   if (list.Size() > 1 || (!bRemove && !list.IsEmpty()))
   {
-    list.Sort(SortByLabel, SortOrderAscending, CSettings::Get().GetBool("filelists.ignorethewhensorting") ? SortAttributeIgnoreArticle : SortAttributeNone);
-    CGUIDialogSelect* pDialog = (CGUIDialogSelect*)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
-    pDialog->Reset();
-    pDialog->SetItems(&list);
-    pDialog->SetHeading(20356);
-    pDialog->DoModal();
-    iSelectedLabel = pDialog->GetSelectedLabel();
+    list.Sort(SortByLabel, SortOrderAscending, CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_FILELISTS_IGNORETHEWHENSORTING) ? SortAttributeIgnoreArticle : SortAttributeNone);
+    CGUIDialogSelect* pDialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(WINDOW_DIALOG_SELECT);
+    if (pDialog)
+    {
+      pDialog->Reset();
+      pDialog->SetItems(list);
+      pDialog->SetHeading(CVariant{20356});
+      pDialog->Open();
+      iSelectedLabel = pDialog->GetSelectedItem();
+    }
   }
 
   if (iSelectedLabel > -1 && iSelectedLabel < list.Size())
@@ -1881,7 +2265,7 @@ bool CGUIDialogVideoInfo::LinkMovieToTvShow(const CFileItemPtr &item, bool bRemo
 
 bool CGUIDialogVideoInfo::OnGetFanart(const CFileItemPtr &videoItem)
 {
-  if (videoItem == NULL || !videoItem->HasVideoInfoTag())
+  if (videoItem == nullptr || !videoItem->HasVideoInfoTag())
     return false;
 
   // update the db
@@ -1892,7 +2276,7 @@ bool CGUIDialogVideoInfo::OnGetFanart(const CFileItemPtr &videoItem)
   CVideoThumbLoader loader;
   CFileItem item(*videoItem);
   loader.LoadItem(&item);
-  
+
   CFileItemList items;
   if (item.HasArt("fanart"))
   {
@@ -1902,57 +2286,23 @@ bool CGUIDialogVideoInfo::OnGetFanart(const CFileItemPtr &videoItem)
     items.Add(itemCurrent);
   }
 
-  vector<std::string> thumbs;
-  if (videoItem->GetVideoInfoTag()->m_type == MediaTypeVideoCollection)
-  {
-    CFileItemList movies;
-    std::string baseDir = StringUtils::Format("videodb://movies/sets/%d", videoItem->GetVideoInfoTag()->m_iDbId);
-    if (videodb.GetMoviesNav(baseDir, movies))
-    {
-      for (int i=0; i < movies.Size(); i++)
-      {
-        // ensure the fanart is unpacked
-        movies[i]->GetVideoInfoTag()->m_fanart.Unpack();
-
-        // Grab the thumbnails from the web
-        for (unsigned int j = 0; j < movies[i]->GetVideoInfoTag()->m_fanart.GetNumFanarts(); j++)
-        {
-          std::string strItemPath = StringUtils::Format("fanart://Remote%i",j);
-          CFileItemPtr item(new CFileItem(strItemPath, false));
-          std::string thumb = movies[i]->GetVideoInfoTag()->m_fanart.GetPreviewURL(j);
-          item->SetArt("thumb", CTextureUtils::GetWrappedThumbURL(thumb));
-          item->SetIconImage("DefaultPicture.png");
-          item->SetLabel(g_localizeStrings.Get(20441));
-          thumbs.push_back(movies[i]->GetVideoInfoTag()->m_fanart.GetImageURL(j));
-
-          items.Add(item);
-        }
-      }
-    }
-  }
-
   // add the none option
   {
     CFileItemPtr itemNone(new CFileItem("fanart://None", false));
-    itemNone->SetIconImage("DefaultVideo.png");
+    itemNone->SetArt("icon", "DefaultVideo.png");
     itemNone->SetLabel(g_localizeStrings.Get(20439));
     items.Add(itemNone);
   }
 
   std::string result;
-  VECSOURCES sources(*CMediaSourceSettings::Get().GetSources("video"));
-  g_mediaManager.GetLocalDrives(sources);
+  VECSOURCES sources(*CMediaSourceSettings::GetInstance().GetSources("video"));
+  CServiceBroker::GetMediaManager().GetLocalDrives(sources);
   AddItemPathToFileBrowserSources(sources, item);
   bool flip = false;
   if (!CGUIDialogFileBrowser::ShowAndGetImage(items, sources, g_localizeStrings.Get(20437), result, &flip, 20445) ||
       StringUtils::EqualsNoCase(result, "fanart://Current"))
     return false;
 
-  if (StringUtils::StartsWith(result, "fanart://Remote"))
-  {
-    int iFanart = atoi(result.substr(15).c_str());
-    result = thumbs[iFanart];
-  }
   else if (StringUtils::EqualsNoCase(result, "fanart://None") || !CFile::Exists(result))
     result.clear();
   if (!result.empty() && flip)
@@ -1964,4 +2314,14 @@ bool CGUIDialogVideoInfo::OnGetFanart(const CFileItemPtr &videoItem)
   CUtil::DeleteVideoDatabaseDirectoryCache();
 
   return true;
+}
+
+void CGUIDialogVideoInfo::ShowFor(const CFileItem& item)
+{
+  auto window = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIWindowVideoNav>(WINDOW_VIDEO_NAV);
+  if (window)
+  {
+    ADDON::ScraperPtr info;
+    window->OnItemInfo(item, info);
+  }
 }

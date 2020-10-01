@@ -1,124 +1,102 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "system.h"
 #include "MusicInfoTagLoaderFactory.h"
-#include "TagLoaderTagLib.h"
+
+#include "FileItem.h"
 #include "MusicInfoTagLoaderCDDA.h"
-#include "MusicInfoTagLoaderShn.h"
-#ifdef HAS_MOD_PLAYER
-#include "cores/ModPlayer.h"
-#endif
-#include "MusicInfoTagLoaderNSF.h"
-#include "MusicInfoTagLoaderSPC.h"
-#include "MusicInfoTagLoaderYM.h"
 #include "MusicInfoTagLoaderDatabase.h"
-#include "MusicInfoTagLoaderASAP.h"
-#include "MusicInfoTagLoaderMidi.h"
+#include "MusicInfoTagLoaderFFmpeg.h"
+#include "MusicInfoTagLoaderShn.h"
+#include "ServiceBroker.h"
+#include "TagLoaderTagLib.h"
+#include "addons/AudioDecoder.h"
 #include "utils/StringUtils.h"
 #include "utils/URIUtils.h"
-#include "FileItem.h"
 
-#ifdef HAS_ASAP_CODEC
-#include "cores/paplayer/ASAPCodec.h"
-#endif
+using namespace ADDON;
 
 using namespace MUSIC_INFO;
 
-CMusicInfoTagLoaderFactory::CMusicInfoTagLoaderFactory()
-{}
+CMusicInfoTagLoaderFactory::CMusicInfoTagLoaderFactory() = default;
 
-CMusicInfoTagLoaderFactory::~CMusicInfoTagLoaderFactory()
-{}
+CMusicInfoTagLoaderFactory::~CMusicInfoTagLoaderFactory() = default;
 
-IMusicInfoTagLoader* CMusicInfoTagLoaderFactory::CreateLoader(const std::string& strFileName)
+IMusicInfoTagLoader* CMusicInfoTagLoaderFactory::CreateLoader(const CFileItem& item)
 {
   // dont try to read the tags for streams & shoutcast
-  CFileItem item(strFileName, false);
   if (item.IsInternetStream())
     return NULL;
 
   if (item.IsMusicDb())
     return new CMusicInfoTagLoaderDatabase();
 
-  std::string strExtension = URIUtils::GetExtension(strFileName);
+  std::string strExtension = URIUtils::GetExtension(item.GetPath());
   StringUtils::ToLower(strExtension);
   StringUtils::TrimLeft(strExtension, ".");
 
   if (strExtension.empty())
     return NULL;
 
+  std::vector<AddonInfoPtr> addonInfos;
+  CServiceBroker::GetAddonMgr().GetAddonInfos(addonInfos, true, ADDON_AUDIODECODER);
+  for (const auto& addonInfo : addonInfos)
+  {
+    if (CAudioDecoder::HasTags(addonInfo))
+    {
+      auto exts = StringUtils::Split(CAudioDecoder::GetExtensions(addonInfo), "|");
+      if (std::find(exts.begin(), exts.end(), "." + strExtension) != exts.end())
+      {
+        CAudioDecoder* result = new CAudioDecoder(addonInfo);
+        if (!result->CreateDecoder())
+        {
+          delete result;
+          return nullptr;
+        }
+        return result;
+      }
+    }
+  }
+
   if (strExtension == "aac" ||
       strExtension == "ape" || strExtension == "mac" ||
-      strExtension == "mp3" || 
-      strExtension == "wma" || 
-      strExtension == "flac" || 
-      strExtension == "m4a" || strExtension == "mp4" ||
+      strExtension == "mp3" ||
+      strExtension == "wma" ||
+      strExtension == "flac" ||
+      strExtension == "m4a" || strExtension == "mp4" || strExtension == "m4b" ||
+      strExtension == "m4v" ||
       strExtension == "mpc" || strExtension == "mpp" || strExtension == "mp+" ||
       strExtension == "ogg" || strExtension == "oga" || strExtension == "oggstream" ||
+      strExtension == "opus" ||
       strExtension == "aif" || strExtension == "aiff" ||
       strExtension == "wav" ||
-#ifdef HAS_MOD_PLAYER
-      ModPlayer::IsSupportedFormat(strExtension) ||
-      strExtension == "mod" || strExtension == "nsf" || strExtension == "nsfstream" ||
+      strExtension == "mod" ||
       strExtension == "s3m" || strExtension == "it" || strExtension == "xm" ||
-#endif
       strExtension == "wv")
   {
     CTagLoaderTagLib *pTagLoader = new CTagLoaderTagLib();
-    return (IMusicInfoTagLoader*)pTagLoader;
+    return pTagLoader;
   }
 #ifdef HAS_DVD_DRIVE
   else if (strExtension == "cdda")
   {
     CMusicInfoTagLoaderCDDA *pTagLoader = new CMusicInfoTagLoaderCDDA();
-    return (IMusicInfoTagLoader*)pTagLoader;
+    return pTagLoader;
   }
 #endif
   else if (strExtension == "shn")
   {
     CMusicInfoTagLoaderSHN *pTagLoader = new CMusicInfoTagLoaderSHN();
-    return (IMusicInfoTagLoader*)pTagLoader;
+    return pTagLoader;
   }
-  else if (strExtension == "spc")
-  {
-    CMusicInfoTagLoaderSPC *pTagLoader = new CMusicInfoTagLoaderSPC();
-    return (IMusicInfoTagLoader*)pTagLoader;
-  }
-  else if (strExtension == "ym")
-  {
-    CMusicInfoTagLoaderYM *pTagLoader = new CMusicInfoTagLoaderYM();
-    return (IMusicInfoTagLoader*)pTagLoader;
-  }
-#ifdef HAS_ASAP_CODEC
-  else if (ASAPCodec::IsSupportedFormat(strExtension) || strExtension == "asapstream")
-  {
-    CMusicInfoTagLoaderASAP *pTagLoader = new CMusicInfoTagLoaderASAP();
-    return (IMusicInfoTagLoader*)pTagLoader;
-  }
-#endif
-  else if ( TimidityCodec::IsSupportedFormat( strExtension ) )
-  {
-    CMusicInfoTagLoaderMidi * pTagLoader = new CMusicInfoTagLoaderMidi();
-    return (IMusicInfoTagLoader*)pTagLoader;
-  }
+  else if (strExtension == "mka" || strExtension == "dsf" ||
+           strExtension == "dff")
+    return new CMusicInfoTagLoaderFFmpeg();
 
   return NULL;
 }

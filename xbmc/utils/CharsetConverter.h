@@ -1,42 +1,29 @@
-#ifndef CCHARSET_CONVERTER
-#define CCHARSET_CONVERTER
-
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
+#pragma once
+
 #include "settings/lib/ISettingCallback.h"
-#include "threads/CriticalSection.h"
 #include "utils/GlobalsHandling.h"
-#include "utils/uXstrings.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 class CSetting;
+struct StringSettingOption;
 
 class CCharsetConverter : public ISettingCallback
 {
 public:
   CCharsetConverter();
 
-  virtual void OnSettingChanged(const CSetting* setting);
+  void OnSettingChanged(std::shared_ptr<const CSetting> setting) override;
 
   static void reset();
   static void resetSystemCharset();
@@ -111,9 +98,14 @@ public:
    * @param logicalStringSrc    is source string with logical characters order
    * @param visualStringDst     is output string with visual characters order, empty on any error
    * @param forceLTRReadingOrder        force LTR reading order
+   * @param visualToLogicalMap    is output mapping of positions in the visual string to the logical string
    * @return true on success, false otherwise
    */
-  static bool utf32logicalToVisualBiDi(const std::u32string& logicalStringSrc, std::u32string& visualStringDst, bool forceLTRReadingOrder = false, bool failOnBadString = false);
+  static bool utf32logicalToVisualBiDi(const std::u32string& logicalStringSrc,
+                                       std::u32string& visualStringDst,
+                                       bool forceLTRReadingOrder = false,
+                                       bool failOnBadString = false,
+                                       int* visualToLogicalMap = nullptr);
   /**
    * Strictly convert wchar_t string (wstring) to UTF-32 string.
    * No RTL visual-logical transformation is performed.
@@ -164,16 +156,14 @@ public:
   static bool toW(const std::string& stringSrc, std::wstring& wStringDst, const std::string& enc);
   static bool fromW(const std::wstring& wStringSrc, std::string& stringDst, const std::string& enc);
 
-  static void SettingOptionsCharsetsFiller(const CSetting* setting, std::vector< std::pair<std::string, std::string> >& list, std::string& current, void *data);
+  static void SettingOptionsCharsetsFiller(std::shared_ptr<const CSetting> setting, std::vector<StringSettingOption>& list, std::string& current, void *data);
 private:
   static void resetUserCharset(void);
   static void resetSubtitleCharset(void);
-  static void resetKaraokeCharset(void);
 
   static const int m_Utf8CharMinSize, m_Utf8CharMaxSize;
   class CInnerConverter;
 };
 
-XBMC_GLOBAL(CCharsetConverter,g_charsetConverter);
-
-#endif
+XBMC_GLOBAL_REF(CCharsetConverter,g_charsetConverter);
+#define g_charsetConverter XBMC_GLOBAL_USE(CCharsetConverter)

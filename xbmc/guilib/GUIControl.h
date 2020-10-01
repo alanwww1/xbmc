@@ -1,42 +1,32 @@
+/*
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
+ *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
+ */
+
+#pragma once
+
 /*!
 \file GUIControl.h
 \brief
 */
 
-#ifndef GUILIB_GUICONTROL_H
-#define GUILIB_GUICONTROL_H
-#pragma once
-
-/*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
- *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
- */
-
-#include "GraphicContext.h" // needed by any rendering operation (all controls)
-#include "GUIMessage.h"     // needed by practically all controls
-#include "VisibleEffect.h"  // needed for the CAnimation members
-#include "GUIInfoTypes.h"   // needed for CGUIInfoColor to handle infolabel'ed colors
 #include "DirtyRegion.h"
-#include "GUIAction.h"
+#include "VisibleEffect.h" // needed for the CAnimation members
+#include "guiinfo/GUIInfoBool.h"
+#include "guiinfo/GUIInfoColor.h" // needed for CGUIInfoColor to handle infolabel'ed colors
+#include "utils/Color.h"
+#include "windowing/GraphicContext.h" // needed by any rendering operation (all controls)
+
+#include <vector>
 
 class CGUIListItem; // forward
 class CAction;
 class CMouseEvent;
+class CGUIMessage;
+class CGUIAction;
 
 enum ORIENTATION { HORIZONTAL = 0, VERTICAL };
 
@@ -50,6 +40,17 @@ public:
   }
   int m_id;
   int m_data;
+};
+
+struct GUICONTROLSTATS
+{
+  unsigned int nCountTotal;
+  unsigned int nCountVisible;
+
+  void Reset()
+  {
+    nCountTotal = nCountVisible = 0;
+  };
 };
 
 /*!
@@ -76,6 +77,7 @@ class CGUIControl
 public:
   CGUIControl();
   CGUIControl(int parentID, int controlID, float posX, float posY, float width, float height);
+  CGUIControl(const CGUIControl &);
   virtual ~CGUIControl(void);
   virtual CGUIControl *Clone() const=0;
 
@@ -105,6 +107,7 @@ public:
   virtual void OnLeft();
   virtual void OnRight();
   virtual bool OnBack();
+  virtual bool OnInfo();
   virtual void OnNextControl();
   virtual void OnPrevControl();
   virtual void OnFocus() {};
@@ -150,8 +153,6 @@ public:
   virtual bool OnMessage(CGUIMessage& message);
   virtual int GetID(void) const;
   virtual void SetID(int id) { m_controlID = id; };
-  virtual bool HasID(int id) const;
-  virtual bool HasVisibleID(int id) const;
   int GetParentID() const;
   virtual bool HasFocus() const;
   virtual void AllocResources();
@@ -163,16 +164,18 @@ public:
   bool IsVisibleFromSkin() const { return m_visibleFromSkinCondition; };
   virtual bool IsDisabled() const;
   virtual void SetPosition(float posX, float posY);
-  virtual void SetHitRect(const CRect &rect);
+  virtual void SetHitRect(const CRect &rect, const UTILS::Color &color);
   virtual void SetCamera(const CPoint &camera);
-  bool SetColorDiffuse(const CGUIInfoColor &color);
+  virtual void SetStereoFactor(const float &factor);
+  bool SetColorDiffuse(const KODI::GUILIB::GUIINFO::CGUIInfoColor &color);
   CPoint GetRenderPosition() const;
   virtual float GetXPosition() const;
   virtual float GetYPosition() const;
   virtual float GetWidth() const;
   virtual float GetHeight() const;
 
-  void MarkDirtyRegion();
+  void MarkDirtyRegion(const unsigned int dirtyState = DIRTY_STATE_CONTROL);
+  bool IsControlDirty() const { return m_controlDirtyState != 0; };
 
   /*! \brief return the render region in screen coordinates of this control
    */
@@ -187,21 +190,21 @@ public:
    \sa SetNavigationAction
    */
   typedef std::map<int, CGUIAction> ActionMap;
-  void SetNavigationActions(const ActionMap &actions);
+  void SetActions(const ActionMap &actions);
 
   /*! \brief Set actions to perform on navigation
    Navigations are set if replace is true or if there is no previously set action
-   \param actionID id of the nagivation action
-   \param actions CGUIAction to set
+   \param actionID id of the navigation action
+   \param action CGUIAction to set
    \param replace Actions are set only if replace is true or there is no previously set action.  Defaults to true
    \sa SetNavigationActions
    */
-  void SetNavigationAction(int actionID, const CGUIAction &action, bool replace = true);
+  void SetAction(int actionID, const CGUIAction &action, bool replace = true);
 
   /*! \brief Get an action the control can be perform.
-   \param action the actionID to retrieve.
+   \param actionID The actionID to retrieve.
    */
-  CGUIAction GetNavigateAction(int actionID) const;
+  CGUIAction GetAction(int actionID) const;
 
   /*! \brief  Start navigating in given direction.
    */
@@ -213,7 +216,7 @@ public:
   void SetVisibleCondition(const std::string &expression, const std::string &allowHiddenFocus = "");
   bool HasVisibleCondition() const { return m_visibleCondition != NULL; };
   void SetEnableCondition(const std::string &expression);
-  virtual void UpdateVisibility(const CGUIListItem *item = NULL);
+  virtual void UpdateVisibility(const CGUIListItem *item);
   virtual void SetInitialVisibility();
   virtual void SetEnabled(bool bEnable);
   virtual void SetInvalid() { m_bInvalidated = true; };
@@ -242,21 +245,23 @@ public:
   void SetParentControl(CGUIControl *control) { m_parentControl = control; };
   CGUIControl *GetParentControl(void) const { return m_parentControl; };
   virtual void SaveStates(std::vector<CControlState> &states);
+  virtual CGUIControl *GetControl(int id, std::vector<CGUIControl*> *idCollector = nullptr);
+
+
+  void SetControlStats(GUICONTROLSTATS *controlStats) { m_controlStats = controlStats; };
+  virtual void UpdateControlStats();
 
   enum GUICONTROLTYPES {
     GUICONTROL_UNKNOWN,
     GUICONTROL_BUTTON,
-    GUICONTROL_CHECKMARK,
     GUICONTROL_FADELABEL,
     GUICONTROL_IMAGE,
     GUICONTROL_BORDEREDIMAGE,
-    GUICONTROL_LARGE_IMAGE,
     GUICONTROL_LABEL,
     GUICONTROL_LISTGROUP,
     GUICONTROL_PROGRESS,
     GUICONTROL_RADIO,
     GUICONTROL_RSS,
-    GUICONTROL_SELECTBUTTON,
     GUICONTROL_SLIDER,
     GUICONTROL_SETTINGS_SLIDER,
     GUICONTROL_SPIN,
@@ -264,6 +269,7 @@ public:
     GUICONTROL_TEXTBOX,
     GUICONTROL_TOGGLEBUTTON,
     GUICONTROL_VIDEO,
+    GUICONTROL_GAME,
     GUICONTROL_MOVER,
     GUICONTROL_RESIZE,
     GUICONTROL_EDIT,
@@ -274,12 +280,13 @@ public:
     GUICONTROL_GROUPLIST,
     GUICONTROL_SCROLLBAR,
     GUICONTROL_LISTLABEL,
-    GUICONTROL_MULTISELECT,
+    GUICONTROL_GAMECONTROLLER,
     GUICONTAINER_LIST,
     GUICONTAINER_WRAPLIST,
     GUICONTAINER_FIXEDLIST,
     GUICONTAINER_EPGGRID,
-    GUICONTAINER_PANEL
+    GUICONTAINER_PANEL,
+    GUICONTROL_RANGES
   };
   GUICONTROLTYPES GetControlType() const { return ControlType; }
 
@@ -325,7 +332,8 @@ protected:
   float m_height;
   float m_width;
   CRect m_hitRect;
-  CGUIInfoColor m_diffuseColor;
+  UTILS::Color m_hitColor = 0xffffffff;
+  KODI::GUILIB::GUIINFO::CGUIInfoColor m_diffuseColor;
   int m_controlID;
   int m_parentID;
   bool m_bHasFocus;
@@ -333,6 +341,7 @@ protected:
   bool m_bAllocated;
   bool m_pulseOnSelect;
   GUICONTROLTYPES ControlType;
+  GUICONTROLSTATS *m_controlStats;
 
   CGUIControl *m_parentControl;   // our parent control if we're part of a group
 
@@ -341,7 +350,7 @@ protected:
   GUIVISIBLE m_visible;
   bool m_visibleFromSkinCondition;
   bool m_forceHidden;       // set from the code when a hidden operation is given - overrides m_visible
-  CGUIInfoBool m_allowHiddenFocus;
+  KODI::GUILIB::GUIINFO::CGUIInfoBool m_allowHiddenFocus;
   bool m_hasProcessed;
   // enable/disable state
   INFO::InfoPtr m_enableCondition;
@@ -353,11 +362,14 @@ protected:
   std::vector<CAnimation> m_animations;
   CPoint m_camera;
   bool m_hasCamera;
+  float m_stereo;
   TransformMatrix m_transform;
   TransformMatrix m_cachedTransform; // Contains the absolute transform the control
 
-  bool  m_controlIsDirty;
+  static const unsigned int DIRTY_STATE_CONTROL = 1; //This control is dirty
+  static const unsigned int DIRTY_STATE_CHILD = 2; //One / more children are dirty
+
+  unsigned int  m_controlDirtyState;
   CRect m_renderRegion;         // In screen coordinates
 };
 
-#endif

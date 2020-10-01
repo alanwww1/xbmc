@@ -3,7 +3,7 @@ DEPS= ../../Makefile.include Makefile
 
 # lib name, version
 LIBNAME=gettext
-VERSION=0.18.2
+VERSION=0.20.2
 SOURCE=$(LIBNAME)-$(VERSION)
 ARCHIVE=$(SOURCE).tar.gz
 
@@ -19,8 +19,6 @@ CONFIGURE=cp -f $(CONFIG_SUB) $(CONFIG_GUESS) build-aux/; \
     --without-git --without-cvs --disable-shared --disable-curses \
 
 LIBDYLIB=$(PLATFORM)/gettext-runtime/intl/.libs/libintl.a
-
-CLEAN_FILES=$(ARCHIVE) $(PLATFORM)
 
 all: .installed-$(PLATFORM)
 

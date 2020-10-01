@@ -1,56 +1,42 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "GUIButtonControl.h"
-#include "GUIWindowManager.h"
-#include "GUIDialog.h"
+
 #include "GUIFontManager.h"
-#include "Key.h"
+#include "input/Key.h"
 
-using namespace std;
-
-CGUIButtonControl::CGUIButtonControl(int parentID, int controlID, float posX, float posY, float width, float height, const CTextureInfo& textureFocus, const CTextureInfo& textureNoFocus, const CLabelInfo& labelInfo)
+CGUIButtonControl::CGUIButtonControl(int parentID, int controlID, float posX, float posY, float width, float height, const CTextureInfo& textureFocus, const CTextureInfo& textureNoFocus, const CLabelInfo& labelInfo, bool wrapMultiline)
     : CGUIControl(parentID, controlID, posX, posY, width, height)
     , m_imgFocus(posX, posY, width, height, textureFocus)
     , m_imgNoFocus(posX, posY, width, height, textureNoFocus)
-    , m_label(posX, posY, width, height, labelInfo)
+    , m_label(posX, posY, width, height, labelInfo, wrapMultiline ? CGUILabel::OVER_FLOW_WRAP : CGUILabel::OVER_FLOW_TRUNCATE)
     , m_label2(posX, posY, width, height, labelInfo)
 {
   m_bSelected = false;
   m_alpha = 255;
   m_focusCounter = 0;
+  m_minWidth = 0;
+  m_maxWidth = width;
   ControlType = GUICONTROL_BUTTON;
 }
 
-CGUIButtonControl::~CGUIButtonControl(void)
-{
-}
+CGUIButtonControl::~CGUIButtonControl(void) = default;
 
 void CGUIButtonControl::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions)
 {
+  ProcessText(currentTime);
   if (m_bInvalidated)
   {
-    m_imgFocus.SetWidth(m_width);
+    m_imgFocus.SetWidth(GetWidth());
     m_imgFocus.SetHeight(m_height);
 
-    m_imgNoFocus.SetWidth(m_width);
+    m_imgNoFocus.SetWidth(GetWidth());
     m_imgNoFocus.SetHeight(m_height);
   }
 
@@ -84,7 +70,6 @@ void CGUIButtonControl::Process(unsigned int currentTime, CDirtyRegionList &dirt
   m_imgFocus.Process(currentTime);
   m_imgNoFocus.Process(currentTime);
 
-  ProcessText(currentTime);
   CGUIControl::Process(currentTime, dirtyregions);
 }
 
@@ -112,20 +97,56 @@ CGUILabel::COLOR CGUIButtonControl::GetTextColor() const
   return CGUILabel::COLOR_TEXT;
 }
 
+#define CLAMP(x, low, high)  (((x) > (high)) ? (high) : (((x) < (low)) ? (low) : (x)))
+float CGUIButtonControl::GetWidth() const
+{
+  if (m_minWidth && m_minWidth != m_width)
+  {
+    float txtWidth = m_label.GetTextWidth() + 2 * m_label.GetLabelInfo().offsetX;
+    if (m_label2.GetTextWidth())
+    {
+      static const float min_space = 10;
+      txtWidth += m_label2.GetTextWidth() + 2 * m_label2.GetLabelInfo().offsetX + min_space;
+    }
+    float maxWidth = m_maxWidth ? m_maxWidth : txtWidth;
+    return CLAMP(txtWidth, m_minWidth, maxWidth);
+  }
+  return m_width;
+}
+
+void CGUIButtonControl::SetMinWidth(float minWidth)
+{
+  if (m_minWidth != minWidth)
+    MarkDirtyRegion();
+
+  m_minWidth = minWidth;
+}
+
 void CGUIButtonControl::ProcessText(unsigned int currentTime)
 {
   CRect labelRenderRect = m_label.GetRenderRect();
   CRect label2RenderRect = m_label2.GetRenderRect();
 
-  bool changed = m_label.SetMaxRect(m_posX, m_posY, m_width, m_height);
+  float renderWidth = GetWidth();
+  bool changed = m_label.SetMaxRect(m_posX, m_posY, renderWidth, m_height);
   changed |= m_label.SetText(m_info.GetLabel(m_parentID));
   changed |= m_label.SetScrolling(HasFocus());
+  changed |= m_label2.SetMaxRect(m_posX, m_posY, renderWidth, m_height);
+  changed |= m_label2.SetText(m_info2.GetLabel(m_parentID));
+
+  // text changed - images need resizing
+  if (m_minWidth && (m_label.GetRenderRect() != labelRenderRect))
+    SetInvalid();
+
+  // auto-width - adjust hitrect
+  if (m_minWidth && m_width != renderWidth)
+  {
+    CRect rect(m_posX, m_posY, renderWidth, m_height);
+    SetHitRect(rect, m_hitColor);
+  }
 
   // render the second label if it exists
-  std::string label2(m_info2.GetLabel(m_parentID));
-  changed |= m_label2.SetMaxRect(m_posX, m_posY, m_width, m_height);
-  changed |= m_label2.SetText(label2);
-  if (!label2.empty())
+  if (!m_info2.GetLabel(m_parentID).empty())
   {
     changed |= m_label2.SetAlign(XBFONT_RIGHT | (m_label.GetLabelInfo().align & XBFONT_CENTER_Y) | XBFONT_TRUNCATED);
     changed |= m_label2.SetScrolling(HasFocus());
@@ -228,16 +249,22 @@ void CGUIButtonControl::SetInvalid()
   m_imgNoFocus.SetInvalid();
 }
 
-void CGUIButtonControl::SetLabel(const string &label)
+void CGUIButtonControl::SetLabel(const std::string &label)
 { // NOTE: No fallback for buttons at this point
-  m_info.SetLabel(label, "", GetParentID());
-  SetInvalid();
+  if (m_info.GetLabel(GetParentID(), false) != label)
+  {
+    m_info.SetLabel(label, "", GetParentID());
+    SetInvalid();
+  }
 }
 
-void CGUIButtonControl::SetLabel2(const string &label2)
+void CGUIButtonControl::SetLabel2(const std::string &label2)
 { // NOTE: No fallback for buttons at this point
-  m_info2.SetLabel(label2, "", GetParentID());
-  SetInvalid();
+  if (m_info2.GetLabel(GetParentID(), false) != label2)
+  {
+    m_info2.SetLabel(label2, "", GetParentID());
+    SetInvalid();
+  }
 }
 
 void CGUIButtonControl::SetPosition(float posX, float posY)
@@ -258,6 +285,7 @@ bool CGUIButtonControl::UpdateColors()
 {
   bool changed = CGUIControl::UpdateColors();
   changed |= m_label.UpdateColors();
+  changed |= m_label2.UpdateColors();
   changed |= m_imgFocus.SetDiffuseColor(m_diffuseColor);
   changed |= m_imgNoFocus.SetDiffuseColor(m_diffuseColor);
 
@@ -294,7 +322,7 @@ std::string CGUIButtonControl::GetLabel2() const
   return strLabel;
 }
 
-void CGUIButtonControl::PythonSetLabel(const std::string &strFont, const string &strText, color_t textColor, color_t shadowColor, color_t focusedColor)
+void CGUIButtonControl::PythonSetLabel(const std::string &strFont, const std::string &strText, UTILS::Color textColor, UTILS::Color shadowColor, UTILS::Color focusedColor)
 {
   m_label.GetLabelInfo().font = g_fontManager.GetFont(strFont);
   m_label.GetLabelInfo().textColor = textColor;
@@ -303,7 +331,7 @@ void CGUIButtonControl::PythonSetLabel(const std::string &strFont, const string 
   SetLabel(strText);
 }
 
-void CGUIButtonControl::PythonSetDisabledColor(color_t disabledColor)
+void CGUIButtonControl::PythonSetDisabledColor(UTILS::Color disabledColor)
 {
   m_label.GetLabelInfo().disabledColor = disabledColor;
 }

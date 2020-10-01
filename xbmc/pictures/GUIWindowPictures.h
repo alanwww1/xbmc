@@ -1,29 +1,15 @@
-#pragma once
-
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "windows/GUIMediaWindow.h"
-#include "GUIWindowSlideShow.h"
+#pragma once
+
 #include "PictureThumbLoader.h"
-#include "DllImageLib.h"
+#include "windows/GUIMediaWindow.h"
 
 class CGUIDialogProgress;
 
@@ -31,34 +17,34 @@ class CGUIWindowPictures : public CGUIMediaWindow, public IBackgroundLoaderObser
 {
 public:
   CGUIWindowPictures(void);
-  virtual ~CGUIWindowPictures(void);
-  virtual bool OnMessage(CGUIMessage& message);
-  virtual void OnInitWindow();
+  ~CGUIWindowPictures(void) override;
+  bool OnMessage(CGUIMessage& message) override;
+  void OnInitWindow() override;
 
 protected:
-  virtual bool GetDirectory(const std::string &strDirectory, CFileItemList& items);
-  virtual void OnInfo(int item);
-  virtual bool OnClick(int iItem);
-  virtual void UpdateButtons();
-  virtual void OnPrepareFileItems(CFileItemList& items);
-  virtual bool Update(const std::string &strDirectory, bool updateFilterPath = true);
-  virtual void GetContextButtons(int itemNumber, CContextButtons &buttons);
-  virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button);
-  virtual std::string GetStartFolder(const std::string &dir);
+  bool GetDirectory(const std::string &strDirectory, CFileItemList& items) override;
+  void OnItemInfo(int item);
+  bool OnClick(int iItem, const std::string &player = "") override;
+  void UpdateButtons() override;
+  void OnPrepareFileItems(CFileItemList& items) override;
+  bool Update(const std::string &strDirectory, bool updateFilterPath = true) override;
+  void GetContextButtons(int itemNumber, CContextButtons &buttons) override;
+  bool OnContextButton(int itemNumber, CONTEXT_BUTTON button) override;
+  bool OnAddMediaSource() override;
+  std::string GetStartFolder(const std::string &dir) override;
 
   void OnRegenerateThumbs();
-  virtual bool OnPlayMedia(int iItem);
+  bool OnPlayMedia(int iItem, const std::string &player = "") override;
   bool ShowPicture(int iItem, bool startSlideShow);
   void OnShowPictureRecursive(const std::string& strPath);
   void OnSlideShow(const std::string& strPicture);
   void OnSlideShow();
   void OnSlideShowRecursive(const std::string& strPicture);
   void OnSlideShowRecursive();
-  virtual void OnItemLoaded(CFileItem* pItem);
-  virtual void LoadPlayList(const std::string& strPlayList);
+  void OnItemLoaded(CFileItem* pItem) override;
+  void LoadPlayList(const std::string& strPlayList) override;
 
   CGUIDialogProgress* m_dlgProgress;
-  DllImageLib m_ImageLib;
 
   CPictureThumbLoader m_thumbLoader;
   bool m_slideShowStarted;
