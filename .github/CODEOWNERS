@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/about-codeowners/
 # for more info about CODEOWNERS file
 
-# Please try and keep the list in alphabetical order
+# Please try and keep the list in alphabetical order [abcdefghijklmnopqurstwxyz]
 
 /xbmc/cores/RetroPlayer/ @garbear
 /xbmc/cores/VideoPlayer/DVDInputStreams/InputStreamPVR*.* @ksooo
@@ -9,18 +9,19 @@
 /xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME* @lrusak
 /xbmc/filesystem/Music*.* @DaveTBlake
 /xbmc/games/ @garbear
-/xbmc/input/ @garbear
-/xbmc/interfaces/builtins/PVR*.* @ksooo
-/xbmc/interfaces/json-rpc/AudioLibrary.*  @DaveTBlake
-/xbmc/interfaces/json-rpc/PVR*.* @ksooo
 /xbmc/guilib/GUIRangesControl.* @ksooo
 /xbmc/guilib/guiinfo/GUIInfoProvider.h @ksooo
 /xbmc/guilib/guiinfo/GUIInfoProviders.* @ksooo
 /xbmc/guilib/guiinfo/IGUIInfoProvider.h @ksooo
+/xbmc/input/ @garbear
+/xbmc/interfaces/builtins/PVR*.* @ksooo
+/xbmc/interfaces/json-rpc/AudioLibrary.*  @DaveTBlake
+/xbmc/interfaces/json-rpc/PVR*.* @ksooo
 /xbmc/music/ @DaveTBlake
 /xbmc/peripherals/ @garbear
 /xbmc/platform/linux/ @lrusak
 /xbmc/pvr/ @ksooo
+/xbmc/kodi-pvr/pvr.iptvsimple @phunkyfish
 /xbmc/rendering/gles/ @lrusak
 /xbmc/settings/SettingsComponent.* @ksooo
 /xbmc/utils/EGL* @lrusak
