@@ -1647,6 +1647,54 @@ void CFileItem::UpdateInfo(const CFileItem &item, bool replaceLabels /*=true*/)
   AppendProperties(item);
 }
 
+void CFileItem::MergeInfo(const CFileItem& item)
+{
+  // TODO: Currently merge the metadata/art info is implemented for video case only
+  if (item.HasVideoInfoTag())
+  {
+    if (item.m_videoInfoTag)
+    {
+      if (m_videoInfoTag)
+        m_videoInfoTag->Merge(*item.m_videoInfoTag);
+      else
+        m_videoInfoTag = new CVideoInfoTag(*item.m_videoInfoTag);
+    }
+
+    m_pvrRecordingInfoTag = item.m_pvrRecordingInfoTag;
+
+    SetOverlayImage(ICON_OVERLAY_UNWATCHED, GetVideoInfoTag()->GetPlayCount() > 0);
+    SetInvalid();
+  }
+  if (item.HasMusicInfoTag())
+  {
+    *GetMusicInfoTag() = *item.GetMusicInfoTag();
+    SetInvalid();
+  }
+  if (item.HasPictureInfoTag())
+  {
+    *GetPictureInfoTag() = *item.GetPictureInfoTag();
+    SetInvalid();
+  }
+  if (item.HasGameInfoTag())
+  {
+    *GetGameInfoTag() = *item.GetGameInfoTag();
+    SetInvalid();
+  }
+  SetDynPath(item.GetDynPath());
+  if (!item.GetLabel().empty())
+    SetLabel(item.GetLabel());
+  if (!item.GetLabel2().empty())
+    SetLabel2(item.GetLabel2());
+  if (!item.GetArt().empty())
+  {
+    if (item.IsVideo())
+      AppendArt(item.GetArt());
+    else
+      SetArt(item.GetArt());
+  }
+  AppendProperties(item);
+}
+
 void CFileItem::SetFromVideoInfoTag(const CVideoInfoTag &video)
 {
   if (!video.m_strTitle.empty())
@@ -2275,7 +2323,7 @@ bool CFileItemList::IsEmpty() const
   return m_items.empty();
 }
 
-void CFileItemList::Reserve(int iCount)
+void CFileItemList::Reserve(size_t iCount)
 {
   CSingleLock lock(m_lock);
   m_items.reserve(iCount);
@@ -2990,7 +3038,7 @@ bool CFileItemList::Save(int windowID)
     // name when list cached) can not be accurately derived from item path.
     StringUtils::Replace(cachefile, "special://temp/archive_cache/", "");
     StringUtils::Replace(cachefile, ".fi", "");
-    for (auto item : m_items)
+    for (const auto& item : m_items)
       item->SetProperty("cachefilename", cachefile);
 
     CArchive ar(&file, CArchive::store);
@@ -3101,7 +3149,7 @@ std::string CFileItem::GetUserMusicThumb(bool alwaysCheckRemote /* = false */, b
       std::string folderThumb(GetFolderThumb(strFileName));
       if (CFile::Exists(folderThumb))   // folder.jpg
         return folderThumb;
-      size_t period = strFileName.find_last_of(".");
+      size_t period = strFileName.find_last_of('.');
       if (period != std::string::npos)
       {
         std::string ext;
@@ -3220,19 +3268,17 @@ std::string CFileItem::FindLocalArt(const std::string &artFile, bool useFolder) 
   return "";
 }
 
-std::string CFileItem::GetLocalArt(const std::string &artFile, bool useFolder) const
+std::string CFileItem::GetLocalArtBaseFilename() const
 {
-  // no retrieving of empty art files from folders
-  if (useFolder && artFile.empty())
-    return "";
+  bool useFolder = false;
+  return GetLocalArtBaseFilename(useFolder);
+}
 
+std::string CFileItem::GetLocalArtBaseFilename(bool& useFolder) const
+{
   std::string strFile = m_strPath;
   if (IsStack())
   {
-/*    CFileItem item(CStackDirectory::GetFirstStackedFile(strFile),false);
-    std::string localArt = item.GetLocalArt(artFile);
-    return localArt;
-    */
     std::string strPath;
     URIUtils::GetParentPath(m_strPath,strPath);
     strFile = URIUtils::AddFileToFolder(strPath, URIUtils::GetFileName(CStackDirectory::GetStackedTitlePath(strFile)));
@@ -3257,6 +3303,16 @@ std::string CFileItem::GetLocalArt(const std::string &artFile, bool useFolder) c
   else if (useFolder && !(m_bIsFolder && !IsFileFolder()))
     strFile = URIUtils::GetDirectory(strFile);
 
+  return strFile;
+}
+
+std::string CFileItem::GetLocalArt(const std::string& artFile, bool useFolder) const
+{
+  // no retrieving of empty art files from folders
+  if (useFolder && artFile.empty())
+    return "";
+
+  std::string strFile = GetLocalArtBaseFilename(useFolder);
   if (strFile.empty()) // empty filepath -> nothing to find
     return "";
 
@@ -3411,7 +3467,7 @@ std::string CFileItem::GetLocalFanart() const
     items.Append(moreItems);
   }
 
-  std::vector<std::string> fanarts = StringUtils::Split(CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_fanartImages, "|");
+  std::vector<std::string> fanarts = { "fanart" };
 
   strFile = URIUtils::ReplaceExtension(strFile, "-fanart");
   fanarts.insert(m_bIsFolder ? fanarts.end() : fanarts.begin(), URIUtils::GetFileName(strFile));
@@ -3730,6 +3786,8 @@ int CFileItem::GetVideoContentType() const
     return VIDEODB_CONTENT_EPISODES;
   if (HasVideoInfoTag() && GetVideoInfoTag()->m_type == MediaTypeMusicVideo)
     return VIDEODB_CONTENT_MUSICVIDEOS;
+  if (HasVideoInfoTag() && GetVideoInfoTag()->m_type == MediaTypeAlbum)
+    return VIDEODB_CONTENT_MUSICALBUMS;
 
   CVideoDatabaseDirectory dir;
   VIDEODATABASEDIRECTORY::CQueryParams params;

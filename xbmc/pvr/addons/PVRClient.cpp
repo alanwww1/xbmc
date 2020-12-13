@@ -11,7 +11,6 @@
 #include "ServiceBroker.h"
 #include "addons/kodi-dev-kit/include/kodi/addon-instance/PVR.h" // added for compile test on related sources only!
 #include "cores/VideoPlayer/DVDDemuxers/DVDDemuxUtils.h"
-#include "cores/VideoPlayer/Interface/Addon/InputStreamConstants.h"
 #include "dialogs/GUIDialogKaiToast.h"
 #include "events/EventLog.h"
 #include "events/NotificationEvent.h"
@@ -160,7 +159,7 @@ ADDON_STATUS CPVRClient::Create(int iClientId)
 
   /* initialise the add-on */
   bool bReadyToUse(false);
-  CLog::LogFC(LOGDEBUG, LOGPVR, "Creating PVR add-on instance '%s'", Name().c_str());
+  CLog::LogFC(LOGDEBUG, LOGPVR, "Creating PVR add-on instance '{}'", Name());
   if ((status = CreateInstance(&m_struct)) == ADDON_STATUS_OK)
     bReadyToUse = GetAddonProperties();
 
@@ -176,7 +175,7 @@ void CPVRClient::Destroy()
   m_bReadyToUse = false;
 
   /* reset 'ready to use' to false */
-  CLog::LogFC(LOGDEBUG, LOGPVR, "Destroying PVR add-on instance '%s'", GetFriendlyName().c_str());
+  CLog::LogFC(LOGDEBUG, LOGPVR, "Destroying PVR add-on instance '{}'", GetFriendlyName());
 
   /* destroy the add-on */
   DestroyInstance();
@@ -477,9 +476,9 @@ bool CPVRClient::GetAddonProperties()
         {
           // begin compat section
           CLog::LogF(LOGWARNING,
-                     "Add-on %s does not support timer types. It will work, but not benefit from "
+                     "Add-on {} does not support timer types. It will work, but not benefit from "
                      "the timer features introduced with PVR Addon API 2.0.0",
-                     strFriendlyName.c_str());
+                     strFriendlyName);
 
           // Create standard timer types (mostly) matching the timer functionality available in Isengard.
           // This is for migration only and does not make changes to the addons obsolete. Addons should
@@ -536,9 +535,9 @@ bool CPVRClient::GetAddonProperties()
             if (types_array[i].iId == PVR_TIMER_TYPE_NONE)
             {
               CLog::LogF(LOGERROR,
-                         "Invalid timer type supplied by add-on '%s'. Please contact the developer "
-                         "of this add-on: %s",
-                         GetFriendlyName().c_str(), Author().c_str());
+                         "Invalid timer type supplied by add-on '{}'. Please contact the developer "
+                         "of this add-on: {}",
+                         GetFriendlyName(), Author());
               continue;
             }
             timerTypes.emplace_back(
@@ -702,7 +701,7 @@ class CAddonEpgTag : public EPG_TAG
 {
 public:
   CAddonEpgTag() = delete;
-  explicit CAddonEpgTag(const std::shared_ptr<const CPVREpgInfoTag> kodiTag)
+  explicit CAddonEpgTag(const std::shared_ptr<const CPVREpgInfoTag>& kodiTag)
     : m_strTitle(kodiTag->Title()),
       m_strPlotOutline(kodiTag->PlotOutline()),
       m_strPlot(kodiTag->Plot()),
@@ -1315,7 +1314,7 @@ PVR_ERROR CPVRClient::DemuxRead(DemuxPacket*& packet)
   return DoAddonCall(
       __func__,
       [&packet](const AddonInstance* addon) {
-        packet = addon->toAddon->DemuxRead(addon);
+        packet = static_cast<DemuxPacket*>(addon->toAddon->DemuxRead(addon));
         return packet ? PVR_ERROR_NO_ERROR : PVR_ERROR_NOT_IMPLEMENTED;
       },
       m_clientCapabilities.HandlesDemuxing());
@@ -1350,7 +1349,7 @@ const char* CPVRClient::ToString(const PVR_ERROR error)
 }
 
 PVR_ERROR CPVRClient::DoAddonCall(const char* strFunctionName,
-                                  std::function<PVR_ERROR(const AddonInstance*)> function,
+                                  const std::function<PVR_ERROR(const AddonInstance*)>& function,
                                   bool bIsImplemented /* = true */,
                                   bool bCheckReadyToUse /* = true */) const
 {
@@ -1369,8 +1368,8 @@ PVR_ERROR CPVRClient::DoAddonCall(const char* strFunctionName,
 
   // Log error, if any.
   if (error != PVR_ERROR_NO_ERROR && error != PVR_ERROR_NOT_IMPLEMENTED)
-    CLog::LogFunction(LOGERROR, strFunctionName, "Add-on '%s' returned an error: %s",
-                      GetFriendlyName().c_str(), ToString(error));
+    CLog::LogFunction(LOGERROR, strFunctionName, "Add-on '{}' returned an error: {}",
+                      GetFriendlyName(), ToString(error));
 
   return error;
 }
@@ -1391,14 +1390,13 @@ PVR_ERROR CPVRClient::OpenLiveStream(const std::shared_ptr<CPVRChannel>& channel
 
     if (!CanPlayChannel(channel))
     {
-      CLog::LogFC(LOGDEBUG, LOGPVR, "Add-on '%s' can not play channel '%s'",
-                  GetFriendlyName().c_str(), channel->ChannelName().c_str());
+      CLog::LogFC(LOGDEBUG, LOGPVR, "Add-on '{}' can not play channel '{}'", GetFriendlyName(),
+                  channel->ChannelName());
       return PVR_ERROR_SERVER_ERROR;
     }
     else
     {
-      CLog::LogFC(LOGDEBUG, LOGPVR, "Opening live stream for channel '%s'",
-                  channel->ChannelName().c_str());
+      CLog::LogFC(LOGDEBUG, LOGPVR, "Opening live stream for channel '{}'", channel->ChannelName());
       PVR_CHANNEL tag;
       WriteClientChannelInfo(channel, tag);
       return addon->toAddon->OpenLiveStream(addon, &tag) ? PVR_ERROR_NO_ERROR
@@ -1419,8 +1417,7 @@ PVR_ERROR CPVRClient::OpenRecordedStream(const std::shared_ptr<CPVRRecording>& r
 
         PVR_RECORDING tag;
         WriteClientRecordingInfo(*recording, tag);
-        CLog::LogFC(LOGDEBUG, LOGPVR, "Opening stream for recording '%s'",
-                    recording->m_strTitle.c_str());
+        CLog::LogFC(LOGDEBUG, LOGPVR, "Opening stream for recording '{}'", recording->m_strTitle);
         return addon->toAddon->OpenRecordedStream(addon, &tag) ? PVR_ERROR_NO_ERROR
                                                                : PVR_ERROR_NOT_IMPLEMENTED;
       },
@@ -1687,7 +1684,7 @@ void CPVRClient::cb_transfer_channel_group_member(void* kodiInstance,
                                                                      client->GetID());
   if (!channel)
   {
-    CLog::LogF(LOGERROR, "Cannot find group '%s' or channel '%d'", member->strGroupName,
+    CLog::LogF(LOGERROR, "Cannot find group '{}' or channel '{}'", member->strGroupName,
                member->iChannelUniqueId);
   }
   else if (group->IsRadio() == channel->IsRadio())
@@ -1834,8 +1831,8 @@ void CPVRClient::cb_recording_notification(void* kodiInstance,
   CServiceBroker::GetEventLog().Add(
       EventPtr(new CNotificationEvent(client->Name(), strLine1, client->Icon(), strLine2)));
 
-  CLog::LogFC(LOGDEBUG, LOGPVR, "Recording %s on client '%s'. name='%s' filename='%s'",
-              bOnOff ? "started" : "finished", client->Name().c_str(), strName, strFileName);
+  CLog::LogFC(LOGDEBUG, LOGPVR, "Recording {} on client '{}'. name='{}' filename='{}'",
+              bOnOff ? "started" : "finished", client->Name(), strName, strFileName);
 }
 
 void CPVRClient::cb_trigger_channel_update(void* kodiInstance)
@@ -1874,12 +1871,12 @@ void CPVRClient::cb_trigger_epg_update(void* kodiInstance, unsigned int iChannel
   CServiceBroker::GetPVRManager().EpgContainer().UpdateRequest(client->GetID(), iChannelUid);
 }
 
-void CPVRClient::cb_free_demux_packet(void* kodiInstance, DemuxPacket* pPacket)
+void CPVRClient::cb_free_demux_packet(void* kodiInstance, DEMUX_PACKET* pPacket)
 {
-  CDVDDemuxUtils::FreeDemuxPacket(pPacket);
+  CDVDDemuxUtils::FreeDemuxPacket(static_cast<DemuxPacket*>(pPacket));
 }
 
-DemuxPacket* CPVRClient::cb_allocate_demux_packet(void* kodiInstance, int iDataSize)
+DEMUX_PACKET* CPVRClient::cb_allocate_demux_packet(void* kodiInstance, int iDataSize)
 {
   return CDVDDemuxUtils::AllocateDemuxPacket(iDataSize);
 }
@@ -1901,8 +1898,8 @@ void CPVRClient::cb_connection_state_change(void* kodiInstance,
     return;
 
   CLog::LogFC(LOGDEBUG, LOGPVR,
-              "State for connection '%s' on client '%s' changed from '%d' to '%d'",
-              strConnectionString, client->Name().c_str(), prevState, newState);
+              "State for connection '{}' on client '{}' changed from '{}' to '{}'",
+              strConnectionString, client->Name(), prevState, newState);
 
   client->SetConnectionState(newState);
 

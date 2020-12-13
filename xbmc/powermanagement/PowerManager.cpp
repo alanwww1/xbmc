@@ -52,6 +52,14 @@ void CPowerManager::Initialize()
 
 void CPowerManager::SetDefaults()
 {
+  auto setting = m_settings->GetSetting(CSettings::SETTING_POWERMANAGEMENT_SHUTDOWNSTATE);
+  if (!setting)
+  {
+    CLog::Log(LOGERROR, "Failed to load setting for: {}",
+              CSettings::SETTING_POWERMANAGEMENT_SHUTDOWNSTATE);
+    return;
+  }
+
   int defaultShutdown = m_settings->GetInt(CSettings::SETTING_POWERMANAGEMENT_SHUTDOWNSTATE);
 
   switch (defaultShutdown)
@@ -91,7 +99,7 @@ void CPowerManager::SetDefaults()
     break;
   }
 
-  std::static_pointer_cast<CSettingInt>(m_settings->GetSetting(CSettings::SETTING_POWERMANAGEMENT_SHUTDOWNSTATE))->SetDefault(defaultShutdown);
+  std::static_pointer_cast<CSettingInt>(setting)->SetDefault(defaultShutdown);
 }
 
 bool CPowerManager::Powerdown()
@@ -124,7 +132,7 @@ bool CPowerManager::Reboot()
 
   if (success)
   {
-    CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::System, "xbmc", "OnRestart");
+    CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::System, "OnRestart");
 
     CGUIDialogBusy* dialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogBusy>(WINDOW_DIALOG_BUSY);
     if (dialog)
@@ -169,7 +177,7 @@ void CPowerManager::ProcessEvents()
 
 void CPowerManager::OnSleep()
 {
-  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::System, "xbmc", "OnSleep");
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::System, "OnSleep");
 
   CGUIDialogBusy* dialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogBusy>(WINDOW_DIALOG_BUSY);
   if (dialog)
@@ -216,7 +224,7 @@ void CPowerManager::OnWake()
   CServiceBroker::GetPVRManager().OnWake();
   RestorePlayerState();
 
-  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::System, "xbmc", "OnWake");
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::System, "OnWake");
 }
 
 void CPowerManager::OnLowBattery()
@@ -225,7 +233,7 @@ void CPowerManager::OnLowBattery()
 
   CGUIDialogKaiToast::QueueNotification(CGUIDialogKaiToast::Warning, g_localizeStrings.Get(13050), "");
 
-  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::System, "xbmc", "OnLowBattery");
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::System, "OnLowBattery");
 }
 
 void CPowerManager::StorePlayerState()
@@ -262,7 +270,10 @@ void CPowerManager::RestorePlayerState()
   g_application.PlayFile(*m_lastPlayedFileItem, m_lastUsedPlayer);
 }
 
-void CPowerManager::SettingOptionsShutdownStatesFiller(SettingConstPtr setting, std::vector<IntegerSettingOption> &list, int &current, void *data)
+void CPowerManager::SettingOptionsShutdownStatesFiller(const SettingConstPtr& setting,
+                                                       std::vector<IntegerSettingOption>& list,
+                                                       int& current,
+                                                       void* data)
 {
   if (CServiceBroker::GetPowerManager().CanPowerdown())
     list.emplace_back(g_localizeStrings.Get(13005), POWERSTATE_SHUTDOWN);

@@ -7,9 +7,10 @@
  */
 
 #include "DVDDemuxUtils.h"
-#include "cores/VideoPlayer/Interface/Addon/DemuxCrypto.h"
-#include "utils/log.h"
+
+#include "cores/VideoPlayer/Interface/DemuxCrypto.h"
 #include "utils/MemUtils.h"
+#include "utils/log.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -29,6 +30,8 @@ void CDVDDemuxUtils::FreeDemuxPacket(DemuxPacket* pPacket)
       avPkt.side_data_elems = pPacket->iSideDataElems;
       av_packet_free_side_data(&avPkt);
     }
+    if (pPacket->cryptoInfo)
+      delete pPacket->cryptoInfo;
     delete pPacket;
   }
 }
@@ -66,7 +69,7 @@ DemuxPacket* CDVDDemuxUtils::AllocateDemuxPacket(unsigned int iDataSize, unsigne
 {
   DemuxPacket *ret(AllocateDemuxPacket(iDataSize));
   if (ret && encryptedSubsampleCount > 0)
-    ret->cryptoInfo = std::shared_ptr<DemuxCryptoInfo>(new DemuxCryptoInfo(encryptedSubsampleCount));
+    ret->cryptoInfo = new DemuxCryptoInfo(encryptedSubsampleCount);
   return ret;
 }
 

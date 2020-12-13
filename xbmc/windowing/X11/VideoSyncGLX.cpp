@@ -19,6 +19,8 @@
 
 #include <X11/extensions/Xrandr.h>
 
+using namespace KODI::WINDOWING::X11;
+
 Display* CVideoSyncGLX::m_Dpy = NULL;
 
 void CVideoSyncGLX::OnLostDisplay()
@@ -64,7 +66,7 @@ bool CVideoSyncGLX::Setup(PUPDATECLOCK func)
 
   CLog::Log(LOGDEBUG, "CVideoReferenceClock: Setting up GLX");
 
-  m_winSystem.Register(this);
+  static_cast<CWinSystemX11*>(&m_winSystem)->Register(this);
 
   m_displayLost = false;
   m_displayReset = false;

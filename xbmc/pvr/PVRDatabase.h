@@ -25,6 +25,8 @@ namespace PVR
 
   /** The PVR database */
 
+  static constexpr int CHANNEL_COMMIT_QUERY_COUNT_LIMIT = 10000;
+
   class CPVRDatabase : public CDatabase
   {
   public:
@@ -46,10 +48,20 @@ namespace PVR
     void Close() override;
 
     /*!
+     * @brief Lock the database.
+     */
+    void Lock();
+
+    /*!
+     * @brief Unlock the database.
+     */
+    void Unlock();
+
+    /*!
      * @brief Get the minimal database version that is required to operate correctly.
      * @return The minimal database version.
      */
-    int GetSchemaVersion() const override { return 36; }
+    int GetSchemaVersion() const override { return 37; }
 
     /*!
      * @brief Get the default sqlite database filename.
@@ -109,7 +121,7 @@ namespace PVR
      * @param channel The channel to remove.
      * @return True if the channel was removed, false otherwise.
      */
-    bool Delete(const CPVRChannel& channel);
+    bool QueueDeleteQuery(const CPVRChannel& channel);
 
     /*!
      * @brief Get the list of channels from the database
@@ -212,6 +224,14 @@ namespace PVR
      * @return whether the update was successful
      */
     bool UpdateLastWatched(const CPVRChannelGroup& group);
+    //@}
+
+    /*!
+     * @brief Updates the last opened timestamp for the channel group
+     * @param group the group
+     * @return whether the update was successful
+     */
+    bool UpdateLastOpened(const CPVRChannelGroup& group);
     //@}
 
   private:

@@ -879,11 +879,6 @@
           <default>true</default>
           <control type="toggle" />
         </setting>
-        <setting id="myvideos.extractthumb" type="boolean" label="38190" help="36180">
-          <level>1</level>
-          <default>true</default>
-          <control type="toggle" />
-        </setting>
         <setting id="myvideos.extractchapterthumbs" type="boolean" label="37044" help="37045">
           <level>2</level>
           <default>true</default>
@@ -984,11 +979,6 @@
           </dependencies>
           <control type="list" format="string" />
         </setting>
-        <setting id="videolibrary.actorthumbs" type="boolean" label="20402" help="36143">
-          <level>2</level>
-          <default>true</default>
-          <control type="toggle" />
-        </setting>
         <setting id="videolibrary.moviesetsfolder" type="path" label="20226" help="36300">
           <level>1</level>
           <default></default>
@@ -998,6 +988,134 @@
           <control type="button" format="path">
             <heading>657</heading>
           </control>
+        </setting>
+        <setting id="videolibrary.musicvideosallperformers" type="boolean" label="20472" help="36308">
+          <level>1</level>
+          <default>true</default>
+          <control type="toggle" />
+         </setting>
+      </group>
+      <group id="4" label="39123">
+        <!-- Hidden setting indicating video art settings have been migrated from old advancedsettings.xml format-->
+        <setting id="videolibrary.artsettingsupdated" type="boolean" label="0" help="">
+          <level>4</level>
+          <default>false</default>
+          <control type="toggle" />
+        </setting>
+        <setting id="videolibrary.artworklevel" type="integer" label="39137" help="39138">
+          <level>1</level>
+          <default>0</default>
+          <constraints>
+            <options>
+              <option label="39140">0</option> <!-- VIDEOLIBRARY_ARTWORK_LEVEL_ALL -->
+              <option label="39141">1</option> <!-- VIDEOLIBRARY_ARTWORK_LEVEL_BASIC -->
+              <option label="39142">2</option> <!-- VIDEOLIBRARY_ARTWORK_LEVEL_CUSTOM -->
+              <option label="231">3</option> <!-- VIDEOLIBRARY_ARTWORK_LEVEL_NONE -->
+            </options>
+          </constraints>
+          <control type="list" format="string" />
+        </setting>
+        <setting id="videolibrary.movieartwhitelist" type="list[string]" parent="videolibrary.artworklevel" label="39143" help="39144">
+          <level>2</level>
+          <default></default>
+          <constraints>
+            <options>
+              <option>clearart</option>
+              <option>discart</option>
+              <option>keyart</option>
+              <option>banner</option>
+              <option>landscape</option>
+              <option>clearlogo</option>
+            </options>
+            <delimiter>, </delimiter>
+            <allownewoption>true</allownewoption>
+          </constraints>
+          <dependencies>
+            <dependency type="visible" setting="videolibrary.artworklevel" operator="is">2</dependency>
+          </dependencies>
+          <control type="list" format="string">
+            <multiselect>true</multiselect>
+            <addbuttonlabel>13516</addbuttonlabel>
+          </control>
+        </setting>
+        <setting id="videolibrary.tvshowartwhitelist" type="list[string]" parent="videolibrary.artworklevel" label="39145" help="39146">
+          <level>2</level>
+          <default></default>
+          <constraints>
+            <options>
+              <option>clearart</option>
+              <option>discart</option>
+              <option>keyart</option>
+              <option>banner</option>
+              <option>landscape</option>
+              <option>clearlogo</option>
+            </options>
+            <delimiter>, </delimiter>
+            <allownewoption>true</allownewoption>
+          </constraints>
+          <dependencies>
+            <dependency type="visible" setting="videolibrary.artworklevel" operator="is">2</dependency>
+          </dependencies>
+          <control type="list" format="string">
+            <multiselect>true</multiselect>
+            <addbuttonlabel>13516</addbuttonlabel>
+          </control>
+        </setting>
+        <setting id="videolibrary.episodeartwhitelist" type="list[string]" parent="videolibrary.artworklevel" label="39147" help="39148">
+          <level>2</level>
+          <default></default>
+          <constraints>
+            <options>
+              <option>fanart</option>
+            </options>
+            <delimiter>, </delimiter>
+            <allownewoption>true</allownewoption>
+          </constraints>
+          <dependencies>
+            <dependency type="visible" setting="videolibrary.artworklevel" operator="is">2</dependency>
+          </dependencies>
+          <control type="list" format="string">
+            <multiselect>true</multiselect>
+            <addbuttonlabel>13516</addbuttonlabel>
+          </control>
+        </setting>
+        <setting id="videolibrary.musicvideoartwhitelist" type="list[string]" parent="videolibrary.artworklevel" label="39149" help="39150">
+          <level>2</level>
+          <default></default>
+          <constraints>
+            <options>
+              <option>clearart</option>
+              <option>discart</option>
+              <option>banner</option>
+              <option>landscape</option>
+              <option>clearlogo</option>
+            </options>
+            <delimiter>, </delimiter>
+            <allownewoption>true</allownewoption>
+          </constraints>
+          <dependencies>
+            <dependency type="visible" setting="videolibrary.artworklevel" operator="is">2</dependency>
+          </dependencies>
+          <control type="list" format="string">
+            <multiselect>true</multiselect>
+            <addbuttonlabel>13516</addbuttonlabel>
+          </control>
+        </setting>
+        <setting id="videolibrary.actorthumbs" type="boolean" label="20402" help="36143">
+          <level>2</level>
+          <default>true</default>
+          <dependencies>
+            <dependency type="visible" setting="videolibrary.artworklevel" operator="!is">3</dependency>
+          </dependencies>
+          <control type="toggle" />
+        </setting>
+        <setting id="myvideos.extractthumb" type="boolean" label="38190" help="36180">
+          <level>1</level>
+          <default>true</default>
+          <dependencies>
+            <dependency type="visible" setting="videolibrary.artworklevel" operator="!is">3</dependency>
+          </dependencies>
+          <control type="toggle" />
         </setting>
       </group>
     </category>
@@ -1287,14 +1405,14 @@
       <group id="1">
         <setting id="scrapers.moviesdefault" type="addon" label="21413" help="36198">
           <level>4</level>
-          <default>metadata.themoviedb.org</default>
+          <default>metadata.themoviedb.org.python</default>
           <constraints>
             <addontype>xbmc.metadata.scraper.movies</addontype>
           </constraints>
         </setting>
         <setting id="scrapers.tvshowsdefault" type="addon" label="21414" help="36199">
           <level>4</level>
-          <default>metadata.tvshows.themoviedb.org</default>
+          <default>metadata.tvshows.themoviedb.org.python</default>
           <constraints>
             <addontype>xbmc.metadata.scraper.tvshows</addontype>
           </constraints>
@@ -1664,6 +1782,11 @@
         <setting id="pvrreminders.autorecord" type="boolean" label="19314" help="36298">
           <level>1</level>
           <default>true</default>
+          <control type="toggle" />
+        </setting>
+        <setting id="pvrreminders.autoswitch" type="boolean" label="19330" help="36434">
+          <level>1</level>
+          <default>false</default>
           <control type="toggle" />
         </setting>
       </group>
@@ -2235,18 +2358,6 @@
           </dependencies>
           <control type="spinner" format="string" delayed="true" />
         </setting>
-        <setting id="videoscreen.whitelist" type="list[string]" parent="videoscreen.screen" label="14085" help="36356">
-          <level>3</level>
-          <constraints>
-            <options>modes</options>
-            <default></default>
-            <delimiter>,</delimiter>
-            <minimumitems>0</minimumitems>
-          </constraints>
-          <control type="list" format="string">
-            <multiselect>true</multiselect>
-          </control>
-        </setting>
         <setting id="videoscreen.resolution" type="integer" parent="videoscreen.screen" label="169" help="36352">
           <level>0</level>
           <default>16</default> <!-- RES_DESKTOP -->
@@ -2507,7 +2618,37 @@
           <control type="spinner" format="integer" />
         </setting>
       </group>
-      <group id="2" label="14232">
+      <group id="2" label="14126">
+        <setting id="videoscreen.whitelist" type="list[string]" parent="videoscreen.screen" label="14126" help="36443">
+          <level>3</level>
+          <constraints>
+            <options>modes</options>
+            <default></default>
+            <delimiter>,</delimiter>
+            <minimumitems>0</minimumitems>
+          </constraints>
+          <control type="list" format="string">
+            <multiselect>true</multiselect>
+          </control>
+        </setting>
+        <setting id="videoscreen.whitelistpulldown" type="boolean" parent="videoscreen.whitelist" label="14127" help="36444">
+          <level>3</level>
+          <default>false</default>
+          <dependencies>
+            <dependency type="enable" setting="videoscreen.whitelist" operator="!is"></dependency>
+          </dependencies>
+          <control type="toggle" />
+        </setting>
+        <setting id="videoscreen.whitelistdoublerefreshrate" type="boolean" parent="videoscreen.whitelist" label="14128" help="36445">
+          <level>3</level>
+          <default>false</default>
+          <dependencies>
+            <dependency type="enable" setting="videoscreen.whitelist" operator="!is"></dependency>
+          </dependencies>
+          <control type="toggle" />
+        </setting>
+      </group>
+      <group id="3" label="14232">
         <setting id="videoscreen.stereoscopicmode" type="integer" label="36500" help="36539">
           <level>2</level>
           <default>0</default>
@@ -2528,7 +2669,7 @@
           <control type="list" format="integer"/>
         </setting>
       </group>
-      <group id="3" label="496">
+      <group id="4" label="496">
         <setting id="videoscreen.noofbuffers" type="integer" label="36043" help="36552">
           <level>2</level>
           <default>3</default> <!-- triple buffers -->

@@ -26,6 +26,28 @@ namespace ADDON
 
   const std::string ADDON_PYTHON_EXT           = "*.py";
 
+  enum class AllowCheckForUpdates;
+
+  enum class AddonCheckType
+  {
+    OUTDATED_ADDONS,
+    AVAILABLE_UPDATES
+  };
+
+  enum class OnlyEnabled : bool
+  {
+    YES = true,
+    NO = false,
+  };
+
+  enum class OnlyEnabledRootAddon : bool
+  {
+    YES = true,
+    NO = false,
+  };
+
+  struct CAddonWithUpdate;
+
   /**
   * Class - IAddonMgrCallback
   * This callback should be inherited by any class which manages
@@ -67,13 +89,13 @@ namespace ADDON
      \param id the id of the addon to retrieve.
      \param addon[out] the retrieved addon pointer - only use if the function returns true.
      \param type type of addon to retrieve - defaults to any type.
-     \param enabledOnly whether we only want enabled addons - set to false to allow both enabled and disabled addons - defaults to true.
-     \return true if an addon matching the id of the given type is available and is enabled (if enabledOnly is true).
+     \param onlyEnabled whether we only want enabled addons - set to false to allow both enabled and disabled addons - defaults to true.
+     \return true if an addon matching the id of the given type is available and is enabled (if onlyEnabled is true).
      */
     bool GetAddon(const std::string& id,
                   AddonPtr& addon,
-                  const TYPE& type = ADDON_UNKNOWN,
-                  bool enabledOnly = true) const;
+                  const TYPE& type,
+                  OnlyEnabled onlyEnabled) const;
 
     bool HasType(const std::string &id, const TYPE &type);
 
@@ -137,6 +159,16 @@ namespace ADDON
      */
     bool FindAddons();
 
+    /*! \brief Checks whether given addon with given origin/version is installed
+     * \param addonId addon to check
+     * \param origin origin to check
+     * \param addonVersion version to check
+     * \return True if installed, false otherwise
+     */
+    bool FindAddon(const std::string& addonId,
+                   const std::string& origin,
+                   const AddonVersion& addonVersion);
+
     /*!
      * @brief Fills the the provided vector with the list of incompatible
      * enabled addons and returns if there's any.
@@ -181,7 +213,9 @@ namespace ADDON
      *
      * Returns true if the addon was successfully loaded and enabled; otherwise false.
      */
-    bool LoadAddon(const std::string& addonId);
+    bool LoadAddon(const std::string& addonId,
+                   const std::string& origin,
+                   const AddonVersion& addonVersion);
 
     /*! @note: should only be called by AddonInstaller
      *
@@ -227,7 +261,18 @@ namespace ADDON
     bool IsAddonInstalled(const std::string& ID);
 
     /* \brief Checks whether an addon is installed from a
+     *        particular origin repo
+     * \note if checked for an origin defined as official (i.e. repository.xbmc.org)
+     *       this function will return true even if the addon is a shipped system add-on
+     * \param ID id of the addon
+     * \param origin origin repository id
+     */
+    bool IsAddonInstalled(const std::string& ID, const std::string& origin) const;
+
+    /* \brief Checks whether an addon is installed from a
      *        particular origin repo and version
+     * \note if checked for an origin defined as official (i.e. repository.xbmc.org)
+     *       this function will return true even if the addon is a shipped system add-on
      * \param ID id of the addon
      * \param origin origin repository id
      * \param version the version of the addon
@@ -326,15 +371,18 @@ namespace ADDON
     bool IsCompatible(const AddonInfoPtr& addonInfo) const;
 
     /*! \brief Recursively get dependencies for an add-on
+     *  \param id the id of the root addon
+     *  \param onlyEnabledRootAddon whether look for enabled root add-ons only
      */
-    std::vector<DependencyInfo> GetDepsRecursive(const std::string& id);
+    std::vector<DependencyInfo> GetDepsRecursive(const std::string& id,
+                                                 OnlyEnabledRootAddon onlyEnabledRootAddon);
 
     /*!
      * @brief Get a list of add-on's with info's for the on system available
      * ones.
      *
      * @param[out] addonInfos list where finded addon information becomes stored
-     * @param[in] enabledOnly If true are only enabled ones given back,
+     * @param[in] onlyEnabled If true are only enabled ones given back,
      *                        if false all on system available. Default is true.
      * @param[in] type The requested type, with "ADDON_UNKNOWN" are all add-on
      *                 types given back who match the case with value before.
@@ -342,7 +390,7 @@ namespace ADDON
      *                 match them. Default is for all types.
      * @return true if the list contains entries
      */
-    bool GetAddonInfos(AddonInfos& addonInfos, bool enabledOnly, TYPE type) const;
+    bool GetAddonInfos(AddonInfos& addonInfos, bool onlyEnabled, TYPE type) const;
 
     /*!
      * @brief Get a list of disabled add-on's with info's
@@ -448,14 +496,30 @@ namespace ADDON
     /*@}}}*/
 
     /*!
-     * \brief Fetches list of outdated addons as well as available updates and
-     *        stores them into separate vectors.
-     * \param[out] outdated target vector of outdated addons (that have updates available)
-     * \param[out] updates target vector of available updates (determined for installed add-ons)
+     * \brief Retrieves list of outdated addons as well as their related
+     *        available updates and stores them into map.
+     * \param[out] addonsWithUpdate target map
      * \return true or false
      */
-    bool GetAvailableUpdatesAndOutdatedAddons(std::vector<std::shared_ptr<IAddon>>& outdated,
-                                              std::vector<std::shared_ptr<IAddon>>& updates) const;
+    bool GetAddonsWithAvailableUpdate(
+        std::map<std::string, CAddonWithUpdate>& addonsWithUpdate) const;
+
+    /*!
+     * \brief Retrieves list of compatible addon versions of all origins
+     * \param[in] addonId addon to look up
+     * \param[out] compatibleVersions target vector to be filled
+     * \return true or false
+     */
+    bool GetCompatibleVersions(const std::string& addonId,
+                               std::vector<std::shared_ptr<IAddon>>& compatibleVersions) const;
+
+    /*!
+     * \brief Return number of available updates formatted as string
+     *        this can be used as a lightweight method of retrieving the number of updates
+     *        rather than using the expensive GetAvailableUpdates call
+     * \return number of available updates
+     */
+    const std::string& GetLastAvailableUpdatesCountAsString() const;
 
   private:
     CAddonMgr& operator=(CAddonMgr const&) = delete;
@@ -470,11 +534,11 @@ namespace ADDON
      * \return vector filled with either available updates or outdated addons
      */
     std::vector<std::shared_ptr<IAddon>> GetAvailableUpdatesOrOutdatedAddons(
-        bool returnOutdatedAddons) const;
+        AddonCheckType addonCheckType) const;
 
     bool GetAddonsInternal(const TYPE& type,
                            VECADDONS& addons,
-                           bool enabledOnly,
+                           bool onlyEnabled,
                            bool checkIncompatible = false) const;
 
     bool EnableSingle(const std::string& id);
@@ -509,8 +573,12 @@ namespace ADDON
      * Install the list of addon updates via AddonInstaller
      * \param[in,out] updates the vector of addons to install (will be sorted)
      * \param wait if the process should wait for all addons to install
+     * \param allowCheckForUpdates indicates if content update checks are allowed
+     *        after installation of a repository addon from the list
      */
-    void InstallAddonUpdates(VECADDONS& updates, bool wait) const;
+    void InstallAddonUpdates(VECADDONS& updates,
+                             bool wait,
+                             AllowCheckForUpdates allowCheckForUpdates) const;
 
     // This guards the addon installation process to make sure
     // addon updates are not installed concurrently
@@ -532,6 +600,12 @@ namespace ADDON
 
     // Temporary path given to add-ons, whose content is deleted when Kodi is stopped
     const std::string m_tempAddonBasePath = "special://temp/addons";
+
+    /*!
+     * latest count of available updates
+     */
+    mutable std::string m_lastAvailableUpdatesCountAsString;
+    mutable std::mutex m_lastAvailableUpdatesCountMutex;
   };
 
 }; /* namespace ADDON */

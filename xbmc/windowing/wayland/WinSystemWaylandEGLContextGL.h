@@ -11,8 +11,6 @@
 #include "WinSystemWaylandEGLContext.h"
 #include "rendering/gl/RenderSystemGL.h"
 
-class CVaapiProxy;
-
 namespace KODI
 {
 namespace WINDOWING
@@ -20,9 +18,14 @@ namespace WINDOWING
 namespace WAYLAND
 {
 
+class CVaapiProxy;
+
 class CWinSystemWaylandEGLContextGL : public CWinSystemWaylandEGLContext, public CRenderSystemGL
 {
 public:
+  static void Register();
+  static std::unique_ptr<CWinSystemBase> CreateWinSystem();
+
   // Implementation of CWinSystemBase via CWinSystemWaylandEGLContext
   CRenderSystemBase *GetRenderSystem() override { return this; }
   bool InitWindowSystem() override;

@@ -274,12 +274,12 @@ bool CPVREpgDatabase::DeleteEpg()
   return bReturn;
 }
 
-bool CPVREpgDatabase::Delete(const CPVREpg& table)
+bool CPVREpgDatabase::QueueDeleteEpgQuery(const CPVREpg& table)
 {
   /* invalid channel */
   if (table.EpgID() <= 0)
   {
-    CLog::LogF(LOGERROR, "Invalid channel id: %d", table.EpgID());
+    CLog::LogF(LOGERROR, "Invalid channel id: {}", table.EpgID());
     return false;
   }
 
@@ -287,7 +287,12 @@ bool CPVREpgDatabase::Delete(const CPVREpg& table)
 
   CSingleLock lock(m_critSection);
   filter.AppendWhere(PrepareSQL("idEpg = %u", table.EpgID()));
-  return DeleteValues("epg", filter);
+
+  std::string strQuery;
+  if (BuildSQL(PrepareSQL("DELETE FROM %s ", "epg"), filter, strQuery))
+    return QueueDeleteQuery(strQuery);
+
+  return false;
 }
 
 bool CPVREpgDatabase::QueueDeleteTagQuery(const CPVREpgInfoTag& tag)
@@ -341,7 +346,7 @@ std::shared_ptr<CPVREpgInfoTag> CPVREpgDatabase::CreateEpgTag(
 {
   if (!pDS->eof())
   {
-    const std::shared_ptr<CPVREpgInfoTag> newTag(new CPVREpgInfoTag());
+    std::shared_ptr<CPVREpgInfoTag> newTag(new CPVREpgInfoTag());
 
     time_t iStartTime;
     iStartTime = static_cast<time_t>(m_pDS->fv("iStartTime").get_asInt());
@@ -711,14 +716,40 @@ std::shared_ptr<CPVREpgInfoTag> CPVREpgDatabase::GetEpgTagByUniqueBroadcastID(
   {
     try
     {
-      const std::shared_ptr<CPVREpgInfoTag> tag = CreateEpgTag(m_pDS);
+      std::shared_ptr<CPVREpgInfoTag> tag = CreateEpgTag(m_pDS);
       m_pDS->close();
       return tag;
     }
     catch (...)
     {
-      CLog::LogF(LOGERROR, "Could not load EPG tag with unique broadcast ID (%u) from the database",
+      CLog::LogF(LOGERROR, "Could not load EPG tag with unique broadcast ID ({}) from the database",
                  iUniqueBroadcastId);
+    }
+  }
+
+  return {};
+}
+
+std::shared_ptr<CPVREpgInfoTag> CPVREpgDatabase::GetEpgTagByDatabaseID(int iEpgID, int iDatabaseId)
+{
+  CSingleLock lock(m_critSection);
+  const std::string strQuery = PrepareSQL("SELECT * "
+                                          "FROM epgtags "
+                                          "WHERE idEpg = %u AND idBroadcast = %u;",
+                                          iEpgID, iDatabaseId);
+
+  if (ResultQuery(strQuery))
+  {
+    try
+    {
+      std::shared_ptr<CPVREpgInfoTag> tag = CreateEpgTag(m_pDS);
+      m_pDS->close();
+      return tag;
+    }
+    catch (...)
+    {
+      CLog::LogF(LOGERROR, "Could not load EPG tag with database ID (%u) from the database",
+                 iDatabaseId);
     }
   }
 
@@ -741,13 +772,13 @@ std::shared_ptr<CPVREpgInfoTag> CPVREpgDatabase::GetEpgTagByStartTime(int iEpgID
   {
     try
     {
-      const std::shared_ptr<CPVREpgInfoTag> tag = CreateEpgTag(m_pDS);
+      std::shared_ptr<CPVREpgInfoTag> tag = CreateEpgTag(m_pDS);
       m_pDS->close();
       return tag;
     }
     catch (...)
     {
-      CLog::LogF(LOGERROR, "Could not load EPG tag with start time (%s) from the database",
+      CLog::LogF(LOGERROR, "Could not load EPG tag with start time ({}) from the database",
                  startTime.GetAsDBDateTime());
     }
   }
@@ -772,13 +803,13 @@ std::shared_ptr<CPVREpgInfoTag> CPVREpgDatabase::GetEpgTagByMinStartTime(
   {
     try
     {
-      const std::shared_ptr<CPVREpgInfoTag> tag = CreateEpgTag(m_pDS);
+      std::shared_ptr<CPVREpgInfoTag> tag = CreateEpgTag(m_pDS);
       m_pDS->close();
       return tag;
     }
     catch (...)
     {
-      CLog::LogF(LOGERROR, "Could not load tags with min start time (%u) for EPG (%d)",
+      CLog::LogF(LOGERROR, "Could not load tags with min start time ({}) for EPG ({})",
                  minStartTime.GetAsDBDateTime(), iEpgID);
     }
   }
@@ -803,13 +834,13 @@ std::shared_ptr<CPVREpgInfoTag> CPVREpgDatabase::GetEpgTagByMaxEndTime(int iEpgI
   {
     try
     {
-      const std::shared_ptr<CPVREpgInfoTag> tag = CreateEpgTag(m_pDS);
+      std::shared_ptr<CPVREpgInfoTag> tag = CreateEpgTag(m_pDS);
       m_pDS->close();
       return tag;
     }
     catch (...)
     {
-      CLog::LogF(LOGERROR, "Could not load tags with max end time (%u) for EPG (%d)",
+      CLog::LogF(LOGERROR, "Could not load tags with max end time ({}) for EPG ({})",
                  maxEndTime.GetAsDBDateTime(), iEpgID);
     }
   }
@@ -849,7 +880,7 @@ std::vector<std::shared_ptr<CPVREpgInfoTag>> CPVREpgDatabase::GetEpgTagsByMinSta
     catch (...)
     {
       CLog::LogF(LOGERROR,
-                 "Could not load tags with min start time (%u) and max end time (%u) for EPG (%d)",
+                 "Could not load tags with min start time ({}) and max end time ({}) for EPG ({})",
                  minStartTime.GetAsDBDateTime(), maxEndTime.GetAsDBDateTime(), iEpgID);
     }
   }
@@ -889,7 +920,7 @@ std::vector<std::shared_ptr<CPVREpgInfoTag>> CPVREpgDatabase::GetEpgTagsByMinEnd
     catch (...)
     {
       CLog::LogF(LOGERROR,
-                 "Could not load tags with min end time (%u) and max start time (%u) for EPG (%d)",
+                 "Could not load tags with min end time ({}) and max start time ({}) for EPG ({})",
                  minEndTime.GetAsDBDateTime(), maxStartTime.GetAsDBDateTime(), iEpgID);
     }
   }
@@ -915,8 +946,10 @@ bool CPVREpgDatabase::QueueDeleteEpgTagsByMinEndMaxStartTimeQuery(int iEpgID,
                                 static_cast<unsigned int>(maxStart)));
 
   std::string strQuery;
-  BuildSQL("DELETE FROM epgtags", filter, strQuery);
-  return QueueDeleteQuery(strQuery);
+  if (BuildSQL("DELETE FROM epgtags", filter, strQuery))
+    return QueueDeleteQuery(strQuery);
+
+  return false;
 }
 
 std::vector<std::shared_ptr<CPVREpgInfoTag>> CPVREpgDatabase::GetAllEpgTags(int iEpgID)
@@ -939,7 +972,7 @@ std::vector<std::shared_ptr<CPVREpgInfoTag>> CPVREpgDatabase::GetAllEpgTags(int 
     }
     catch (...)
     {
-      CLog::LogF(LOGERROR, "Could not load tags for EPG (%d)", iEpgID);
+      CLog::LogF(LOGERROR, "Could not load tags for EPG ({})", iEpgID);
     }
   }
   return {};
@@ -1026,11 +1059,23 @@ bool CPVREpgDatabase::DeleteEpgTags(int iEpgId)
   return DeleteValues("epgtags", filter);
 }
 
+bool CPVREpgDatabase::QueueDeleteEpgTags(int iEpgId)
+{
+  Filter filter;
+
+  CSingleLock lock(m_critSection);
+  filter.AppendWhere(PrepareSQL("idEpg = %u", iEpgId));
+
+  std::string strQuery;
+  BuildSQL(PrepareSQL("DELETE FROM %s ", "epg"), filter, strQuery);
+  return QueueDeleteQuery(strQuery);
+}
+
 bool CPVREpgDatabase::QueuePersistQuery(const CPVREpgInfoTag& tag)
 {
   if (tag.EpgID() <= 0)
   {
-    CLog::LogF(LOGERROR, "Tag '%s' does not have a valid table", tag.Title().c_str());
+    CLog::LogF(LOGERROR, "Tag '{}' does not have a valid table", tag.Title());
     return false;
   }
 

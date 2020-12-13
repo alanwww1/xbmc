@@ -36,7 +36,7 @@
  * Only must be min version increased if a new compile of addon breaks after
  * changes here.
  *
- * Have by add of new parts a look about **Doxygen** `\\ingroup`, so that
+ * Have by add of new parts a look about **Doxygen** `\@ingroup`, so that
  * added parts included in documentation.
  *
  * If you add addon side related documentation, where his dev need know, use `///`.
@@ -623,8 +623,8 @@ public:
   //============================================================================
   /// @brief Get the disk space reported by the backend (if supported).
   ///
-  /// @param[in] total The total disk space in bytes.
-  /// @param[in] used The used disk space in bytes.
+  /// @param[in] total The total disk space in KiB.
+  /// @param[in] used The used disk space in KiB.
   /// @return @ref PVR_ERROR_NO_ERROR if the drive space has been fetched
   ///         successfully.
   ///
@@ -635,8 +635,8 @@ public:
   /// ~~~~~~~~~~~~~{.cpp}
   /// PVR_ERROR CMyPVRClient::GetDriveSpace(uint64_t& total, uint64_t& used)
   /// {
-  ///   total = 10 * 1024 * 1024 * 1024; // To set complete size of drive in bytes
-  ///   used =  122324243; // To set the used amount
+  ///   total = 100 * 1024 * 1024; // To set complete size of drive in KiB (100GB)
+  ///   used =  12232424; // To set the used amount
   ///   return PVR_ERROR_NO_ERROR;
   /// }
   /// ~~~~~~~~~~~~~
@@ -2324,7 +2324,7 @@ public:
   /// @remarks Required, and only used if addon has its own demuxer.
   /// Return `nullptr` if this add-on won't provide this function.
   ///
-  virtual DemuxPacket* DemuxRead() { return nullptr; }
+  virtual DEMUX_PACKET* DemuxRead() { return nullptr; }
   //----------------------------------------------------------------------------
 
   //============================================================================
@@ -2413,7 +2413,7 @@ public:
   ///
   /// @remarks Only called from addon itself
   ///
-  inline DemuxPacket* AllocateDemuxPacket(int iDataSize)
+  inline DEMUX_PACKET* AllocateDemuxPacket(int iDataSize)
   {
     return m_instanceData->toKodi->AllocateDemuxPacket(m_instanceData->toKodi->kodiInstance,
                                                        iDataSize);
@@ -2428,7 +2428,7 @@ public:
   ///
   /// @remarks Only called from addon itself.
   ///
-  inline void FreeDemuxPacket(DemuxPacket* pPacket)
+  inline void FreeDemuxPacket(DEMUX_PACKET* pPacket)
   {
     m_instanceData->toKodi->FreeDemuxPacket(m_instanceData->toKodi->kodiInstance, pPacket);
   }
@@ -3364,7 +3364,7 @@ private:
     static_cast<CInstancePVRClient*>(instance->toAddon->addonInstance)->DemuxFlush();
   }
 
-  inline static DemuxPacket* ADDON_DemuxRead(const AddonInstance_PVR* instance)
+  inline static DEMUX_PACKET* ADDON_DemuxRead(const AddonInstance_PVR* instance)
   {
     return static_cast<CInstancePVRClient*>(instance->toAddon->addonInstance)->DemuxRead();
   }

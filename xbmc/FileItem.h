@@ -385,6 +385,23 @@ public:
    */
   std::string GetLocalFanart() const;
 
+  /*!
+   \brief Assemble the base filename of local artwork for an item,
+   accounting for archives, stacks and multi-paths, and BDMV/VIDEO_TS folders.
+   `useFolder` is set to false
+   \return the path to the base filename for artwork lookup.
+   \sa GetLocalArt
+   */
+  std::string GetLocalArtBaseFilename() const;
+  /*!
+   \brief Assemble the base filename of local artwork for an item,
+   accounting for archives, stacks and multi-paths, and BDMV/VIDEO_TS folders.
+   \param useFolder whether to look in the folder for the art file. Defaults to false.
+   \return the path to the base filename for artwork lookup.
+   \sa GetLocalArt
+   */
+  std::string GetLocalArtBaseFilename(bool& useFolder) const;
+
   /*! \brief Assemble the filename of a particular piece of local artwork for an item.
              No file existence check is typically performed.
    \param artFile the art file to search for.
@@ -392,7 +409,7 @@ public:
    \return the path to the local artwork.
    \sa FindLocalArt
    */
-  std::string GetLocalArt(const std::string &artFile, bool useFolder = false) const;
+  std::string GetLocalArt(const std::string& artFile, bool useFolder = false) const;
 
   /*! \brief Assemble the filename of a particular piece of local artwork for an item,
              and check for file existence.
@@ -492,6 +509,14 @@ public:
    \param replaceLabels whether to replace labels (defaults to true)
    */
   void UpdateInfo(const CFileItem &item, bool replaceLabels = true);
+
+  /*! \brief Merge an item with information from another item
+  We take metadata/art information from the given item and supplement the current
+  item with that info. If tags exist in the new item we only merge the missing
+  tag information. Properties are appended, and labels are updated if non-empty
+  in the given item.
+  */
+  void MergeInfo(const CFileItem &item);
 
   bool IsSamePath(const CFileItem *item) const;
 
@@ -658,7 +683,7 @@ public:
   void Append(const CFileItemList& itemlist);
   void Assign(const CFileItemList& itemlist, bool append = false);
   bool Copy  (const CFileItemList& item, bool copyItems = true);
-  void Reserve(int iCount);
+  void Reserve(size_t iCount);
   void Sort(SortBy sortBy, SortOrder sortOrder, SortAttribute sortAttributes = SortAttributeNone);
   /* \brief Sorts the items based on the given sorting options
 

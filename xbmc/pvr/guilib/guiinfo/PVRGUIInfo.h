@@ -55,6 +55,11 @@ namespace PVR
     // KODI::GUILIB::GUIINFO::IGUIInfoProvider implementation
     bool InitCurrentItem(CFileItem* item) override;
     bool GetLabel(std::string& value, const CFileItem* item, int contextWindow, const KODI::GUILIB::GUIINFO::CGUIInfo& info, std::string* fallback) const override;
+    bool GetFallbackLabel(std::string& value,
+                          const CFileItem* item,
+                          int contextWindow,
+                          const KODI::GUILIB::GUIINFO::CGUIInfo& info,
+                          std::string* fallback) override;
     bool GetInt(int& value, const CGUIListItem* item, int contextWindow, const KODI::GUILIB::GUIINFO::CGUIInfo& info) const override;
     bool GetBool(bool& value, const CGUIListItem* item, int contextWindow, const KODI::GUILIB::GUIINFO::CGUIInfo& info) const override;
 
@@ -82,6 +87,7 @@ namespace PVR
 
     bool GetListItemAndPlayerInt(const CFileItem* item, const KODI::GUILIB::GUIINFO::CGUIInfo& info, int& iValue) const;
     bool GetPVRInt(const CFileItem* item, const KODI::GUILIB::GUIINFO::CGUIInfo& info, int& iValue) const;
+    int GetTimeShiftSeekPercent() const;
 
     bool GetListItemAndPlayerBool(const CFileItem* item, const KODI::GUILIB::GUIINFO::CGUIInfo& info, bool& bValue) const;
     bool GetPVRBool(const CFileItem* item, const KODI::GUILIB::GUIINFO::CGUIInfo& info, bool& bValue) const;

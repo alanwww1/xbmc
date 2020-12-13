@@ -27,8 +27,6 @@
 #include "utils/log.h"
 #include "windowing/GraphicContext.h"
 
-#include "platform/linux/powermanagement/LinuxPowerSyscall.h"
-
 #include <string>
 #include <vector>
 
@@ -36,7 +34,7 @@
 #include <X11/extensions/Xrandr.h>
 
 using namespace KODI::MESSAGING;
-using namespace KODI::WINDOWING;
+using namespace KODI::WINDOWING::X11;
 
 #define EGL_NO_CONFIG (EGLConfig)0
 
@@ -56,16 +54,28 @@ CWinSystemX11::CWinSystemX11() : CWinSystemBase()
 
   m_winEventsX11 = new CWinEventsX11(*this);
   m_winEvents.reset(m_winEventsX11);
-  CLinuxPowerSyscall::Register();
 }
 
 CWinSystemX11::~CWinSystemX11() = default;
 
 bool CWinSystemX11::InitWindowSystem()
 {
+  const char* env = getenv("DISPLAY");
+  if (!env)
+  {
+    CLog::Log(LOGDEBUG, "CWinSystemX11::{} - DISPLAY env not set", __FUNCTION__);
+    return false;
+  }
+
   if ((m_dpy = XOpenDisplay(NULL)))
   {
     bool ret = CWinSystemBase::InitWindowSystem();
+
+    CServiceBroker::GetSettingsComponent()
+        ->GetSettings()
+        ->GetSetting(CSettings::SETTING_VIDEOSCREEN_LIMITEDRANGE)
+        ->SetVisible(true);
+
     return ret;
   }
   else
@@ -464,7 +474,7 @@ void CWinSystemX11::GetConnectedOutputs(std::vector<std::string> *outputs)
   }
 }
 
-bool CWinSystemX11::IsCurrentOutput(std::string output)
+bool CWinSystemX11::IsCurrentOutput(const std::string& output)
 {
   return (StringUtils::EqualsNoCase(output, "Default")) || (m_currentOutput.compare(output.c_str()) == 0);
 }
@@ -477,7 +487,7 @@ void CWinSystemX11::ShowOSMouse(bool show)
     XDefineCursor(m_dpy,m_mainWindow, m_invisibleCursor);
 }
 
-std::unique_ptr<IOSScreenSaver> CWinSystemX11::GetOSScreenSaverImpl()
+std::unique_ptr<KODI::WINDOWING::IOSScreenSaver> CWinSystemX11::GetOSScreenSaverImpl()
 {
   std::unique_ptr<IOSScreenSaver> ret;
   if (m_dpy)
@@ -807,7 +817,7 @@ bool CWinSystemX11::SetWindow(int width, int height, bool fullscreen, const std:
       XTextProperty windowName, iconName;
 
       std::string titleString = CCompileInfo::GetAppName();
-      std::string classString = titleString;
+      const std::string& classString = titleString;
       char *title = const_cast<char*>(titleString.c_str());
 
       XStringListToTextProperty(&title, 1, &windowName);
@@ -893,7 +903,7 @@ bool CWinSystemX11::CreateIconPixmap()
   gRatio = vis->green_mask / 255.0;
   bRatio = vis->blue_mask / 255.0;
 
-  CBaseTexture *iconTexture = CBaseTexture::LoadFromFile("special://xbmc/media/icon256x256.png");
+  CTexture* iconTexture = CTexture::LoadFromFile("special://xbmc/media/icon256x256.png");
 
   if (!iconTexture)
     return false;

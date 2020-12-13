@@ -6,29 +6,30 @@
  *  See LICENSES/README.md for more information.
  */
 
-#include "interfaces/AnnouncementManager.h"
-#include "input/XBMC_vkeys.h"
-#include "input/InputCodingTable.h"
+#include "GUIDialogKeyboardGeneric.h"
+
+#include "GUIDialogNumeric.h"
+#include "GUIUserMessages.h"
+#include "ServiceBroker.h"
 #include "guilib/GUIComponent.h"
 #include "guilib/GUIEditControl.h"
 #include "guilib/GUILabelControl.h"
 #include "guilib/GUIWindowManager.h"
-#include "input/KeyboardLayoutManager.h"
-#include "input/Key.h"
 #include "guilib/LocalizeStrings.h"
-#include "GUIUserMessages.h"
-#include "GUIDialogNumeric.h"
-#include "GUIDialogKeyboardGeneric.h"
-#include "ServiceBroker.h"
+#include "input/InputCodingTable.h"
+#include "input/Key.h"
+#include "input/KeyboardLayoutManager.h"
+#include "input/XBMC_vkeys.h"
+#include "interfaces/AnnouncementManager.h"
+#include "messaging/ApplicationMessenger.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
-#include "utils/RegExp.h"
-#include "utils/Variant.h"
-#include "utils/StringUtils.h"
-#include "messaging/ApplicationMessenger.h"
 #include "utils/CharsetConverter.h"
-#include "windowing/WinSystem.h"
+#include "utils/RegExp.h"
+#include "utils/StringUtils.h"
+#include "utils/Variant.h"
 #include "utils/log.h"
+#include "windowing/WinSystem.h"
 
 #ifdef TARGET_ANDROID
 #include <androidjni/Intent.h>
@@ -178,7 +179,7 @@ void CGUIDialogKeyboardGeneric::OnInitWindow()
   data["title"] = m_strHeading;
   data["type"] = !m_hiddenInput ? "keyboard" : "password";
   data["value"] = GetText();
-  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Input, "xbmc", "OnInputRequested", data);
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Input, "OnInputRequested", data);
 }
 
 bool CGUIDialogKeyboardGeneric::OnAction(const CAction &action)
@@ -326,7 +327,7 @@ bool CGUIDialogKeyboardGeneric::OnMessage(CGUIMessage& message)
     }
   case GUI_MSG_CODINGTABLE_LOOKUP_COMPLETED:
     {
-      std::string code = message.GetStringParam();
+      const std::string& code = message.GetStringParam();
       if (code == m_hzcode)
       {
         int response = message.GetParam1();
@@ -511,7 +512,7 @@ void CGUIDialogKeyboardGeneric::OnDeinitWindow(int nextWindowID)
   // reset the heading (we don't always have this)
   m_strHeading = "";
 
-  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Input, "xbmc", "OnInputFinished");
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Input, "OnInputFinished");
 }
 
 void CGUIDialogKeyboardGeneric::MoveCursor(int iAmount)
@@ -720,7 +721,7 @@ void CGUIDialogKeyboardGeneric::ShowWordList(int direct)
       hzlist.insert(hzlist.length(), 1, L' ');
     }
   }
-  hzlist.erase(hzlist.find_last_not_of(L" ") + 1);
+  hzlist.erase(hzlist.find_last_not_of(L' ') + 1);
   if (m_pos > 0)
     hzlist.insert(0, 1, L'<');
   if (m_pos + m_num < static_cast<int>(m_words.size()))

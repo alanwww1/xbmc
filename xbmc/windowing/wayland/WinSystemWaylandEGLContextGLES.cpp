@@ -21,15 +21,18 @@
 #include "utils/DMAHeapBufferObject.h"
 #include "utils/UDMABufferObject.h"
 #include "utils/log.h"
-
-#include <EGL/egl.h>
+#include "windowing/WindowSystemFactory.h"
 
 using namespace KODI::WINDOWING::WAYLAND;
 
-std::unique_ptr<CWinSystemBase> CWinSystemBase::CreateWinSystem()
+void CWinSystemWaylandEGLContextGLES::Register()
 {
-  std::unique_ptr<CWinSystemBase> winSystem(new CWinSystemWaylandEGLContextGLES());
-  return winSystem;
+  CWindowSystemFactory::RegisterWindowSystem(CreateWinSystem, "wayland");
+}
+
+std::unique_ptr<CWinSystemBase> CWinSystemWaylandEGLContextGLES::CreateWinSystem()
+{
+  return std::make_unique<CWinSystemWaylandEGLContextGLES>();
 }
 
 bool CWinSystemWaylandEGLContextGLES::InitWindowSystem()
@@ -48,13 +51,13 @@ bool CWinSystemWaylandEGLContextGLES::InitWindowSystem()
   RETRO::CRPProcessInfo::RegisterRendererFactory(new RETRO::CRendererFactoryOpenGLES);
 
   bool general, deepColor;
-  m_vaapiProxy.reset(::WAYLAND::VaapiProxyCreate());
-  ::WAYLAND::VaapiProxyConfig(m_vaapiProxy.get(),GetConnection()->GetDisplay(),
-                              m_eglContext.GetEGLDisplay());
-  ::WAYLAND::VAAPIRegisterRender(m_vaapiProxy.get(), general, deepColor);
+  m_vaapiProxy.reset(WAYLAND::VaapiProxyCreate());
+  WAYLAND::VaapiProxyConfig(m_vaapiProxy.get(), GetConnection()->GetDisplay(),
+                            m_eglContext.GetEGLDisplay());
+  WAYLAND::VAAPIRegisterRender(m_vaapiProxy.get(), general, deepColor);
   if (general)
   {
-    ::WAYLAND::VAAPIRegister(m_vaapiProxy.get(), deepColor);
+    WAYLAND::VAAPIRegister(m_vaapiProxy.get(), deepColor);
   }
 
   CBufferObjectFactory::ClearBufferObjects();
@@ -107,5 +110,5 @@ void CWinSystemWaylandEGLContextGLES::PresentRenderImpl(bool rendered)
 
 void CWinSystemWaylandEGLContextGLES::delete_CVaapiProxy::operator()(CVaapiProxy *p) const
 {
-  ::WAYLAND::VaapiProxyDelete(p);
+  WAYLAND::VaapiProxyDelete(p);
 }

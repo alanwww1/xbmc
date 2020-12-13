@@ -475,7 +475,8 @@ static int isspace_c(char c)
 
 std::string& StringUtils::TrimLeft(std::string &str)
 {
-  str.erase(str.begin(), std::find_if(str.begin(), str.end(), std::not1(std::function<int(char)>(isspace_c))));
+  str.erase(str.begin(),
+            std::find_if(str.begin(), str.end(), [](char s) { return isspace_c(s) == 0; }));
   return str;
 }
 
@@ -488,7 +489,8 @@ std::string& StringUtils::TrimLeft(std::string &str, const char* const chars)
 
 std::string& StringUtils::TrimRight(std::string &str)
 {
-  str.erase(std::find_if(str.rbegin(), str.rend(), std::not1(std::function<int(char)>(isspace_c))).base(), str.end());
+  str.erase(std::find_if(str.rbegin(), str.rend(), [](char s) { return isspace_c(s) == 0; }).base(),
+            str.end());
   return str;
 }
 
@@ -700,7 +702,9 @@ std::vector<std::string> StringUtils::Split(const std::string& input, const std:
   return result;
 }
 
-std::vector<std::string> StringUtils::SplitMulti(const std::vector<std::string> &input, const std::vector<std::string> &delimiters, unsigned int iMaxStrings /* = 0 */)
+std::vector<std::string> StringUtils::SplitMulti(const std::vector<std::string>& input,
+                                                 const std::vector<std::string>& delimiters,
+                                                 size_t iMaxStrings /* = 0 */)
 {
   if (input.empty())
     return std::vector<std::string>();
@@ -729,7 +733,7 @@ std::vector<std::string> StringUtils::SplitMulti(const std::vector<std::string> 
 
   // Control the number of strings input is split into, keeping the original strings.
   // Note iMaxStrings > input.size()
-  int iNew = iMaxStrings - results.size();
+  int64_t iNew = iMaxStrings - results.size();
   for (size_t di = 0; di < delimiters.size(); di++)
   {
     for (size_t i = 0; i < results.size(); i++)
@@ -1234,7 +1238,7 @@ int StringUtils::AlphaNumericCollation(int nKey1, const void* pKey1, int nKey2, 
       // do we have numbers?
       if (lnum != rnum)
       { // yes - and they're different!
-        return lnum - rnum;
+        return static_cast<int>(lnum - rnum);
       }
       // Advance to after digits
       i = ld;
@@ -1776,7 +1780,7 @@ void StringUtils::Tokenize(const std::string& input, std::vector<std::string>& t
   }
 }
 
-uint64_t StringUtils::ToUint64(std::string str, uint64_t fallback) noexcept
+uint64_t StringUtils::ToUint64(const std::string& str, uint64_t fallback) noexcept
 {
   std::istringstream iss(str);
   uint64_t result(fallback);

@@ -14,14 +14,53 @@
 #include "utils/FileOperationJob.h"
 #include "utils/Stopwatch.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+class CFileItemList;
 
 namespace ADDON
 {
 
 class CAddonDatabase;
+
+enum class BackgroundJob
+{
+  YES,
+  NO,
+};
+
+enum class ModalJob
+{
+  YES,
+  NO,
+};
+
+enum class AutoUpdateJob
+{
+  YES,
+  NO,
+};
+
+enum class DependencyJob
+{
+  YES,
+  NO,
+};
+
+enum class InstallModalPrompt
+{
+  PROMPT,
+  NO_PROMPT,
+};
+
+enum class AllowCheckForUpdates
+{
+  YES,
+  NO,
+};
 
 class CAddonInstaller : public IJobCallback
 {
@@ -40,31 +79,38 @@ public:
    \return true on successful install, false otherwise.
    \sa Install
    */
-  bool InstallModal(const std::string &addonID, ADDON::AddonPtr &addon, bool promptForInstall = true);
+  bool InstallModal(const std::string& addonID,
+                    ADDON::AddonPtr& addon,
+                    InstallModalPrompt promptForInstall);
 
   /*! \brief Install an addon if it is available in a repository
    \param addonID the addon ID of the item to install
-   \param background whether to install in the background or not. Defaults to true.
+   \param background whether to install in the background or not.
    \param modal whether to show a modal dialog when not installing in background
    \return true on successful install, false on failure.
    \sa DoInstall
    */
-  bool InstallOrUpdate(const std::string &addonID, bool background = true, bool modal = false);
+  bool InstallOrUpdate(const std::string& addonID, BackgroundJob background, ModalJob modal);
 
-  /*! \brief Install an addon from a specific repository
-   \param addon the addon to install
+  /*! \brief Install a dependency from a specific repository
+   \param dependsId the dependency to install
    \param repo the repository to install the addon from
    \return true on successful install, false on failure.
    \sa DoInstall
    */
-  bool InstallOrUpdate(const ADDON::AddonPtr& addon, const ADDON::RepositoryPtr& repo);
+  bool InstallOrUpdateDependency(const ADDON::AddonPtr& dependsId,
+                                 const ADDON::RepositoryPtr& repo);
 
   /*! \brief Installs a vector of addons
-   \param addons the list of addons to install
-   \param wait if the method should wait for all the DoInstall jobs to finish or if it should return right away
-   \sa DoInstall
+   *  \param addons the list of addons to install
+   *  \param wait if the method should wait for all the DoInstall jobs to finish or if it should return right away
+   *  \param allowCheckForUpdates indicates if content update checks are allowed
+   *         after installation of a repository addon from the vector
+   *  \sa DoInstall
    */
-  void InstallAddons(const ADDON::VECADDONS& addons, bool wait);
+  void InstallAddons(const ADDON::VECADDONS& addons,
+                     bool wait,
+                     AllowCheckForUpdates allowCheckForUpdates);
 
   /*! \brief Install an addon from the given zip path
    \param path the zip file to install from
@@ -74,7 +120,9 @@ public:
   bool InstallFromZip(const std::string &path);
 
    /*! Install an addon with a specific version and repository */
-  void Install(const std::string& addonId, const ADDON::AddonVersion& version, const std::string& repoId);
+  bool Install(const std::string& addonId,
+               const ADDON::AddonVersion& version,
+               const std::string& repoId);
 
   /*! \brief Check whether dependencies of an addon exist or are installable.
   Iterates through the addon's dependencies, checking they're installed or installable.
@@ -124,13 +172,24 @@ private:
   ~CAddonInstaller() override;
 
   /*! \brief Install an addon from a repository or zip
-   \param addon the AddonPtr describing the addon
-   \param repo the repository to install addon from
-   \param background whether to install in the background or not. Defaults to true.
-   \return true on successful install, false on failure.
+   *  \param addon the AddonPtr describing the addon
+   *  \param repo the repository to install addon from
+   *  \param background whether to install in the background or not.
+   *  \param modal whether to install in modal mode or not.
+   *  \param autoUpdate whether the addon is installed in auto update mode.
+   *         (i.e. no notification)
+   *  \param dependsInstall whether this is the installation of a dependency addon
+   *  \param allowCheckForUpdates whether content update check after installation of
+   *         a repository addon is allowed
+   *  \return true on successful install, false on failure.
    */
-  bool DoInstall(const ADDON::AddonPtr &addon, const ADDON::RepositoryPtr &repo,
-      bool background = true, bool modal = false, bool autoUpdate = false);
+  bool DoInstall(const ADDON::AddonPtr& addon,
+                 const ADDON::RepositoryPtr& repo,
+                 BackgroundJob background,
+                 ModalJob modal,
+                 AutoUpdateJob autoUpdate,
+                 DependencyJob dependsInstall,
+                 AllowCheckForUpdates allowCheckForUpdates);
 
   /*! \brief Check whether dependencies of an addon exist or are installable.
    Iterates through the addon's dependencies, checking they're installed or installable.
@@ -144,7 +203,7 @@ private:
   bool CheckDependencies(const ADDON::AddonPtr &addon, std::vector<std::string>& preDeps, CAddonDatabase &database, std::pair<std::string, std::string> &failedDep);
 
   void PrunePackageCache();
-  int64_t EnumeratePackageFolder(std::map<std::string,CFileItemList*>& result);
+  int64_t EnumeratePackageFolder(std::map<std::string, std::unique_ptr<CFileItemList>>& result);
 
   mutable CCriticalSection m_critSection;
   JobMap m_downloadJobs;
@@ -154,7 +213,9 @@ private:
 class CAddonInstallJob : public CFileOperationJob
 {
 public:
-  CAddonInstallJob(const ADDON::AddonPtr& addon, const ADDON::RepositoryPtr& repo, bool isAutoUpdate);
+  CAddonInstallJob(const ADDON::AddonPtr& addon,
+                   const ADDON::RepositoryPtr& repo,
+                   AutoUpdateJob isAutoUpdate);
 
   bool DoWork() override;
 
@@ -176,6 +237,12 @@ public:
    */
   static bool GetAddon(const std::string& addonID, ADDON::RepositoryPtr& repo, ADDON::AddonPtr& addon);
 
+  void SetDependsInstall(DependencyJob dependsInstall) { m_dependsInstall = dependsInstall; };
+  void SetAllowCheckForUpdates(AllowCheckForUpdates allowCheckForUpdates)
+  {
+    m_allowCheckForUpdates = allowCheckForUpdates;
+  };
+
 private:
   void OnPreInstall();
   void OnPostInstall();
@@ -194,7 +261,9 @@ private:
   ADDON::AddonPtr m_addon;
   ADDON::RepositoryPtr m_repo;
   bool m_isUpdate;
-  bool m_isAutoUpdate;
+  AutoUpdateJob m_isAutoUpdate;
+  DependencyJob m_dependsInstall = DependencyJob::NO;
+  AllowCheckForUpdates m_allowCheckForUpdates = AllowCheckForUpdates::YES;
   const char* m_currentType = TYPE_DOWNLOAD;
 };
 

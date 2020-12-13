@@ -318,8 +318,8 @@ public:
   void UnregisterJoystickButtonMapper(KODI::JOYSTICK::IButtonMapper* mapper);
 
   // implementation of ISettingCallback
-  void OnSettingChanged(std::shared_ptr<const CSetting> setting) override;
-  void OnSettingAction(std::shared_ptr<const CSetting> setting) override;
+  void OnSettingChanged(const std::shared_ptr<const CSetting>& setting) override;
+  void OnSettingAction(const std::shared_ptr<const CSetting>& setting) override;
 
   // implementation of IMessageTarget
   void OnApplicationMessage(KODI::MESSAGING::ThreadMessage* pMsg) override;
@@ -327,8 +327,8 @@ public:
 
   // implementation of IAnnouncer
   void Announce(ANNOUNCEMENT::AnnouncementFlag flag,
-                const char* sender,
-                const char* message,
+                const std::string& sender,
+                const std::string& message,
                 const CVariant& data) override;
 
   /*!

@@ -137,6 +137,9 @@ public:
     if ((ss.flags & StreamFlags::FLAG_FORCED) && (ss.flags & StreamFlags::FLAG_DEFAULT))
       return false;
 
+    if (ss.language == "cc" && ss.flags & StreamFlags::FLAG_HEARING_IMPAIRED)
+      return false;
+
     if(!original)
     {
       std::string subtitle_language = g_langInfo.GetSubtitleLanguage();
@@ -387,7 +390,7 @@ int CSelectionStreams::TypeIndexOf(StreamType type, int source, int64_t demuxerI
     return -1;
 }
 
-int CSelectionStreams::Source(StreamSource source, std::string filename)
+int CSelectionStreams::Source(StreamSource source, const std::string& filename)
 {
   int index = source - 1;
   for (size_t i=0; i<m_Streams.size(); i++)
@@ -421,7 +424,9 @@ void CSelectionStreams::Update(SelectionStream& s)
   }
 }
 
-void CSelectionStreams::Update(std::shared_ptr<CDVDInputStream> input, CDVDDemux* demuxer, std::string filename2)
+void CSelectionStreams::Update(const std::shared_ptr<CDVDInputStream>& input,
+                               CDVDDemux* demuxer,
+                               const std::string& filename2)
 {
   if(input && input->IsStreamType(DVDSTREAM_TYPE_DVD))
   {
@@ -543,7 +548,7 @@ void CSelectionStreams::Update(std::shared_ptr<CDVDInputStream> input, CDVDDemux
   CServiceBroker::GetDataCacheCore().SignalSubtitleInfoChange();
 }
 
-void CSelectionStreams::Update(std::shared_ptr<CDVDInputStream> input, CDVDDemux* demuxer)
+void CSelectionStreams::Update(const std::shared_ptr<CDVDInputStream>& input, CDVDDemux* demuxer)
 {
   Update(input, demuxer, "");
 }
@@ -4944,12 +4949,15 @@ void CVideoPlayer::GetVideoStreamInfo(int streamId, VideoStreamInfo &info)
   if (s.name.length() > 0)
     info.name = s.name;
 
+  m_renderManager.GetVideoRect(s.SrcRect, s.DestRect, s.VideoRect);
+
   info.valid = true;
   info.bitrate = s.bitrate;
   info.width = s.width;
   info.height = s.height;
   info.SrcRect = s.SrcRect;
   info.DestRect = s.DestRect;
+  info.VideoRect = s.VideoRect;
   info.codecName = s.codec;
   info.videoAspectRatio = s.aspect_ratio;
   info.stereoMode = s.stereo_mode;

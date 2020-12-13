@@ -438,8 +438,8 @@ bool CInputManager::OnEvent(XBMC_Event& newEvent)
     } // case
     case XBMC_BUTTON:
     {
-      CKey key(newEvent.keybutton.button, newEvent.keybutton.holdtime);
-      OnKey(key);
+      HandleKey(
+          m_buttonStat.TranslateKey(CKey(newEvent.keybutton.button, newEvent.keybutton.holdtime)));
       break;
     }
   } // switch
@@ -765,7 +765,7 @@ bool CInputManager::IsControllerEnabled() const
   return m_enableController;
 }
 
-void CInputManager::OnSettingChanged(std::shared_ptr<const CSetting> setting)
+void CInputManager::OnSettingChanged(const std::shared_ptr<const CSetting>& setting)
 {
   if (setting == nullptr)
     return;

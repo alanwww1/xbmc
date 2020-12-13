@@ -1697,6 +1697,14 @@ const infomap weather[] =        {{ "isfetched",        WEATHER_IS_FETCHED },
 ///     @param id - the addon id
 ///     <p>
 ///   }
+///   \table_row3{   <b>`System.AddonUpdateCount`</b>,
+///                  \anchor System_AddonUpdateCount
+///                  _string_,
+///     @return The number of available addon updates.
+///     <p><hr>
+///     @skinning_v19 **[New Infolabel]** \link  System_AddonUpdateCount `
+///     System.AddonUpdateCount`\endlink <p>
+///   }
 ///   \table_row3{   <b>`System.IdleTime(time)`</b>,
 ///                  \anchor System_IdleTime
 ///                  _boolean_,
@@ -1790,6 +1798,7 @@ const infomap system_labels[] = {{"hasnetwork", SYSTEM_ETHERNET_LINK_ACTIVE},
                                  {"hascms", SYSTEM_HAS_CMS},
                                  {"privacypolicy", SYSTEM_PRIVACY_POLICY},
                                  {"haspvraddon", SYSTEM_HAS_PVR_ADDON},
+                                 {"addonupdatecount", SYSTEM_ADDON_UPDATE_COUNT},
                                  {"supportscpuusage", SYSTEM_SUPPORTS_CPU_USAGE}};
 
 /// \page modules__infolabels_boolean_conditions
@@ -4486,6 +4495,22 @@ const infomap container_str[]  = {{ "property",         CONTAINER_PROPERTY },
 ///     @return **True** if this add-on is a valid update of an installed outdated add-on.
 ///     <p><hr>
 ///     @skinning_v19 **[New Boolean Condition]** \link ListItem_Property_AddonIsUpdate `ListItem.Property(Addon.IsUpdate)`\endlink
+///     <p>
+///   }
+///   \table_row3{   <b>`ListItem.Property(Addon.ValidUpdateOrigin)`</b>,
+///                  \anchor ListItem_Property_ValidUpdateOrigin
+///                  _string_,
+///     @return The origin string of a valid update for the addon. Empty string if there is no valid update available.
+///     <p><hr>
+///     @skinning_v19 **[New Infolabel]** \link ListItem_Property_ValidUpdateOrigin `ListItem.Property(Addon.ValidUpdateOrigin)`\endlink
+///     <p>
+///   }
+///   \table_row3{   <b>`ListItem.Property(Addon.ValidUpdateVersion)`</b>,
+///                  \anchor ListItem_Property_ValidUpdateVersion
+///                  _string_,
+///     @return The version string of a valid update for the addon. Empty string if there is no valid update available.
+///     <p><hr>
+///     @skinning_v19 **[New Infolabel]** \link ListItem_Property_ValidUpdateVersion `ListItem.Property(Addon.ValidUpdateVersion)`\endlink
 ///     <p>
 ///   }
 ///   \table_row3{   <b>`ListItem.Label`</b>,
@@ -7445,6 +7470,14 @@ const infomap playlist[] =       {{ "length",           PLAYLIST_LENGTH },
 ///     @return The position of currently timeshifted title on TV as integer.
 ///     <p>
 ///   }
+///   \table_row3{   <b>`PVR.TimeShiftSeekbar`</b>,
+///                  \anchor PVR_TimeShiftSeekbar
+///                  _integer_,
+///     @return The percentage we are seeking to in a timeshifted title.
+///     <p><hr>
+///     @skinning_v19 **[New Infolabel]** \link PVR_TimeShiftSeekbar `PVR.TimeShiftSeekbar`\endlink
+///     <p>
+///   }
 ///   \table_row3{   <b>`PVR.NowRecordingTitle`</b>,
 ///                  \anchor PVR_NowRecordingTitle
 ///                  _string_,
@@ -7790,6 +7823,7 @@ const infomap pvr[] =            {{ "isrecording",              PVR_IS_RECORDING
                                   { "actstreamprovidername",    PVR_ACTUAL_STREAM_PROVIDER },
                                   { "istimeshift",              PVR_IS_TIMESHIFTING },
                                   { "timeshiftprogress",        PVR_TIMESHIFT_PROGRESS },
+                                  { "timeshiftseekbar",         PVR_TIMESHIFT_SEEKBAR },
                                   { "nowrecordingtitle",        PVR_NOW_RECORDING_TITLE },
                                   { "nowrecordingdatetime",     PVR_NOW_RECORDING_DATETIME },
                                   { "nowrecordingchannel",      PVR_NOW_RECORDING_CHANNEL },
@@ -10614,7 +10648,7 @@ void CGUIInfoManager::SetCurrentItem(const CFileItem &item)
 
   m_infoProviders.InitCurrentItem(m_currentFile);
 
-  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Info, "xbmc", "OnChanged");
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Info, "OnChanged");
 }
 
 void CGUIInfoManager::SetCurrentAlbumThumb(const std::string &thumbFileName)

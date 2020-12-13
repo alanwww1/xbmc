@@ -22,6 +22,7 @@
 #include "guilib/GUIWindowManager.h"
 #include "guilib/StereoscopicsManager.h"
 #include "music/MusicDatabase.h"
+#include "music/tags/MusicInfoTag.h"
 #include "settings/AdvancedSettings.h"
 #include "settings/SettingUtils.h"
 #include "settings/Settings.h"
@@ -223,68 +224,93 @@ static void SetupRarOptions(CFileItem& item, const std::string& path)
   g_directoryCache.ClearDirectory(url.GetWithoutFilename());
 }
 
+namespace
+{
+std::vector<std::string> GetSettingListAsString(const std::string& settingID)
+{
+  std::vector<CVariant> values =
+    CServiceBroker::GetSettingsComponent()->GetSettings()->GetList(settingID);
+  std::vector<std::string> result;
+  std::transform(values.begin(), values.end(), std::back_inserter(result),
+                 [](const CVariant& s) { return s.asString(); });
+  return result;
+}
+
+const std::map<std::string, std::vector<std::string>> artTypeDefaults = {
+  {MediaTypeEpisode, {"thumb"}},
+  {MediaTypeTvShow, {"poster", "fanart", "banner"}},
+  {MediaTypeSeason, {"poster", "fanart", "banner"}},
+  {MediaTypeMovie, {"poster", "fanart"}},
+  {MediaTypeVideoCollection, {"poster", "fanart"}},
+  {MediaTypeMusicVideo, {"poster", "fanart"}},
+  {MediaTypeNone, { "poster", "fanart", "banner", "thumb" }},
+};
+
+const std::vector<std::string> artTypeDefaultsFallback = {};
+
+const std::vector<std::string>& GetArtTypeDefault(const std::string& mediaType)
+{
+  auto defaults = artTypeDefaults.find(mediaType);
+  if (defaults != artTypeDefaults.end())
+    return defaults->second;
+  return artTypeDefaultsFallback;
+}
+
+const std::map<std::string, std::string> artTypeSettings = {
+  {MediaTypeEpisode, CSettings::SETTING_VIDEOLIBRARY_EPISODEART_WHITELIST},
+  {MediaTypeTvShow, CSettings::SETTING_VIDEOLIBRARY_TVSHOWART_WHITELIST},
+  {MediaTypeSeason, CSettings::SETTING_VIDEOLIBRARY_TVSHOWART_WHITELIST},
+  {MediaTypeMovie, CSettings::SETTING_VIDEOLIBRARY_MOVIEART_WHITELIST},
+  {MediaTypeVideoCollection, CSettings::SETTING_VIDEOLIBRARY_MOVIEART_WHITELIST},
+  {MediaTypeMusicVideo, CSettings::SETTING_VIDEOLIBRARY_MUSICVIDEOART_WHITELIST},
+};
+} // namespace
+
 std::vector<std::string> CVideoThumbLoader::GetArtTypes(const std::string &type)
 {
-  const std::shared_ptr<CAdvancedSettings> advancedSettings = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings();
-  std::vector<std::string> ret;
-  if (type == MediaTypeEpisode)
+  int artworkLevel = CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(
+    CSettings::SETTING_VIDEOLIBRARY_ARTWORK_LEVEL);
+  if (artworkLevel == CSettings::VIDEOLIBRARY_ARTWORK_LEVEL_NONE)
   {
-    ret = {"thumb"};
-    for (auto& artType : advancedSettings->m_videoEpisodeExtraArt)
-    {
-      if (find(ret.begin(), ret.end(), artType) == ret.end())
-        ret.push_back(artType);
-    }
+    return {};
   }
-  else if (type == MediaTypeTvShow)
-  {
-    ret = {"poster", "fanart", "banner"};
-    for (auto& artType : advancedSettings->m_videoTvShowExtraArt)
-    {
-      if (find(ret.begin(), ret.end(), artType) == ret.end())
-        ret.push_back(artType);
-    }
-  }
-  else if (type == MediaTypeSeason)
-  {
-    ret = {"poster", "fanart", "banner"};
-    for (auto& artType : advancedSettings->m_videoTvSeasonExtraArt)
-    {
-      if (find(ret.begin(), ret.end(), artType) == ret.end())
-        ret.push_back(artType);
-    }
-  }
-  else if (type == MediaTypeMovie)
-  {
-    ret = {"poster", "fanart"};
-    for (auto& artType : advancedSettings->m_videoMovieExtraArt)
-    {
-      if (find(ret.begin(), ret.end(), artType) == ret.end())
-        ret.push_back(artType);
-    }
-  }
-  else if (type == MediaTypeVideoCollection)
-  {
-    ret = {"poster", "fanart"};
-    for (auto& artType : advancedSettings->m_videoMovieSetExtraArt)
-    {
-      if (find(ret.begin(), ret.end(), artType) == ret.end())
-        ret.push_back(artType);
-    }
-  }
-  else if (type == MediaTypeMusicVideo)
-  {
-    ret = {"poster", "fanart"};
-    for (auto& artType : advancedSettings->m_videoMusicVideoExtraArt)
-    {
-      if (find(ret.begin(), ret.end(), artType) == ret.end())
-        ret.push_back(artType);
-    }
-  }
-  else if (type.empty()) // unknown, just the basics
-    ret = { "poster", "fanart", "banner", "thumb" };
 
-  return ret;
+  std::vector<std::string> result = GetArtTypeDefault(type);
+  if (artworkLevel != CSettings::VIDEOLIBRARY_ARTWORK_LEVEL_CUSTOM)
+  {
+    return result;
+  }
+
+  auto settings = artTypeSettings.find(type);
+  if (settings == artTypeSettings.end())
+    return result;
+
+  for (auto& artType : GetSettingListAsString(settings->second))
+  {
+    if (find(result.begin(), result.end(), artType) == result.end())
+      result.push_back(artType);
+  }
+
+  return result;
+}
+
+bool CVideoThumbLoader::IsValidArtType(const std::string& potentialArtType)
+{
+  return !potentialArtType.empty() && potentialArtType.length() <= 25 &&
+    std::find_if_not(
+      potentialArtType.begin(), potentialArtType.end(),
+      StringUtils::isasciialphanum
+    ) == potentialArtType.end();
+}
+
+bool CVideoThumbLoader::IsArtTypeInWhitelist(const std::string& artType, const std::vector<std::string>& whitelist, bool exact)
+{
+  // whitelist contains art "families", 'fanart' also matches 'fanart1', 'fanart2', and so on
+  std::string compareArtType = artType;
+  if (!exact)
+    StringUtils::TrimRight(compareArtType, "0123456789");
+
+  return std::find(whitelist.begin(), whitelist.end(), compareArtType) != whitelist.end();
 }
 
 /**
@@ -457,7 +483,9 @@ bool CVideoThumbLoader::LoadItemLookup(CFileItem* pItem)
         }
       }
       else if (settings->GetBool(CSettings::SETTING_MYVIDEOS_EXTRACTTHUMB) &&
-               settings->GetBool(CSettings::SETTING_MYVIDEOS_EXTRACTFLAGS))
+               settings->GetBool(CSettings::SETTING_MYVIDEOS_EXTRACTFLAGS) &&
+               settings->GetInt(CSettings::SETTING_VIDEOLIBRARY_ARTWORK_LEVEL) !=
+                   CSettings::VIDEOLIBRARY_ARTWORK_LEVEL_NONE)
       {
         CFileItem item(*pItem);
         std::string path(item.GetPath());
@@ -493,27 +521,74 @@ bool CVideoThumbLoader::LoadItemLookup(CFileItem* pItem)
 bool CVideoThumbLoader::FillLibraryArt(CFileItem &item)
 {
   CVideoInfoTag &tag = *item.GetVideoInfoTag();
+  std::map<std::string, std::string> artwork;
+  // Video item can be an album - either a 
+  // a) search result with full details including music library album id, or 
+  // b) musicvideo album that needs matching to a music album, storing id as well as fetch art.
+  if (tag.m_type == MediaTypeAlbum)
+  {
+    int idAlbum = -1;
+    if (item.HasMusicInfoTag()) // Album is a search result
+      idAlbum = item.GetMusicInfoTag()->GetAlbumId();
+    CMusicDatabase database;
+    database.Open();
+    if (idAlbum < 0 && !tag.m_strAlbum.empty() &&
+        item.GetProperty("musicvideomediatype") == MediaTypeAlbum)
+    {
+      // Musicvideo album - try to match album in music db on artist(s) and album name.
+      // Get review if available and save the matching music library album id.
+      std::string strArtist = StringUtils::Join(
+          tag.m_artist,
+          CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_videoItemSeparator);
+      std::string strReview;
+      if (database.GetMatchingMusicVideoAlbum(
+          tag.m_strAlbum, strArtist, idAlbum, strReview))
+      {
+        item.SetProperty("album_musicid", idAlbum);
+        item.SetProperty("album_description", strReview);
+      }
+    }
+    // Get album art only (not related artist art)
+    if (database.GetArtForItem(idAlbum, MediaTypeAlbum, artwork))
+      item.SetArt(artwork);
+    database.Close();
+  }
+  else if (tag.m_type == "actor" && !tag.m_artist.empty() &&
+           item.GetProperty("musicvideomediatype") == MediaTypeArtist)
+  {
+    // Try to match artist in music db on name, get bio if available and fetch artist art
+    // Save the matching music library artist id.
+    CMusicDatabase database;
+    database.Open();
+    CArtist artist;
+    int idArtist = database.GetArtistByName(tag.m_artist[0]);
+    if (idArtist > 0)
+    {
+      database.GetArtist(idArtist, artist);
+      tag.m_strPlot = artist.strBiography;
+      item.SetProperty("artist_musicid", idArtist);
+    }
+    if (database.GetArtForItem(idArtist, MediaTypeArtist, artwork))
+      item.SetArt(artwork);
+    database.Close();
+  }
+
   if (tag.m_iDbId > -1 && !tag.m_type.empty())
   {
-    std::map<std::string, std::string> artwork;
     m_videoDatabase->Open();
     if (m_videoDatabase->GetArtForItem(tag.m_iDbId, tag.m_type, artwork))
       item.AppendArt(artwork);
-    else if (tag.m_type == "actor" && !tag.m_artist.empty())
-    { // we retrieve music video art from the music database (no backward compat)
+    else if (tag.m_type == "actor" && !tag.m_artist.empty() &&
+             item.GetProperty("musicvideomediatype") != MediaTypeArtist)
+    {
+      // Fallback to music library for actors without art
+      //! @todo Is m_artist set other than musicvideo? Remove this fallback if not.
       CMusicDatabase database;
       database.Open();
       int idArtist = database.GetArtistByName(item.GetLabel());
       if (database.GetArtForItem(idArtist, MediaTypeArtist, artwork))
         item.SetArt(artwork);
-    }
-    else if (tag.m_type == MediaTypeAlbum)
-    { // we retrieve music video art from the music database (no backward compat)
-      CMusicDatabase database;
-      database.Open();
-      int idAlbum = database.GetAlbumByName(item.GetLabel(), tag.m_artist);
-      if (database.GetArtForItem(idAlbum, MediaTypeAlbum, artwork))
-        item.SetArt(artwork);
+      database.Close();
     }
 
     if (tag.m_type == MediaTypeEpisode || tag.m_type == MediaTypeSeason)

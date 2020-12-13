@@ -398,6 +398,7 @@
 #define SKIN_ASPECT_RATIO           607
 #define SKIN_FONT                   608
 
+#define SYSTEM_ADDON_UPDATE_COUNT   642
 #define SYSTEM_PRIVACY_POLICY       643
 #define SYSTEM_TOTAL_MEMORY         644
 #define SYSTEM_CPU_USAGE            645
@@ -456,7 +457,7 @@
 #define SYSTEM_PLATFORM_DARWIN_IOS  745
 #define SYSTEM_PLATFORM_UWP         746
 #define SYSTEM_PLATFORM_ANDROID     747
-// previously used by rpi           748
+#define SYSTEM_PLATFORM_WINDOWING   748
 #define SYSTEM_PLATFORM_WIN10       749
 
 #define SYSTEM_CAN_POWERDOWN        750
@@ -643,7 +644,8 @@
 #define PVR_TIMESHIFT_PROGRESS_START_TIME (PVR_STRINGS_START + 70)
 #define PVR_TIMESHIFT_PROGRESS_END_TIME   (PVR_STRINGS_START + 71)
 #define PVR_EPG_EVENT_ICON                (PVR_STRINGS_START + 72)
-#define PVR_STRINGS_END                   PVR_EPG_EVENT_ICON
+#define PVR_TIMESHIFT_SEEKBAR             (PVR_STRINGS_START + 73)
+#define PVR_STRINGS_END                   PVR_TIMESHIFT_SEEKBAR
 
 #define RDS_DATA_START              1400
 #define RDS_HAS_RDS                 (RDS_DATA_START)

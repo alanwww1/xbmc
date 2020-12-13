@@ -39,7 +39,7 @@ bool CPVRChannelGroupsContainer::Update(bool bChannelsOnly /* = false */)
   m_bUpdateChannelsOnly = bChannelsOnly;
   lock.Leave();
 
-  CLog::LogFC(LOGDEBUG, LOGPVR, "Updating %s", bChannelsOnly ? "channels" : "channel groups");
+  CLog::LogFC(LOGDEBUG, LOGPVR, "Updating {}", bChannelsOnly ? "channels" : "channel groups");
   bool bReturn = m_groupsTV->Update(bChannelsOnly) && m_groupsRadio->Update(bChannelsOnly);
 
   lock.Enter();
@@ -144,8 +144,8 @@ std::shared_ptr<CPVRChannel> CPVRChannelGroupsContainer::GetByUniqueID(int iUniq
 
 std::shared_ptr<CPVRChannel> CPVRChannelGroupsContainer::GetLastPlayedChannel() const
 {
-  const std::shared_ptr<CPVRChannel> channelTV = m_groupsTV->GetGroupAll()->GetLastPlayedChannel();
-  const std::shared_ptr<CPVRChannel> channelRadio = m_groupsRadio->GetGroupAll()->GetLastPlayedChannel();
+  std::shared_ptr<CPVRChannel> channelTV = m_groupsTV->GetGroupAll()->GetLastPlayedChannel();
+  std::shared_ptr<CPVRChannel> channelRadio = m_groupsRadio->GetGroupAll()->GetLastPlayedChannel();
 
   if (!channelTV ||
       (channelRadio && channelRadio->LastWatched() > channelTV->LastWatched()))

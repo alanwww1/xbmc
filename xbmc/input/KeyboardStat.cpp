@@ -14,6 +14,7 @@
 #include "KeyboardStat.h"
 
 #include "ServiceBroker.h"
+#include "input/InputTypes.h"
 #include "input/XBMC_keytable.h"
 #include "input/XBMC_vkeys.h"
 #include "peripherals/Peripherals.h"
@@ -22,7 +23,8 @@
 #include "utils/log.h"
 #include "windowing/XBMC_events.h"
 
-#define HOLD_THRESHOLD 250
+using namespace KODI;
+using namespace INPUT;
 
 bool operator==(const XBMC_keysym& lhs, const XBMC_keysym& rhs)
 {
@@ -35,8 +37,6 @@ CKeyboardStat::CKeyboardStat()
   memset(&m_lastKeysym, 0, sizeof(m_lastKeysym));
   m_lastKeyTime = 0;
 }
-
-CKeyboardStat::~CKeyboardStat() = default;
 
 void CKeyboardStat::Initialize()
 {
@@ -167,7 +167,7 @@ CKey CKeyboardStat::TranslateKey(XBMC_keysym& keysym) const
   if (keysym == m_lastKeysym)
   {
     held = XbmcThreads::SystemClockMillis() - m_lastKeyTime;
-    if (held > HOLD_THRESHOLD)
+    if (held > HOLD_TRESHOLD)
       modifiers |= CKey::MODIFIER_LONG;
   }
 

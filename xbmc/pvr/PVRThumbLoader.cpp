@@ -83,7 +83,7 @@ bool CPVRThumbLoader::FillThumb(CFileItem& item)
     if (item.IsPVRChannelGroup())
       thumb = CreateChannelGroupThumb(item);
     else
-      CLog::LogF(LOGERROR, "Unsupported PVR item '%s'", item.GetPath().c_str());
+      CLog::LogF(LOGERROR, "Unsupported PVR item '{}'", item.GetPath());
 
     if (!thumb.empty())
     {
@@ -116,9 +116,9 @@ std::string CPVRThumbLoader::CreateChannelGroupThumb(const CFileItem& channelGro
         break;
     }
 
-    const std::string thumb = StringUtils::Format("%s?ts=%d", // append timestamp to Thumb URL to enforce texture refresh
-                                                  CTextureUtils::GetWrappedImageURL(channelGroupItem.GetPath(), "pvr"),
-                                                  std::time(nullptr));
+    std::string thumb = StringUtils::Format(
+        "%s?ts=%d", // append timestamp to Thumb URL to enforce texture refresh
+        CTextureUtils::GetWrappedImageURL(channelGroupItem.GetPath(), "pvr"), std::time(nullptr));
     const std::string relativeCacheFile = CTextureCache::GetCacheFile(thumb) + ".png";
     if (CPicture::CreateTiledThumb(channelIcons, CTextureCache::GetCachedPath(relativeCacheFile)))
     {

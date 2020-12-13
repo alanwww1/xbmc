@@ -11,11 +11,9 @@
 #include "cores/VideoPlayer/Buffers/VideoBuffer.h"
 #include "cores/VideoPlayer/DVDCodecs/DVDCodecs.h"
 #include "cores/VideoPlayer/DVDStreamInfo.h"
-#include "cores/VideoPlayer/Interface/Addon/DemuxCrypto.h"
-#include "cores/VideoPlayer/Interface/Addon/TimingConstants.h"
+#include "cores/VideoPlayer/Interface/DemuxCrypto.h"
+#include "cores/VideoPlayer/Interface/TimingConstants.h"
 #include "utils/log.h"
-
-using namespace kodi::addon;
 
 CAddonVideoCodec::CAddonVideoCodec(CProcessInfo& processInfo,
                                    ADDON::AddonInfoPtr& addonInfo,
@@ -25,11 +23,14 @@ CAddonVideoCodec::CAddonVideoCodec(CProcessInfo& processInfo,
     m_codecFlags(0),
     m_displayAspect(0.0f)
 {
-  m_struct = { { 0 } };
-  m_struct.toKodi.kodiInstance = this;
-  m_struct.toKodi.get_frame_buffer = get_frame_buffer;
-  m_struct.toKodi.release_frame_buffer = release_frame_buffer;
-  if (CreateInstance(&m_struct) != ADDON_STATUS_OK || !m_struct.toAddon.open)
+  m_struct.props = new AddonProps_VideoCodec();
+  m_struct.toAddon = new KodiToAddonFuncTable_VideoCodec();
+  m_struct.toKodi = new AddonToKodiFuncTable_VideoCodec();
+
+  m_struct.toKodi->kodiInstance = this;
+  m_struct.toKodi->get_frame_buffer = get_frame_buffer;
+  m_struct.toKodi->release_frame_buffer = release_frame_buffer;
+  if (CreateInstance(&m_struct) != ADDON_STATUS_OK || !m_struct.toAddon->open)
   {
     CLog::Log(LOGERROR, "CInputStreamAddon: Failed to create add-on instance for '%s'", addonInfo->ID().c_str());
     return;
@@ -42,6 +43,11 @@ CAddonVideoCodec::~CAddonVideoCodec()
   Reset();
 
   DestroyInstance();
+
+  // Delete "C" interface structures
+  delete m_struct.toAddon;
+  delete m_struct.toKodi;
+  delete m_struct.props;
 }
 
 bool CAddonVideoCodec::CopyToInitData(VIDEOCODEC_INITDATA &initData, CDVDStreamInfo &hints)
@@ -50,7 +56,7 @@ bool CAddonVideoCodec::CopyToInitData(VIDEOCODEC_INITDATA &initData, CDVDStreamI
   switch (hints.codec)
   {
   case AV_CODEC_ID_H264:
-    initData.codec = VIDEOCODEC_INITDATA::CodecH264;
+    initData.codec = VIDEOCODEC_H264;
     switch (hints.profile)
     {
     case 0:
@@ -83,10 +89,10 @@ bool CAddonVideoCodec::CopyToInitData(VIDEOCODEC_INITDATA &initData, CDVDStreamI
     }
     break;
   case AV_CODEC_ID_VP8:
-    initData.codec = VIDEOCODEC_INITDATA::CodecVp8;
+    initData.codec = VIDEOCODEC_VP8;
     break;
   case AV_CODEC_ID_VP9:
-    initData.codec = VIDEOCODEC_INITDATA::CodecVp9;
+    initData.codec = VIDEOCODEC_VP9;
     switch (hints.profile)
     {
     case FF_PROFILE_UNKNOWN:
@@ -116,23 +122,23 @@ bool CAddonVideoCodec::CopyToInitData(VIDEOCODEC_INITDATA &initData, CDVDStreamI
     switch (hints.cryptoSession->keySystem)
     {
     case CRYPTO_SESSION_SYSTEM_NONE:
-      initData.cryptoInfo.m_CryptoKeySystem = CRYPTO_INFO::CRYPTO_KEY_SYSTEM_NONE;
+      initData.cryptoSession.keySystem = STREAM_CRYPTO_KEY_SYSTEM_NONE;
       break;
     case CRYPTO_SESSION_SYSTEM_WIDEVINE:
-      initData.cryptoInfo.m_CryptoKeySystem = CRYPTO_INFO::CRYPTO_KEY_SYSTEM_WIDEVINE;
+      initData.cryptoSession.keySystem = STREAM_CRYPTO_KEY_SYSTEM_WIDEVINE;
       break;
     case CRYPTO_SESSION_SYSTEM_PLAYREADY:
-      initData.cryptoInfo.m_CryptoKeySystem = CRYPTO_INFO::CRYPTO_KEY_SYSTEM_PLAYREADY;
+      initData.cryptoSession.keySystem = STREAM_CRYPTO_KEY_SYSTEM_PLAYREADY;
       break;
     case CRYPTO_SESSION_SYSTEM_WISEPLAY:
-      initData.cryptoInfo.m_CryptoKeySystem = CRYPTO_INFO::CRYPTO_KEY_SYSTEM_WISEPLAY;
+      initData.cryptoSession.keySystem = STREAM_CRYPTO_KEY_SYSTEM_WISEPLAY;
       break;
     default:
       return false;
     }
-    initData.cryptoInfo.m_CryptoSessionIdSize = hints.cryptoSession->sessionIdSize;
-    //We assume that we need this sessionid only for the directly following call
-    initData.cryptoInfo.m_CryptoSessionId = hints.cryptoSession->sessionId;
+
+    strncpy(initData.cryptoSession.sessionId, hints.cryptoSession->sessionId.c_str(),
+            sizeof(initData.cryptoSession.sessionId) - 1);
   }
 
   initData.extraData = reinterpret_cast<const uint8_t*>(hints.extradata);
@@ -155,18 +161,18 @@ bool CAddonVideoCodec::CopyToInitData(VIDEOCODEC_INITDATA &initData, CDVDStreamI
 
 bool CAddonVideoCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options)
 {
-  if (!m_struct.toAddon.open)
+  if (!m_struct.toAddon->open)
     return false;
 
   unsigned int nformats(0);
-  m_formats[nformats++] = VideoFormatYV12;
-  m_formats[nformats] = UnknownVideoFormat;
+  m_formats[nformats++] = VIDEOCODEC_FORMAT_YV12;
+  m_formats[nformats] = VIDEOCODEC_FORMAT_UNKNOWN;
 
   VIDEOCODEC_INITDATA initData;
   if (!CopyToInitData(initData, hints))
     return false;
 
-  bool ret = m_struct.toAddon.open(&m_struct, &initData);
+  bool ret = m_struct.toAddon->open(&m_struct, &initData);
   m_processInfo.SetVideoDecoderName(GetName(), false);
 
   return ret;
@@ -174,33 +180,34 @@ bool CAddonVideoCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options)
 
 bool CAddonVideoCodec::Reconfigure(CDVDStreamInfo &hints)
 {
-  if (!m_struct.toAddon.reconfigure)
+  if (!m_struct.toAddon->reconfigure)
     return false;
 
   VIDEOCODEC_INITDATA initData;
   if (!CopyToInitData(initData, hints))
     return false;
 
-  return m_struct.toAddon.reconfigure(&m_struct, &initData);
+  return m_struct.toAddon->reconfigure(&m_struct, &initData);
 }
 
 bool CAddonVideoCodec::AddData(const DemuxPacket &packet)
 {
-  if (!m_struct.toAddon.add_data)
+  if (!m_struct.toAddon->add_data)
     return false;
 
-  return m_struct.toAddon.add_data(&m_struct, &packet);
+  return m_struct.toAddon->add_data(&m_struct, &packet);
 }
 
 CDVDVideoCodec::VCReturn CAddonVideoCodec::GetPicture(VideoPicture* pVideoPicture)
 {
-  if (!m_struct.toAddon.get_picture)
+  if (!m_struct.toAddon->get_picture)
     return CDVDVideoCodec::VC_ERROR;
 
   VIDEOCODEC_PICTURE picture;
-  picture.flags = (m_codecFlags & DVD_CODEC_CTRL_DRAIN) ? VIDEOCODEC_PICTURE::FLAG_DRAIN : 0;
+  picture.flags = (m_codecFlags & DVD_CODEC_CTRL_DRAIN) ? VIDEOCODEC_PICTURE_FLAG_DRAIN
+                                                        : VIDEOCODEC_PICTURE_FLAG_DROP;
 
-  switch (m_struct.toAddon.get_picture(&m_struct, &picture))
+  switch (m_struct.toAddon->get_picture(&m_struct, &picture))
   {
   case VIDEOCODEC_RETVAL::VC_NONE:
     return CDVDVideoCodec::VC_NONE;
@@ -237,7 +244,7 @@ CDVDVideoCodec::VCReturn CAddonVideoCodec::GetPicture(VideoPicture* pVideoPictur
     if (pVideoPicture->videoBuffer)
       pVideoPicture->videoBuffer->Release();
 
-    pVideoPicture->videoBuffer = static_cast<CVideoBuffer*>(picture.buffer);
+    pVideoPicture->videoBuffer = static_cast<CVideoBuffer*>(picture.videoBufferHandle);
 
     int strides[YuvImage::MAX_PLANES], planeOffsets[YuvImage::MAX_PLANES];
     for (int i = 0; i<YuvImage::MAX_PLANES; ++i)
@@ -286,8 +293,8 @@ CDVDVideoCodec::VCReturn CAddonVideoCodec::GetPicture(VideoPicture* pVideoPictur
 
 const char* CAddonVideoCodec::GetName()
 {
-  if (m_struct.toAddon.get_name)
-    return m_struct.toAddon.get_name(&m_struct);
+  if (m_struct.toAddon->get_name)
+    return m_struct.toAddon->get_name(&m_struct);
   return "";
 }
 
@@ -299,20 +306,20 @@ void CAddonVideoCodec::Reset()
 
   // Get the remaining pictures out of the external decoder
   VIDEOCODEC_PICTURE picture;
-  picture.flags = VIDEOCODEC_PICTURE::FLAG_DRAIN;
+  picture.flags = VIDEOCODEC_PICTURE_FLAG_DRAIN;
 
   VIDEOCODEC_RETVAL ret;
-  while ((ret = m_struct.toAddon.get_picture(&m_struct, &picture)) != VIDEOCODEC_RETVAL::VC_EOF)
+  while ((ret = m_struct.toAddon->get_picture(&m_struct, &picture)) != VIDEOCODEC_RETVAL::VC_EOF)
   {
     if (ret == VIDEOCODEC_RETVAL::VC_PICTURE)
     {
-      videoBuffer = static_cast<CVideoBuffer*>(picture.buffer);
+      videoBuffer = static_cast<CVideoBuffer*>(picture.videoBufferHandle);
       if (videoBuffer)
         videoBuffer->Release();
     }
   }
-  if (m_struct.toAddon.reset)
-    m_struct.toAddon.reset(&m_struct);
+  if (m_struct.toAddon->reset)
+    m_struct.toAddon->reset(&m_struct);
 }
 
 bool CAddonVideoCodec::GetFrameBuffer(VIDEOCODEC_PICTURE &picture)
@@ -324,7 +331,7 @@ bool CAddonVideoCodec::GetFrameBuffer(VIDEOCODEC_PICTURE &picture)
     return false;
   }
   picture.decodedData = videoBuffer->GetMemPtr();
-  picture.buffer = videoBuffer;
+  picture.videoBufferHandle = videoBuffer;
 
   return true;
 }

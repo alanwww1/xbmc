@@ -11,6 +11,7 @@
 #include "pictures/PictureScalingAlgorithm.h"
 #include "settings/lib/ISettingCallback.h"
 #include "settings/lib/ISettingsHandler.h"
+#include "utils/SortUtils.h"
 
 #include <set>
 #include <string>
@@ -111,7 +112,7 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     void OnSettingsLoaded() override;
     void OnSettingsUnloaded() override;
 
-    void OnSettingChanged(std::shared_ptr<const CSetting> setting) override;
+    void OnSettingChanged(const std::shared_ptr<const CSetting>& setting) override;
 
     void Initialize(const CAppParamParser &params, CSettingsManager& settingsMgr);
     void Uninitialize(CSettingsManager& settingsMgr);
@@ -129,7 +130,7 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     float m_limiterHold;
     float m_limiterRelease;
 
-    bool  m_omlSync = false;
+    bool  m_omlSync = true;
 
     float m_videoSubsDelayRange;
     float m_videoAudioDelayRange;
@@ -230,7 +231,6 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     bool m_bShoutcastArt;
 
     std::string m_musicThumbs;
-    std::string m_fanartImages;
     std::vector<std::string> m_musicArtistExtraArt;
     std::vector<std::string> m_musicAlbumExtraArt;
 
@@ -313,6 +313,8 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     int m_iPVRNumericChannelSwitchTimeout; /*!< @brief time in msecs after that a channel switch occurs after entering a channel number, if confirmchannelswitch is disabled */
     int m_iPVRTimeshiftThreshold; /*!< @brief time diff between current playing time and timeshift buffer end, in seconds, before a playing stream is displayed as timeshifting. */
     bool m_bPVRTimeshiftSimpleOSD; /*!< @brief use simple timeshift OSD (with progress only for the playing event instead of progress for the whole ts buffer). */
+    SortDescription m_PVRDefaultSortOrder; /*!< @brief SortDecription used to store default recording sort type and sort order */
+
     DatabaseSettings m_databaseMusic; // advanced music database setup
     DatabaseSettings m_databaseVideo; // advanced video database setup
     DatabaseSettings m_databaseTV;    // advanced tv database setup

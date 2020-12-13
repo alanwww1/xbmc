@@ -155,13 +155,6 @@ namespace PVR
     std::shared_ptr<CFileItem> GetTimerRule(const std::shared_ptr<CFileItem>& item) const;
 
     /*!
-     * @brief Rename a timer, showing a text input dialog.
-     * @param item containing a timer to rename.
-     * @return true, if the timer was renamed successfully, false otherwise.
-     */
-    bool RenameTimer(const std::shared_ptr<CFileItem>& item) const;
-
-    /*!
      * @brief Delete a timer, always showing a confirmation dialog.
      * @param item containing a timer to delete. item must be a timer, an epg tag or a channel.
      * @return true, if the timer was deleted successfully, false otherwise.
@@ -216,13 +209,6 @@ namespace PVR
      * @return true on success, false otherwise.
      */
     bool CanEditRecording(const CFileItem& item) const;
-
-    /*!
-     * @brief Rename a recording, showing a text input dialog.
-     * @param item containing a recording to rename.
-     * @return true, if the recording was renamed successfully, false otherwise.
-     */
-    bool RenameRecording(const std::shared_ptr<CFileItem>& item) const;
 
     /*!
      * @brief Delete a recording, always showing a confirmation dialog.
@@ -321,6 +307,13 @@ namespace PVR
      * @return true on success, false otherwise.
      */
     bool StartChannelScan();
+
+    /*!
+     * @brief Start a channel scan on the specified client or open a dialog to select a client
+     * @param clientId the id of client to scan or PVR_INVALID_CLIENT_ID if a dialog will be opened
+     * @return true on success, false otherwise.
+     */
+    bool StartChannelScan(int clientId);
 
     /*!
      * @return True when a channel scan is currently running, false otherwise.

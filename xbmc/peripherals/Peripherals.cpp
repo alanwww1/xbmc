@@ -8,6 +8,7 @@
 
 #include "Peripherals.h"
 
+#include "CompileInfo.h"
 #include "EventScanner.h"
 #include "addons/AddonButtonMap.h"
 #include "addons/AddonManager.h"
@@ -940,7 +941,7 @@ void CPeripherals::UnregisterJoystickButtonMapper(IButtonMapper* mapper)
     peripheral->UnregisterJoystickButtonMapper(mapper);
 }
 
-void CPeripherals::OnSettingChanged(std::shared_ptr<const CSetting> setting)
+void CPeripherals::OnSettingChanged(const std::shared_ptr<const CSetting>& setting)
 {
   if (setting == nullptr)
     return;
@@ -958,7 +959,7 @@ void CPeripherals::OnSettingChanged(std::shared_ptr<const CSetting> setting)
   }
 }
 
-void CPeripherals::OnSettingAction(std::shared_ptr<const CSetting> setting)
+void CPeripherals::OnSettingAction(const std::shared_ptr<const CSetting>& setting)
 {
   if (setting == nullptr)
     return;
@@ -978,7 +979,8 @@ void CPeripherals::OnSettingAction(std::shared_ptr<const CSetting> setting)
         !strAddonId.empty())
     {
       ADDON::AddonPtr addon;
-      if (CServiceBroker::GetAddonMgr().GetAddon(strAddonId, addon))
+      if (CServiceBroker::GetAddonMgr().GetAddon(strAddonId, addon, ADDON::ADDON_UNKNOWN,
+                                                 ADDON::OnlyEnabled::YES))
         CGUIDialogAddonSettings::ShowForAddon(addon);
     }
   }
@@ -1008,13 +1010,14 @@ int CPeripherals::GetMessageMask()
 }
 
 void CPeripherals::Announce(ANNOUNCEMENT::AnnouncementFlag flag,
-                            const char* sender,
-                            const char* message,
+                            const std::string& sender,
+                            const std::string& message,
                             const CVariant& data)
 {
-  if (flag == ANNOUNCEMENT::Player && strcmp(sender, "xbmc") == 0)
+  if (flag == ANNOUNCEMENT::Player &&
+      sender == ANNOUNCEMENT::CAnnouncementManager::ANNOUNCEMENT_SENDER)
   {
-    if (strcmp(message, "OnQuit") == 0)
+    if (message == "OnQuit")
     {
       if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
               CSettings::SETTING_INPUT_CONTROLLERPOWEROFF))

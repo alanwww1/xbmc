@@ -10,6 +10,7 @@
 
 #include "input/KeyboardStat.h"
 #include "input/actions/Action.h"
+#include "input/button/ButtonStat.h"
 #include "input/mouse/MouseStat.h"
 #include "input/mouse/interfaces/IMouseInputProvider.h"
 #include "interfaces/IActionListener.h"
@@ -222,7 +223,7 @@ public:
   void QueueAction(const CAction& action);
 
   // implementation of ISettingCallback
-  void OnSettingChanged(std::shared_ptr<const CSetting> setting) override;
+  void OnSettingChanged(const std::shared_ptr<const CSetting>& setting) override;
 
   // implementation of IActionListener
   bool OnAction(const CAction& action) override;
@@ -279,6 +280,7 @@ private:
   void ProcessQueuedActions();
 
   CKeyboardStat m_Keyboard;
+  KODI::INPUT::CButtonStat m_buttonStat;
   CMouseStat m_Mouse;
   CKey m_LastKey;
 

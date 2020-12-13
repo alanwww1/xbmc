@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "threads/CriticalSection.h"
+
 #include <memory>
 #include <string>
 
@@ -35,23 +37,28 @@ public:
   virtual ~CPVRPlaybackState();
 
   /*!
+   * @brief clear all data.
+   */
+  void Clear();
+
+  /*!
    * @brief Inform that playback of an item just started.
    * @param item The item that started to play.
    */
-  void OnPlaybackStarted(const std::shared_ptr<CFileItem> item);
+  void OnPlaybackStarted(const std::shared_ptr<CFileItem>& item);
 
   /*!
    * @brief Inform that playback of an item was stopped due to user interaction.
    * @param item The item that stopped to play.
    * @return True, if the state has changed, false otherwise
    */
-  bool OnPlaybackStopped(const std::shared_ptr<CFileItem> item);
+  bool OnPlaybackStopped(const std::shared_ptr<CFileItem>& item);
 
   /*!
    * @brief Inform that playback of an item has stopped without user interaction.
    * @param item The item that ended to play.
    */
-  void OnPlaybackEnded(const std::shared_ptr<CFileItem> item);
+  void OnPlaybackEnded(const std::shared_ptr<CFileItem>& item);
 
   /*!
    * @brief Check if a TV channel, radio channel or recording is playing.
@@ -212,6 +219,8 @@ private:
    * @param time The last watched time to set
    */
   void UpdateLastWatched(const std::shared_ptr<CPVRChannel>& channel, const CDateTime& time);
+
+  mutable CCriticalSection m_critSection;
 
   std::shared_ptr<CPVRChannel> m_playingChannel;
   std::shared_ptr<CPVRRecording> m_playingRecording;

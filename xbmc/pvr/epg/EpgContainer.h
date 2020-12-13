@@ -86,11 +86,11 @@ namespace PVR
     bool IsStarted() const;
 
     /*!
-     * @brief Delete an EPG table from this container.
+     * @brief Queue the deletion of an EPG table from this container.
      * @param epg The table to delete.
      * @return True on success, false otherwise.
      */
-    bool DeleteEpg(const std::shared_ptr<CPVREpg>& epg);
+    bool QueueDeleteEpg(const std::shared_ptr<CPVREpg>& epg);
 
     /*!
      * @brief CEventStream callback for PVR events.
@@ -147,6 +147,13 @@ namespace PVR
      * @return The requested event, or an empty tag when not found
      */
     std::shared_ptr<CPVREpgInfoTag> GetTagById(const std::shared_ptr<CPVREpg>& epg, unsigned int iBroadcastId) const;
+
+    /*!
+     * @brief Get the EPG event with the given database id
+     * @param iDatabaseId The id to lookup.
+     * @return The requested event, or an empty tag when not found
+     */
+    std::shared_ptr<CPVREpgInfoTag> GetTagByDatabaseId(int iDatabaseId) const;
 
     /*!
      * @brief Get all EPG tags matching the given search criteria.

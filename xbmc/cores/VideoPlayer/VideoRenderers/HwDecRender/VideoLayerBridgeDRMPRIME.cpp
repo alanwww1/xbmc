@@ -10,12 +10,15 @@
 
 #include "cores/VideoPlayer/Buffers/VideoBufferDRMPRIME.h"
 #include "utils/log.h"
-#include "windowing/gbm/DRMUtils.h"
+#include "windowing/gbm/drm/DRMAtomic.h"
+
+#include <utility>
 
 using namespace KODI::WINDOWING::GBM;
 using namespace DRMPRIME;
 
-CVideoLayerBridgeDRMPRIME::CVideoLayerBridgeDRMPRIME(std::shared_ptr<CDRMUtils> drm) : m_DRM(drm)
+CVideoLayerBridgeDRMPRIME::CVideoLayerBridgeDRMPRIME(std::shared_ptr<CDRMAtomic> drm)
+  : m_DRM(std::move(drm))
 {
 }
 
@@ -28,13 +31,13 @@ CVideoLayerBridgeDRMPRIME::~CVideoLayerBridgeDRMPRIME()
 void CVideoLayerBridgeDRMPRIME::Disable()
 {
   // disable video plane
-  struct plane* plane = m_DRM->GetVideoPlane();
+  auto plane = m_DRM->GetVideoPlane();
   m_DRM->AddProperty(plane, "FB_ID", 0);
   m_DRM->AddProperty(plane, "CRTC_ID", 0);
 
   // disable HDR metadata
-  struct connector* connector = m_DRM->GetConnector();
-  if (m_DRM->SupportsProperty(connector, "HDR_OUTPUT_METADATA"))
+  auto connector = m_DRM->GetConnector();
+  if (connector->SupportsProperty("HDR_OUTPUT_METADATA"))
   {
     m_DRM->AddProperty(connector, "HDR_OUTPUT_METADATA", 0);
     m_DRM->SetActive(true);
@@ -157,15 +160,20 @@ void CVideoLayerBridgeDRMPRIME::Configure(CVideoBufferDRMPRIME* buffer)
 {
   const VideoPicture& picture = buffer->GetPicture();
 
-  struct plane* plane = m_DRM->GetVideoPlane();
-  if (m_DRM->SupportsPropertyAndValue(plane, "COLOR_ENCODING", GetColorEncoding(picture)))
-    m_DRM->AddProperty(plane, "COLOR_ENCODING", GetColorEncoding(picture));
+  auto plane = m_DRM->GetVideoPlane();
 
-  if (m_DRM->SupportsPropertyAndValue(plane, "COLOR_RANGE", GetColorRange(picture)))
-    m_DRM->AddProperty(plane, "COLOR_RANGE", GetColorRange(picture));
+  bool result;
+  uint64_t value;
+  std::tie(result, value) = plane->GetPropertyValue("COLOR_ENCODING", GetColorEncoding(picture));
+  if (result)
+    m_DRM->AddProperty(plane, "COLOR_ENCODING", value);
 
-  struct connector* connector = m_DRM->GetConnector();
-  if (m_DRM->SupportsProperty(connector, "HDR_OUTPUT_METADATA"))
+  std::tie(result, value) = plane->GetPropertyValue("COLOR_RANGE", GetColorRange(picture));
+  if (result)
+    m_DRM->AddProperty(plane, "COLOR_RANGE", value);
+
+  auto connector = m_DRM->GetConnector();
+  if (connector->SupportsProperty("HDR_OUTPUT_METADATA"))
   {
     m_hdr_metadata.metadata_type = HDMI_STATIC_METADATA_TYPE1;
     m_hdr_metadata.hdmi_metadata_type1 = {
@@ -233,9 +241,9 @@ void CVideoLayerBridgeDRMPRIME::SetVideoPlane(CVideoBufferDRMPRIME* buffer, cons
     return;
   }
 
-  struct plane* plane = m_DRM->GetVideoPlane();
+  auto plane = m_DRM->GetVideoPlane();
   m_DRM->AddProperty(plane, "FB_ID", buffer->m_fb_id);
-  m_DRM->AddProperty(plane, "CRTC_ID", m_DRM->GetCrtc()->crtc->crtc_id);
+  m_DRM->AddProperty(plane, "CRTC_ID", m_DRM->GetCrtc()->GetCrtcId());
   m_DRM->AddProperty(plane, "SRC_X", 0);
   m_DRM->AddProperty(plane, "SRC_Y", 0);
   m_DRM->AddProperty(plane, "SRC_W", buffer->GetWidth() << 16);
@@ -255,7 +263,7 @@ void CVideoLayerBridgeDRMPRIME::UpdateVideoPlane()
   Release(m_prev_buffer);
   m_prev_buffer = nullptr;
 
-  struct plane* plane = m_DRM->GetVideoPlane();
+  auto plane = m_DRM->GetVideoPlane();
   m_DRM->AddProperty(plane, "FB_ID", m_buffer->m_fb_id);
-  m_DRM->AddProperty(plane, "CRTC_ID", m_DRM->GetCrtc()->crtc->crtc_id);
+  m_DRM->AddProperty(plane, "CRTC_ID", m_DRM->GetCrtc()->GetCrtcId());
 }

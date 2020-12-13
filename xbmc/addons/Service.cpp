@@ -60,7 +60,7 @@ void CServiceAddonManager::Start()
 void CServiceAddonManager::Start(const std::string& addonId)
 {
   AddonPtr addon;
-  if (m_addonMgr.GetAddon(addonId, addon, ADDON_SERVICE))
+  if (m_addonMgr.GetAddon(addonId, addon, ADDON_SERVICE, OnlyEnabled::YES))
   {
     Start(addon);
   }
@@ -110,7 +110,7 @@ void CServiceAddonManager::Stop(const std::string& addonId)
   }
 }
 
-void CServiceAddonManager::Stop(std::map<std::string, int>::value_type service)
+void CServiceAddonManager::Stop(const std::map<std::string, int>::value_type& service)
 {
   CLog::Log(LOGDEBUG, "CServiceAddonManager: stopping %s.", service.first.c_str());
   if (!CScriptInvocationManager::GetInstance().Stop(service.second))

@@ -157,7 +157,8 @@ void CPVRClients::UpdateAddons(const std::string& changedAddonId /*= ""*/)
 
       if (status != ADDON_STATUS_OK)
       {
-        CLog::LogF(LOGERROR, "Failed to create add-on %s, status = %d", addon.first->Name().c_str(), status);
+        CLog::LogF(LOGERROR, "Failed to create add-on {}, status = {}", addon.first->Name(),
+                   status);
         if (status == ADDON_STATUS_PERMANENT_FAILURE)
         {
           CServiceBroker::GetAddonMgr().DisableAddon(addon.first->ID(),
@@ -416,6 +417,44 @@ int CPVRClients::EnabledClientAmount() const
   return iReturn;
 }
 
+std::vector<CVariant> CPVRClients::GetEnabledClientInfos() const
+{
+  std::vector<CVariant> clientInfos;
+
+  CPVRClientMap clientMap;
+  {
+    CSingleLock lock(m_critSection);
+    clientMap = m_clientMap;
+  }
+
+  for (const auto& client : clientMap)
+  {
+    const auto& addonInfo = CServiceBroker::GetAddonMgr().GetAddonInfo(client.second->ID());
+
+    if (addonInfo)
+    {
+      // This will be the same variant structure used in the json api
+      CVariant clientInfo(CVariant::VariantTypeObject);
+      clientInfo["clientid"] = client.first;
+      clientInfo["addonid"] = client.second->ID();
+      clientInfo["label"] = addonInfo->Name(); // Note that this is called label instead of name
+
+      const auto& capabilities = client.second->GetClientCapabilities();
+      clientInfo["supportstv"] = capabilities.SupportsTV();
+      clientInfo["supportsradio"] = capabilities.SupportsRadio();
+      clientInfo["supportsepg"] = capabilities.SupportsEPG();
+      clientInfo["supportsrecordings"] = capabilities.SupportsRecordings();
+      clientInfo["supportstimers"] = capabilities.SupportsTimers();
+      clientInfo["supportschannelgroups"] = capabilities.SupportsChannelGroups();
+      clientInfo["supportschannelscan"] = capabilities.SupportsChannelScan();
+
+      clientInfos.push_back(clientInfo);
+    }
+  }
+
+  return clientInfos;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // client API calls
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -471,11 +510,16 @@ PVR_ERROR CPVRClients::GetTimerTypes(std::vector<std::shared_ptr<CPVRTimerType>>
   });
 }
 
-PVR_ERROR CPVRClients::GetRecordings(CPVRRecordings* recordings, bool deleted)
+PVR_ERROR CPVRClients::GetRecordings(CPVRRecordings* recordings,
+                                     bool deleted,
+                                     std::vector<int>& failedClients)
 {
-  return ForCreatedClients(__FUNCTION__, [recordings, deleted](const std::shared_ptr<CPVRClient>& client) {
-    return client->GetRecordings(recordings, deleted);
-  });
+  return ForCreatedClients(
+      __FUNCTION__,
+      [recordings, deleted](const std::shared_ptr<CPVRClient>& client) {
+        return client->GetRecordings(recordings, deleted);
+      },
+      failedClients);
 }
 
 PVR_ERROR CPVRClients::DeleteAllRecordingsFromTrash()
@@ -677,13 +721,16 @@ void CPVRClients::ConnectionStateChange(CPVRClient* client,
   }
 }
 
-PVR_ERROR CPVRClients::ForCreatedClients(const char* strFunctionName, PVRClientFunction function) const
+PVR_ERROR CPVRClients::ForCreatedClients(const char* strFunctionName,
+                                         const PVRClientFunction& function) const
 {
   std::vector<int> failedClients;
   return ForCreatedClients(strFunctionName, function, failedClients);
 }
 
-PVR_ERROR CPVRClients::ForCreatedClients(const char* strFunctionName, PVRClientFunction function, std::vector<int>& failedClients) const
+PVR_ERROR CPVRClients::ForCreatedClients(const char* strFunctionName,
+                                         const PVRClientFunction& function,
+                                         std::vector<int>& failedClients) const
 {
   PVR_ERROR lastError = PVR_ERROR_NO_ERROR;
 
@@ -696,9 +743,8 @@ PVR_ERROR CPVRClients::ForCreatedClients(const char* strFunctionName, PVRClientF
 
     if (currentError != PVR_ERROR_NO_ERROR && currentError != PVR_ERROR_NOT_IMPLEMENTED)
     {
-      CLog::LogFunction(LOGERROR, strFunctionName,
-                        "PVR client '%s' returned an error: %s",
-                        clientEntry.second->GetFriendlyName().c_str(), CPVRClient::ToString(currentError));
+      CLog::LogFunction(LOGERROR, strFunctionName, "PVR client '{}' returned an error: {}",
+                        clientEntry.second->GetFriendlyName(), CPVRClient::ToString(currentError));
       lastError = currentError;
       failedClients.emplace_back(clientEntry.first);
     }

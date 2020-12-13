@@ -98,7 +98,7 @@ void CControllerInstaller::Process()
     const auto& addon = installableAddons[installedCount];
 
     // Set dialog text
-    const std::string progressTemplate = g_localizeStrings.Get(24057); // "Installing {0:s}..."
+    const std::string& progressTemplate = g_localizeStrings.Get(24057); // "Installing {0:s}..."
     const std::string progressText = StringUtils::Format(progressTemplate, addon->Name());
     pProgressDialog->SetLine(0, CVariant{progressText});
 
@@ -107,7 +107,8 @@ void CControllerInstaller::Process()
         100 * (installedCount + 1) / static_cast<unsigned int>(installableAddons.size());
     pProgressDialog->SetPercentage(percentage);
 
-    if (!ADDON::CAddonInstaller::GetInstance().InstallOrUpdate(addon->ID(), false, false))
+    if (!ADDON::CAddonInstaller::GetInstance().InstallOrUpdate(
+            addon->ID(), ADDON::BackgroundJob::NO, ADDON::ModalJob::NO))
     {
       CLog::Log(LOGERROR, "Controller installer: Failed to install %s", addon->ID().c_str());
       // "Error"

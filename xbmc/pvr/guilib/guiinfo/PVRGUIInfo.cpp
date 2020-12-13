@@ -301,6 +301,23 @@ namespace
     return datetime.IsValid() ? datetime.GetAsLocalizedDateTime(false, false) : "";
   }
 
+  std::string GetEpgTagTitle(const std::shared_ptr<CPVREpgInfoTag>& epgTag)
+  {
+    if (epgTag)
+    {
+      if (CServiceBroker::GetPVRManager().IsParentalLocked(epgTag))
+        return g_localizeStrings.Get(19266); // Parental locked
+      else if (!epgTag->Title().empty())
+        return epgTag->Title();
+    }
+
+    if (!CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
+            CSettings::SETTING_EPG_HIDENOINFOAVAILABLE))
+      return g_localizeStrings.Get(19055); // no information available
+
+    return {};
+  }
+
 } // unnamed namespace
 
 bool CPVRGUIInfo::GetListItemAndPlayerLabel(const CFileItem* item, const CGUIInfo& info, std::string& strValue) const
@@ -490,20 +507,13 @@ bool CPVRGUIInfo::GetListItemAndPlayerLabel(const CFileItem* item, const CGUIInf
     {
       // special handling for channels without epg or with radio rds data
       case PLAYER_TITLE:
-      case VIDEOPLAYER_TITLE:
       case LISTITEM_TITLE:
       case VIDEOPLAYER_NEXT_TITLE:
       case LISTITEM_NEXT_TITLE:
       case LISTITEM_EPG_EVENT_TITLE:
         // Note: in difference to LISTITEM_TITLE, LISTITEM_EPG_EVENT_TITLE returns the title
         // associated with the epg event of a timer, if any, and not the title of the timer.
-        if (epgTag)
-        {
-          bool bLocked = CServiceBroker::GetPVRManager().IsParentalLocked(epgTag);
-          strValue = bLocked ? g_localizeStrings.Get(19266) /* Parental locked */ : epgTag->Title();
-        }
-        if (strValue.empty() && !CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_EPG_HIDENOINFOAVAILABLE))
-          strValue = g_localizeStrings.Get(19055); // no information available
+        strValue = GetEpgTagTitle(epgTag);
         return true;
     }
   }
@@ -1047,6 +1057,30 @@ bool CPVRGUIInfo::GetRadioRDSLabel(const CFileItem* item, const CGUIInfo& info, 
   return false;
 }
 
+bool CPVRGUIInfo::GetFallbackLabel(std::string& value,
+                                   const CFileItem* item,
+                                   int contextWindow,
+                                   const CGUIInfo& info,
+                                   std::string* fallback)
+{
+  if (item->IsPVRChannel() || item->IsEPG() || item->IsPVRTimer())
+  {
+    switch (info.m_info)
+    {
+      /////////////////////////////////////////////////////////////////////////////////////////////
+      // VIDEOPLAYER_*, MUSICPLAYER_*
+      /////////////////////////////////////////////////////////////////////////////////////////////
+      case VIDEOPLAYER_TITLE:
+      case MUSICPLAYER_TITLE:
+        value = GetEpgTagTitle(CPVRItem(item).GetEpgInfoTag());
+        return !value.empty();
+      default:
+        break;
+    }
+  }
+  return false;
+}
+
 bool CPVRGUIInfo::GetInt(int& value, const CGUIListItem* item, int contextWindow, const CGUIInfo& info) const
 {
   if (!item->IsFileItem())
@@ -1111,6 +1145,9 @@ bool CPVRGUIInfo::GetPVRInt(const CFileItem* item, const CGUIInfo& info, int& iV
       return true;
     case PVR_TIMESHIFT_PROGRESS_BUFFER_END:
       iValue = m_timesInfo.GetTimeshiftProgressBufferEnd();
+      return true;
+    case PVR_TIMESHIFT_SEEKBAR:
+      iValue = GetTimeShiftSeekPercent();
       return true;
     case PVR_ACTUAL_STREAM_SIG_PROGR:
       iValue = std::lrintf(static_cast<float>(m_qualityInfo.iSignal) / 0xFFFF * 100);
@@ -1763,4 +1800,25 @@ void CPVRGUIInfo::UpdateNextTimer()
   m_anyTimersInfo.UpdateNextTimer();
   m_tvTimersInfo.UpdateNextTimer();
   m_radioTimersInfo.UpdateNextTimer();
+}
+
+int CPVRGUIInfo::GetTimeShiftSeekPercent() const
+{
+  int progress = m_timesInfo.GetTimeshiftProgressPlayPosition();
+
+  int seekSize = g_application.GetAppPlayer().GetSeekHandler().GetSeekSize();
+  if (seekSize != 0)
+  {
+    int total = m_timesInfo.GetTimeshiftProgressDuration();
+
+    float totalTime = static_cast<float>(total);
+    if (totalTime == 0.0f)
+      return 0;
+
+    float percentPerSecond = 100.0f / totalTime;
+    float percent = progress + percentPerSecond * seekSize;
+    percent = std::max(0.0f, std::min(percent, 100.0f));
+    return std::lrintf(percent);
+  }
+  return progress;
 }

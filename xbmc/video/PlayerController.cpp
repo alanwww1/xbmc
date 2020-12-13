@@ -50,7 +50,12 @@ bool CPlayerController::OnAction(const CAction &action)
       case ACTION_SHOW_SUBTITLES:
       {
         if (g_application.GetAppPlayer().GetSubtitleCount() == 0)
+        {
+          CGUIDialogKaiToast::QueueNotification(
+              CGUIDialogKaiToast::Info, g_localizeStrings.Get(287), g_localizeStrings.Get(10005),
+              DisplTime, false, MsgTime);
           return true;
+        }
 
         bool subsOn = !g_application.GetAppPlayer().GetSubtitleVisible();
         g_application.GetAppPlayer().SetSubtitleVisible(subsOn);
@@ -447,7 +452,7 @@ bool CPlayerController::OnAction(const CAction &action)
         {
           int playing = 0;
           int idx = 0;
-          for (auto prog : programs)
+          for (const auto& prog : programs)
           {
             dialog->Add(prog.name);
             if (prog.playing)

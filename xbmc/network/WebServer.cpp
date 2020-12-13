@@ -533,7 +533,7 @@ void CWebServer::SetupPostDataProcessing(const HTTPRequest& request,
                                          std::shared_ptr<IHTTPRequestHandler> handler,
                                          void** con_cls) const
 {
-  connectionHandler->requestHandler = handler;
+  connectionHandler->requestHandler = std::move(handler);
 
   // we might need to handle the POST data ourselves which is done in the next call to
   // AnswerToConnection
@@ -1385,13 +1385,13 @@ void CWebServer::LogRequest(const HTTPRequest& request) const
   if (!getValues.empty())
   {
     std::vector<std::string> values;
-    for (const auto get : getValues)
+    for (const auto& get : getValues)
       values.push_back(get.first + " = " + get.second);
 
     m_logger->debug(" [IN] Query arguments: {}", StringUtils::Join(values, "; "));
   }
 
-  for (const auto header : headerValues)
+  for (const auto& header : headerValues)
     m_logger->debug(" [IN] {}: {}", header.first, header.second);
 }
 
@@ -1406,7 +1406,7 @@ void CWebServer::LogResponse(const HTTPRequest& request, int responseStatus) con
 
   m_logger->debug("[OUT] {} {} {}", request.version, responseStatus, request.pathUrlFull);
 
-  for (const auto header : headerValues)
+  for (const auto& header : headerValues)
     m_logger->debug("[OUT] {}: {}", header.first, header.second);
 }
 

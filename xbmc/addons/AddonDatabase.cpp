@@ -435,16 +435,16 @@ void CAddonDatabase::SyncInstalled(const std::set<std::string>& ids,
     for (const auto& id : system)
     {
       m_pDS->exec(PrepareSQL("UPDATE installed SET enabled=1 WHERE addonID='%s'", id.c_str()));
-      // Set origin *only* for addons that do not have one yet as it may have been changed by an update.
-      m_pDS->exec(PrepareSQL("UPDATE installed SET origin='%s' WHERE addonID='%s' AND origin=''",
-          ORIGIN_SYSTEM, id.c_str()));
+      // Make sure system addons always have ORIGIN_SYSTEM origin
+      m_pDS->exec(PrepareSQL("UPDATE installed SET origin='%s' WHERE addonID='%s'", ORIGIN_SYSTEM,
+                             id.c_str()));
     }
 
     for (const auto& id : optional)
     {
-      // Set origin for optional system addons that do not have one yet too.
-      m_pDS->exec(PrepareSQL("UPDATE installed SET origin='%s' WHERE addonID='%s' AND origin=''",
-                             ORIGIN_SYSTEM, id.c_str()));
+      // Make sure optional system addons always have ORIGIN_SYSTEM origin
+      m_pDS->exec(PrepareSQL("UPDATE installed SET origin='%s' WHERE addonID='%s'", ORIGIN_SYSTEM,
+                             id.c_str()));
     }
 
     CommitTransaction();
@@ -702,12 +702,17 @@ bool CAddonDatabase::GetAddon(int id, AddonPtr &addon)
     if (!m_pDS2)
       return false;
 
-    m_pDS2->query(PrepareSQL("SELECT * FROM addons WHERE id=%i", id));
+    m_pDS2->query(PrepareSQL("SELECT addons.*, repo.addonID as origin FROM addons "
+                             "JOIN addonlinkrepo ON addonlinkrepo.idAddon=addons.id "
+                             "JOIN repo ON repo.id=addonlinkrepo.idRepo "
+                             "WHERE addons.id=%i",
+                             id));
     if (m_pDS2->eof())
       return false;
 
     CAddonInfoBuilder::CFromDB builder;
     builder.SetId(m_pDS2->fv("addonID").get_asString());
+    builder.SetOrigin(m_pDS2->fv("origin").get_asString());
     builder.SetVersion(AddonVersion(m_pDS2->fv("version").get_asString()));
     builder.SetName(m_pDS2->fv("name").get_asString());
     builder.SetSummary(m_pDS2->fv("summary").get_asString());
@@ -1283,4 +1288,34 @@ void CAddonDatabase::GetInstallData(const AddonInfoPtr& addon)
   {
     CLog::Log(LOGERROR, "CAddonDatabase::{}: failed", __FUNCTION__);
   }
+}
+
+bool CAddonDatabase::AddInstalledAddon(const std::shared_ptr<CAddonInfo>& addon,
+                                       const std::string& origin)
+{
+  try
+  {
+    if (!m_pDB)
+      return false;
+    if (!m_pDS)
+      return false;
+
+    m_pDS->query(PrepareSQL("SELECT * FROM installed WHERE addonID='%s'", addon->ID().c_str()));
+
+    if (m_pDS->eof())
+    {
+      std::string now = CDateTime::GetCurrentDateTime().GetAsDBDateTime();
+
+      m_pDS->exec(PrepareSQL("INSERT INTO installed(addonID, enabled, installDate, origin) "
+                             "VALUES('%s', 1, '%s', '%s')",
+                             addon->ID().c_str(), now.c_str(), origin.c_str()));
+    }
+  }
+  catch (...)
+  {
+    CLog::Log(LOGERROR, "%s failed", __FUNCTION__);
+    return false;
+  }
+
+  return true;
 }

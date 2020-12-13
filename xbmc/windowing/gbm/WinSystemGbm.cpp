@@ -8,12 +8,12 @@
 
 #include "WinSystemGbm.h"
 
-#include "DRMAtomic.h"
-#include "DRMLegacy.h"
 #include "GBMDPMSSupport.h"
-#include "OffScreenModeSetting.h"
 #include "OptionalsReg.h"
 #include "ServiceBroker.h"
+#include "drm/DRMAtomic.h"
+#include "drm/DRMLegacy.h"
+#include "drm/OffScreenModeSetting.h"
 #include "messaging/ApplicationMessenger.h"
 #include "settings/DisplaySettings.h"
 #include "settings/Settings.h"
@@ -22,10 +22,6 @@
 #include "utils/StringUtils.h"
 #include "utils/log.h"
 #include "windowing/GraphicContext.h"
-
-#include "platform/freebsd/OptionalsReg.h"
-#include "platform/linux/OptionalsReg.h"
-#include "platform/linux/powermanagement/LinuxPowerSyscall.h"
 
 #include <string.h>
 
@@ -36,52 +32,21 @@ CWinSystemGbm::CWinSystemGbm() :
   m_GBM(new CGBMUtils),
   m_libinput(new CLibInputHandler)
 {
-  std::string envSink;
-  if (getenv("KODI_AE_SINK"))
-    envSink = getenv("KODI_AE_SINK");
-  if (StringUtils::EqualsNoCase(envSink, "ALSA"))
-  {
-    OPTIONALS::ALSARegister();
-  }
-  else if (StringUtils::EqualsNoCase(envSink, "PULSE"))
-  {
-    OPTIONALS::PulseAudioRegister();
-  }
-  else if (StringUtils::EqualsNoCase(envSink, "OSS"))
-  {
-    OPTIONALS::OSSRegister();
-  }
-  else if (StringUtils::EqualsNoCase(envSink, "SNDIO"))
-  {
-    OPTIONALS::SndioRegister();
-  }
-  else if (StringUtils::EqualsNoCase(envSink, "ALSA+PULSE"))
-  {
-    OPTIONALS::ALSARegister();
-    OPTIONALS::PulseAudioRegister();
-  }
-  else
-  {
-    if (!OPTIONALS::PulseAudioRegister())
-    {
-      if (!OPTIONALS::ALSARegister())
-      {
-        if (!OPTIONALS::SndioRegister())
-        {
-          OPTIONALS::OSSRegister();
-        }
-      }
-    }
-  }
-
   m_dpms = std::make_shared<CGBMDPMSSupport>();
-  CLinuxPowerSyscall::Register();
-  m_lirc.reset(OPTIONALS::LircRegister());
   m_libinput->Start();
 }
 
 bool CWinSystemGbm::InitWindowSystem()
 {
+  const char* x11 = getenv("DISPLAY");
+  const char* wayland = getenv("WAYLAND_DISPLAY");
+  if (x11 || wayland)
+  {
+    CLog::Log(LOGDEBUG, "CWinSystemGbm::{} - not allowed to run GBM under a window manager",
+              __FUNCTION__);
+    return false;
+  }
+
   m_DRM = std::make_shared<CDRMAtomic>();
 
   if (!m_DRM->InitDrm())
@@ -112,14 +77,21 @@ bool CWinSystemGbm::InitWindowSystem()
     return false;
   }
 
+  CServiceBroker::GetSettingsComponent()
+      ->GetSettings()
+      ->GetSetting(CSettings::SETTING_VIDEOSCREEN_LIMITEDRANGE)
+      ->SetVisible(true);
+  CServiceBroker::GetSettingsComponent()
+      ->GetSettings()
+      ->GetSetting("videoscreen.limitguisize")
+      ->SetVisible(true);
+
   CLog::Log(LOGDEBUG, "CWinSystemGbm::%s - initialized DRM", __FUNCTION__);
   return CWinSystemBase::InitWindowSystem();
 }
 
 bool CWinSystemGbm::DestroyWindowSystem()
 {
-  m_GBM->DestroyDevice();
-
   CLog::Log(LOGDEBUG, "CWinSystemGbm::%s - deinitialized DRM", __FUNCTION__);
 
   m_libinput.reset();
@@ -184,21 +156,37 @@ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
 
   if (!std::dynamic_pointer_cast<CDRMAtomic>(m_DRM))
   {
-    bo = m_GBM->LockFrontBuffer();
+    bo = m_GBM->GetDevice()->GetSurface()->LockFrontBuffer()->Get();
   }
 
   auto result = m_DRM->SetVideoMode(res, bo);
-
-  if (!std::dynamic_pointer_cast<CDRMAtomic>(m_DRM))
-  {
-    m_GBM->ReleaseBuffer();
-  }
 
   int delay = CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt("videoscreen.delayrefreshchange");
   if (delay > 0)
     m_dispResetTimer.Set(delay * 100);
 
   return result;
+}
+
+bool CWinSystemGbm::DisplayHardwareScalingEnabled()
+{
+  auto drmAtomic = std::dynamic_pointer_cast<CDRMAtomic>(m_DRM);
+  if (drmAtomic && drmAtomic->DisplayHardwareScalingEnabled())
+    return true;
+
+  return false;
+}
+
+void CWinSystemGbm::UpdateDisplayHardwareScaling(const RESOLUTION_INFO& resInfo)
+{
+  if (!DisplayHardwareScalingEnabled())
+    return;
+
+  //! @todo The PR that made the res struct constant was abandoned due to drama.
+  // It should be const-corrected and changed here.
+  RESOLUTION_INFO& resMutable = const_cast<RESOLUTION_INFO&>(resInfo);
+
+  SetFullScreen(true, resMutable, false);
 }
 
 void CWinSystemGbm::FlipPage(bool rendered, bool videoLayer)
@@ -213,15 +201,10 @@ void CWinSystemGbm::FlipPage(bool rendered, bool videoLayer)
 
   if (rendered)
   {
-    bo = m_GBM->LockFrontBuffer();
+    bo = m_GBM->GetDevice()->GetSurface()->LockFrontBuffer()->Get();
   }
 
   m_DRM->FlipPage(bo, rendered, videoLayer);
-
-  if (rendered)
-  {
-    m_GBM->ReleaseBuffer();
-  }
 
   if (m_videoLayerBridge && !videoLayer)
   {

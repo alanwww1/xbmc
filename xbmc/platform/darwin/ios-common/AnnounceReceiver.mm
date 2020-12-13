@@ -78,14 +78,14 @@ id objectFromVariant(const CVariant& data)
 }
 
 void AnnounceBridge(ANNOUNCEMENT::AnnouncementFlag flag,
-                    const char* sender,
-                    const char* message,
+                    const std::string& sender,
+                    const std::string& message,
                     const CVariant& data)
 {
   int item_id = -1;
   std::string item_type = "";
   CVariant nonConstData = data;
-  const std::string msg(message);
+  const std::string& msg(message);
 
   // handle data which only has a database id and not the metadata inside
   if (msg == "OnPlay" || msg == "OnResume")
@@ -161,7 +161,7 @@ void AnnounceBridge(ANNOUNCEMENT::AnnouncementFlag flag,
       if (!genre.empty())
       {
         NSMutableArray* genreArray = [[NSMutableArray alloc] initWithCapacity:genre.size()];
-        for (auto genreItem : genre)
+        for (const auto& genreItem : genre)
         {
           [genreArray addObject:@(genreItem.c_str())];
         }
@@ -215,8 +215,8 @@ void CAnnounceReceiver::DeInitialize()
 }
 
 void CAnnounceReceiver::Announce(ANNOUNCEMENT::AnnouncementFlag flag,
-                                 const char* sender,
-                                 const char* message,
+                                 const std::string& sender,
+                                 const std::string& message,
                                  const CVariant& data)
 {
   // can be called from c++, we need an auto poll here.

@@ -15,8 +15,10 @@
 #include "cores/VideoPlayer/VideoRenderers/RenderFlags.h"
 #include "rendering/gles/RenderSystemGLES.h"
 #include "utils/EGLFence.h"
+#include "utils/EGLImage.h"
 #include "utils/GLUtils.h"
 #include "utils/log.h"
+#include "windowing/GraphicContext.h"
 #include "windowing/WinSystem.h"
 #include "windowing/linux/WinSystemEGL.h"
 
@@ -29,10 +31,40 @@ CRendererDRMPRIMEGLES::~CRendererDRMPRIMEGLES()
 
 CBaseRenderer* CRendererDRMPRIMEGLES::Create(CVideoBuffer* buffer)
 {
-  if (buffer && dynamic_cast<CVideoBufferDRMPRIME*>(buffer))
-    return new CRendererDRMPRIMEGLES();
+  if (!buffer)
+    return nullptr;
 
-  return nullptr;
+  auto buf = dynamic_cast<CVideoBufferDRMPRIME*>(buffer);
+  if (!buf)
+    return nullptr;
+
+#if defined(EGL_EXT_image_dma_buf_import_modifiers)
+  if (!buf->AcquireDescriptor())
+    return nullptr;
+
+  auto desc = buf->GetDescriptor();
+  if (!desc)
+  {
+    buf->ReleaseDescriptor();
+    return nullptr;
+  }
+
+  uint64_t modifier = desc->objects[0].format_modifier;
+  uint32_t format = desc->layers[0].format;
+
+  buf->ReleaseDescriptor();
+
+  auto winSystemEGL =
+      dynamic_cast<KODI::WINDOWING::LINUX::CWinSystemEGL*>(CServiceBroker::GetWinSystem());
+  if (!winSystemEGL)
+    return nullptr;
+
+  CEGLImage image{winSystemEGL->GetEGLDisplay()};
+  if (!image.SupportsFormatAndModifier(format, modifier))
+    return nullptr;
+#endif
+
+  return new CRendererDRMPRIMEGLES();
 }
 
 void CRendererDRMPRIMEGLES::Register()
@@ -148,6 +180,68 @@ void CRendererDRMPRIMEGLES::Update()
   ManageRenderArea();
 }
 
+void CRendererDRMPRIMEGLES::DrawBlackBars()
+{
+  CRect windowRect(0, 0, CServiceBroker::GetWinSystem()->GetGfxContext().GetWidth(),
+                   CServiceBroker::GetWinSystem()->GetGfxContext().GetHeight());
+
+  auto quads = windowRect.SubtractRect(m_destRect);
+
+  struct Svertex
+  {
+    float x, y;
+  };
+
+  std::vector<Svertex> vertices(6 * quads.size());
+
+  GLubyte count = 0;
+  for (const auto& quad : quads)
+  {
+    vertices[count + 1].x = quad.x1;
+    vertices[count + 1].y = quad.y1;
+
+    vertices[count + 0].x = vertices[count + 5].x = quad.x1;
+    vertices[count + 0].y = vertices[count + 5].y = quad.y2;
+
+    vertices[count + 2].x = vertices[count + 3].x = quad.x2;
+    vertices[count + 2].y = vertices[count + 3].y = quad.y1;
+
+    vertices[count + 4].x = quad.x2;
+    vertices[count + 4].y = quad.y2;
+
+    count += 6;
+  }
+
+  glDisable(GL_BLEND);
+
+  CRenderSystemGLES* renderSystem =
+      dynamic_cast<CRenderSystemGLES*>(CServiceBroker::GetRenderSystem());
+  if (!renderSystem)
+    return;
+
+  renderSystem->EnableGUIShader(SM_DEFAULT);
+  GLint posLoc = renderSystem->GUIShaderGetPos();
+  GLint uniCol = renderSystem->GUIShaderGetUniCol();
+
+  glUniform4f(uniCol, m_clearColour / 255.0f, m_clearColour / 255.0f, m_clearColour / 255.0f, 1.0f);
+
+  GLuint vertexVBO;
+  glGenBuffers(1, &vertexVBO);
+  glBindBuffer(GL_ARRAY_BUFFER, vertexVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(Svertex) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+
+  glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, sizeof(Svertex), 0);
+  glEnableVertexAttribArray(posLoc);
+
+  glDrawArrays(GL_TRIANGLES, 0, vertices.size());
+
+  glDisableVertexAttribArray(posLoc);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glDeleteBuffers(1, &vertexVBO);
+
+  renderSystem->DisableGUIShader();
+}
+
 void CRendererDRMPRIMEGLES::RenderUpdate(
     int index, int index2, bool clear, unsigned int flags, unsigned int alpha)
 {
@@ -158,9 +252,14 @@ void CRendererDRMPRIMEGLES::RenderUpdate(
 
   if (clear)
   {
-    glClearColor(m_clearColour, m_clearColour, m_clearColour, 0);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glClearColor(0, 0, 0, 0);
+    if (alpha == 255)
+      DrawBlackBars();
+    else
+    {
+      glClearColor(m_clearColour, m_clearColour, m_clearColour, 0);
+      glClear(GL_COLOR_BUFFER_BIT);
+      glClearColor(0, 0, 0, 0);
+    }
   }
 
   if (alpha < 255)

@@ -96,11 +96,12 @@ void CPVRChannel::Serialize(CVariant& value) const
 
   value["isrecording"] = false; // compat
   value["hasarchive"] = m_bHasArchive;
+  value["clientid"] = m_iClientId;
 }
 
 /********** XBMC related channel methods **********/
 
-bool CPVRChannel::Delete()
+bool CPVRChannel::QueueDelete()
 {
   bool bReturn = false;
   const std::shared_ptr<CPVRDatabase> database = CServiceBroker::GetPVRManager().GetTVDatabase();
@@ -110,13 +111,13 @@ bool CPVRChannel::Delete()
   const std::shared_ptr<CPVREpg> epg = GetEPG();
   if (epg)
   {
-    CServiceBroker::GetPVRManager().EpgContainer().DeleteEpg(epg);
+    CServiceBroker::GetPVRManager().EpgContainer().QueueDeleteEpg(epg);
 
     CSingleLock lock(m_critSection);
     m_epg.reset();
   }
 
-  bReturn = database->Delete(*this);
+  bReturn = database->QueueDeleteQuery(*this);
   return bReturn;
 }
 
@@ -500,7 +501,7 @@ std::vector<std::shared_ptr<CPVREpgInfoTag>> CPVRChannel::GetEpgTags() const
   const std::shared_ptr<CPVREpg> epg = GetEPG();
   if (!epg)
   {
-    CLog::LogFC(LOGDEBUG, LOGPVR, "Cannot get EPG for channel '%s'", m_strChannelName.c_str());
+    CLog::LogFC(LOGDEBUG, LOGPVR, "Cannot get EPG for channel '{}'", m_strChannelName);
     return {};
   }
 

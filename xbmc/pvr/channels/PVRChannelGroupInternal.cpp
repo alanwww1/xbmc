@@ -17,6 +17,7 @@
 #include "pvr/addons/PVRClients.h"
 #include "pvr/channels/PVRChannel.h"
 #include "pvr/epg/EpgContainer.h"
+#include "pvr/epg/EpgDatabase.h"
 #include "utils/Variant.h"
 #include "utils/log.h"
 
@@ -58,7 +59,7 @@ void CPVRChannelGroupInternal::CheckGroupName()
   CSingleLock lock(m_critSection);
 
   /* check whether the group name is still correct, or channels will fail to load after the language setting changed */
-  const std::string strNewGroupName = g_localizeStrings.Get(19287);
+  const std::string& strNewGroupName = g_localizeStrings.Get(19287);
   if (GroupName() != strNewGroupName)
   {
     SetGroupName(strNewGroupName);
@@ -110,7 +111,7 @@ bool CPVRChannelGroupInternal::Update(std::vector<std::shared_ptr<CPVRChannel>>&
   CPVRChannelGroupInternal PVRChannels_tmp(IsRadio());
   PVRChannels_tmp.SetPreventSortAndRenumber();
   PVRChannels_tmp.LoadFromClients();
-  m_failedClientsForChannels = PVRChannels_tmp.m_failedClientsForChannels;
+  m_failedClients = PVRChannels_tmp.m_failedClients;
   return UpdateGroupEntries(PVRChannels_tmp, channelsToRemove);
 }
 
@@ -219,7 +220,8 @@ int CPVRChannelGroupInternal::LoadFromDb(bool bCompress /* = false */)
 bool CPVRChannelGroupInternal::LoadFromClients()
 {
   /* get the channels from the backends */
-  return CServiceBroker::GetPVRManager().Clients()->GetChannels(this, m_failedClientsForChannels) == PVR_ERROR_NO_ERROR;
+  return CServiceBroker::GetPVRManager().Clients()->GetChannels(this, m_failedClients) ==
+         PVR_ERROR_NO_ERROR;
 }
 
 bool CPVRChannelGroupInternal::IsGroupMember(const std::shared_ptr<CPVRChannel>& channel) const
@@ -281,17 +283,43 @@ std::vector<std::shared_ptr<CPVRChannel>> CPVRChannelGroupInternal::RemoveDelete
 {
   std::vector<std::shared_ptr<CPVRChannel>> removedChannels = CPVRChannelGroup::RemoveDeletedChannels(channels);
 
-  if (!removedChannels.empty())
+  bool channelsDeleted = false;
+
+  const std::shared_ptr<CPVRDatabase> database = CServiceBroker::GetPVRManager().GetTVDatabase();
+  const std::shared_ptr<CPVREpgDatabase> epgDatabase =
+      CServiceBroker::GetPVRManager().EpgContainer().GetEpgDatabase();
+  if (!database || !epgDatabase)
   {
+    CLog::LogF(LOGERROR, "No TV or EPG database");
+  }
+  else
+  {
+    // Note: We must lock the dbs the whole time, otherwise races may occur.
+    database->Lock();
+    epgDatabase->Lock();
+
     for (const auto& channel : removedChannels)
     {
-      /* do we have valid data from channel's client? */
-      if (!IsMissingChannelsFromClient(channel->ClientID()))
-      {
-        /* since channel was not found in the internal group, it was deleted from the backend */
-        channel->Delete();
-      }
+      // since channel was not found in the internal group, it was deleted from the backend
+      channelsDeleted |= channel->QueueDelete();
+
+      size_t queryCount = epgDatabase->GetDeleteQueriesCount();
+      if (queryCount > EPG_COMMIT_QUERY_COUNT_LIMIT)
+        epgDatabase->CommitDeleteQueries();
+
+      queryCount = database->GetDeleteQueriesCount();
+      if (queryCount > CHANNEL_COMMIT_QUERY_COUNT_LIMIT)
+        database->CommitDeleteQueries();
     }
+
+    if (channelsDeleted)
+    {
+      epgDatabase->CommitDeleteQueries();
+      database->CommitDeleteQueries();
+    }
+
+    epgDatabase->Unlock();
+    database->Unlock();
   }
 
   return removedChannels;

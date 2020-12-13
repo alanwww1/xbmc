@@ -75,7 +75,7 @@ void CAdvancedSettings::OnSettingsUnloaded()
   m_initialized = false;
 }
 
-void CAdvancedSettings::OnSettingChanged(std::shared_ptr<const CSetting> setting)
+void CAdvancedSettings::OnSettingChanged(const std::shared_ptr<const CSetting>& setting)
 {
   if (setting == NULL)
     return;
@@ -232,7 +232,8 @@ void CAdvancedSettings::Initialize()
   // foo.s01.e01, foo.s01_e01, S01E02 foo, S01 - E02, S01xE02
   m_tvshowEnumRegExps.push_back(TVShowRegexp(false,"s([0-9]+)[ ._x-]*e([0-9]+(?:(?:[a-i]|\\.[1-9])(?![0-9]))?)([^\\\\/]*)$"));
   // foo.ep01, foo.EP_01, foo.E01
-  m_tvshowEnumRegExps.push_back(TVShowRegexp(false,"[\\._ -]()e(?:p[ ._-]?)?([0-9]+(?:(?:[a-i]|\\.[1-9])(?![0-9]))?)([^\\\\/]*)$"));
+  m_tvshowEnumRegExps.push_back(TVShowRegexp(
+      false, "[\\._ -]?()e(?:p[ ._-]?)?([0-9]+(?:(?:[a-i]|\\.[1-9])(?![0-9]))?)([^\\\\/]*)$"));
   // foo.yyyy.mm.dd.* (byDate=true)
   m_tvshowEnumRegExps.push_back(TVShowRegexp(true,"([0-9]{4})[\\.-]([0-9]{2})[\\.-]([0-9]{2})"));
   // foo.mm.dd.yyyy.* (byDate=true)
@@ -268,7 +269,6 @@ void CAdvancedSettings::Initialize()
   m_bShoutcastArt = true;
 
   m_musicThumbs = "folder.jpg|Folder.jpg|folder.JPG|Folder.JPG|cover.jpg|Cover.jpg|cover.jpeg|thumb.jpg|Thumb.jpg|thumb.JPG|Thumb.JPG";
-  m_fanartImages = "fanart.jpg|fanart.png";
   m_musicArtistExtraArt = { };
   m_musicAlbumExtraArt = {};
 
@@ -372,6 +372,8 @@ void CAdvancedSettings::Initialize()
   m_iPVRNumericChannelSwitchTimeout = 2000;
   m_iPVRTimeshiftThreshold = 10;
   m_bPVRTimeshiftSimpleOSD = true;
+  m_PVRDefaultSortOrder.sortBy = SortByDate;
+  m_PVRDefaultSortOrder.sortOrder = SortOrderDescending;
 
   m_cacheMemSize = 1024 * 1024 * 20; // 20 MiB
   m_cacheBufferMode = CACHE_BUFFER_MODE_INTERNET; // Default (buffer all internet streams/filesystems)
@@ -1042,12 +1044,6 @@ void CAdvancedSettings::ParseSettingsFile(const std::string &file)
 
   // show art for shoutcast v2 streams (set to false for devices with limited storage)
   XMLUtils::GetBoolean(pRootElement, "shoutcastart", m_bShoutcastArt);
-
-  // movie fanarts
-  TiXmlElement* pFanart = pRootElement->FirstChildElement("fanart");
-  if (pFanart)
-    GetCustomExtensions(pFanart,m_fanartImages);
-
   // music filename->tag filters
   TiXmlElement* filters = pRootElement->FirstChildElement("musicfilenamefilters");
   if (filters)
@@ -1093,6 +1089,24 @@ void CAdvancedSettings::ParseSettingsFile(const std::string &file)
     XMLUtils::GetInt(pPVR, "numericchannelswitchtimeout", m_iPVRNumericChannelSwitchTimeout, 50, 60000);
     XMLUtils::GetInt(pPVR, "timeshiftthreshold", m_iPVRTimeshiftThreshold, 0, 60);
     XMLUtils::GetBoolean(pPVR, "timeshiftsimpleosd", m_bPVRTimeshiftSimpleOSD);
+    TiXmlElement* pSortDecription = pPVR->FirstChildElement("pvrrecordings");
+    if (pSortDecription)
+    {
+      const char* XML_SORTMETHOD = "sortmethod";
+      const char* XML_SORTORDER = "sortorder";
+      int sortMethod;
+      // ignore SortByTime for duration defaults
+      if (XMLUtils::GetInt(pSortDecription, XML_SORTMETHOD, sortMethod, SortByLabel, SortByFile))
+      {
+        int sortOrder;
+        if (XMLUtils::GetInt(pSortDecription, XML_SORTORDER, sortOrder, SortOrderAscending,
+                             SortOrderDescending))
+        {
+          m_PVRDefaultSortOrder.sortBy = (SortBy)sortMethod;
+          m_PVRDefaultSortOrder.sortOrder = (SortOrder)sortOrder;
+        }
+      }
+    }
   }
 
   TiXmlElement* pDatabase = pRootElement->FirstChildElement("videodatabase");
@@ -1428,6 +1442,7 @@ void CAdvancedSettings::MigrateOldArtSettings()
           thumbs2.emplace_back(it);
       }
       std::vector<CVariant> thumbs;
+      thumbs.reserve(thumbs2.size());
       for (const auto& it : thumbs2)
         thumbs.emplace_back(it);
       settings->SetList(CSettings::SETTING_MUSICLIBRARY_MUSICTHUMBS, thumbs);
@@ -1439,5 +1454,45 @@ void CAdvancedSettings::MigrateOldArtSettings()
 
     // Flag migration of settings so not done again
     settings->SetBool(CSettings::SETTING_MUSICLIBRARY_ARTSETTINGS_UPDATED, true);
+  }
+
+  if (!settings->GetBool(CSettings::SETTING_VIDEOLIBRARY_ARTSETTINGS_UPDATED))
+  {
+    CLog::Log(LOGINFO, "Migrating old video library artwork settings to new GUI settings");
+    // Convert numeric art type variants into simple art type family entry
+    // e.g. {"banner", "fanart1", "fanart2", "fanart3"... } into { "banner", "fanart"}
+    if (!m_videoEpisodeExtraArt.empty())
+    {
+      std::vector<CVariant> whitelist;
+      ConvertToWhitelist(m_videoEpisodeExtraArt, whitelist);
+      settings->SetList(CSettings::SETTING_VIDEOLIBRARY_EPISODEART_WHITELIST, whitelist);
+    }
+    if (!m_videoTvShowExtraArt.empty())
+    {
+      std::vector<CVariant> whitelist;
+      ConvertToWhitelist(m_videoTvShowExtraArt, whitelist);
+      settings->SetList(CSettings::SETTING_VIDEOLIBRARY_TVSHOWART_WHITELIST, whitelist);
+    }
+    if (!m_videoMovieExtraArt.empty())
+    {
+      std::vector<CVariant> whitelist;
+      ConvertToWhitelist(m_videoMovieExtraArt, whitelist);
+      settings->SetList(CSettings::SETTING_VIDEOLIBRARY_MOVIEART_WHITELIST, whitelist);
+    }
+    if (!m_videoMusicVideoExtraArt.empty())
+    {
+      std::vector<CVariant> whitelist;
+      ConvertToWhitelist(m_videoMusicVideoExtraArt, whitelist);
+      settings->SetList(CSettings::SETTING_VIDEOLIBRARY_MUSICVIDEOART_WHITELIST, whitelist);
+    }
+
+    // Whitelists configured, set artwork level to custom
+    if (!m_videoEpisodeExtraArt.empty() || !m_videoTvShowExtraArt.empty()
+        || !m_videoMovieExtraArt.empty() || !m_videoMusicVideoExtraArt.empty())
+      settings->SetInt(CSettings::SETTING_VIDEOLIBRARY_ARTWORK_LEVEL,
+        CSettings::MUSICLIBRARY_ARTWORK_LEVEL_CUSTOM);
+
+    // Flag migration of settings so not done again
+    settings->SetBool(CSettings::SETTING_VIDEOLIBRARY_ARTSETTINGS_UPDATED, true);
   }
 }

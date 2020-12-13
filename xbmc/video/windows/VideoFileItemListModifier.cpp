@@ -64,7 +64,7 @@ void CVideoFileItemListModifier::AddQueuingFolder(CFileItemList& items)
   {
   case NODE_TYPE_SEASONS:
   {
-    std::string strLabel = g_localizeStrings.Get(20366);
+    const std::string& strLabel = g_localizeStrings.Get(20366);
     pItem.reset(new CFileItem(strLabel));  // "All Seasons"
     videoUrl.AppendPath("-1/");
     pItem->SetPath(videoUrl.ToString());
@@ -81,9 +81,13 @@ void CVideoFileItemListModifier::AddQueuingFolder(CFileItemList& items)
     pItem->SetProperty("numepisodes", watched + unwatched); // will be changed later to reflect watchmode setting
     pItem->SetProperty("watchedepisodes", watched);
     pItem->SetProperty("unwatchedepisodes", unwatched);
-    if (items.Size() && items[0]->GetVideoInfoTag())
+
+    // @note: the items list contains the (..) upper directory navigation fileitem plus all the
+    // season directory fileitems for a given show. We want to assign the "All Seasons" listitem
+    // the infotag of the tv show - so do not use the first item in the list!
+    if (items.Size() && items[items.Size() - 1]->GetVideoInfoTag())
     {
-      *pItem->GetVideoInfoTag() = *items[0]->GetVideoInfoTag();
+      *pItem->GetVideoInfoTag() = *items[items.Size() - 1]->GetVideoInfoTag();
       pItem->GetVideoInfoTag()->m_iSeason = -1;
     }
     pItem->GetVideoInfoTag()->m_strTitle = strLabel;
@@ -99,7 +103,7 @@ void CVideoFileItemListModifier::AddQueuingFolder(CFileItemList& items)
   }
   break;
   case NODE_TYPE_MUSICVIDEOS_ALBUM:
-    pItem.reset(new CFileItem(g_localizeStrings.Get(15102)));  // "All Albums"
+    pItem.reset(new CFileItem("* " + g_localizeStrings.Get(16100)));  // "* All Videos"
     videoUrl.AppendPath("-1/");
     pItem->SetPath(videoUrl.ToString());
     break;

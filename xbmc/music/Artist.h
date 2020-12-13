@@ -9,7 +9,6 @@
 #pragma once
 
 #include "XBDateTime.h"
-#include "utils/Fanart.h"
 #include "utils/ScraperUrl.h"
 #include "utils/StringUtils.h"
 
@@ -33,7 +32,7 @@ public:
 class CArtist
 {
 public:
-  long idArtist = -1;
+  int idArtist = -1;
   bool operator<(const CArtist& a) const
   {
     if (strMusicBrainzArtistID.empty() && a.strMusicBrainzArtistID.empty())
@@ -110,8 +109,7 @@ public:
   std::string strDisbanded;
   std::vector<std::string> yearsActive;
   std::string strPath;
-  CScraperUrl thumbURL; // Data for available thumbs
-  CFanart fanart;  // Data for available fanart, urls etc.
+  CScraperUrl thumbURL; // Data for available remote art
   std::map<std::string, std::string> art;  // Current artwork - thumb, fanart etc.
   std::vector<CDiscoAlbum> discography;
   CDateTime dateAdded; // From related file creation or modification times, or when (re-)scanned
@@ -128,11 +126,17 @@ class CArtistCredit
 
 public:
   CArtistCredit() = default;
-  explicit CArtistCredit(std::string strArtist) : m_strArtist(strArtist) { }
+  explicit CArtistCredit(std::string strArtist) : m_strArtist(std::move(strArtist)) {}
   CArtistCredit(std::string strArtist, std::string strMusicBrainzArtistID)
-    : m_strArtist(strArtist), m_strMusicBrainzArtistID(strMusicBrainzArtistID) {  }
+    : m_strArtist(std::move(strArtist)), m_strMusicBrainzArtistID(std::move(strMusicBrainzArtistID))
+  {
+  }
   CArtistCredit(std::string strArtist, std::string strSortName, std::string strMusicBrainzArtistID)
-    : m_strArtist(strArtist), m_strSortName(strSortName), m_strMusicBrainzArtistID(strMusicBrainzArtistID) {  }
+    : m_strArtist(std::move(strArtist)),
+      m_strSortName(std::move(strSortName)),
+      m_strMusicBrainzArtistID(std::move(strMusicBrainzArtistID))
+  {
+  }
 
   bool operator<(const CArtistCredit& a) const
   {
@@ -160,7 +164,7 @@ public:
   void SetScrapedMBID(bool scrapedMBID) { this->m_bScrapedMBID = scrapedMBID; }
 
 private:
-  long idArtist = -1;
+  int idArtist = -1;
   std::string m_strArtist;
   std::string m_strSortName;
   std::string m_strMusicBrainzArtistID;
@@ -172,7 +176,7 @@ typedef std::vector<CArtistCredit> VECARTISTCREDITS;
 
 const std::string BLANKARTIST_FAKEMUSICBRAINZID = "Artist Tag Missing";
 const std::string BLANKARTIST_NAME = "[Missing Tag]";
-const long BLANKARTIST_ID = 1;
+const int BLANKARTIST_ID = 1;
 const std::string VARIOUSARTISTS_MBID = "89ad4ac3-39f7-470e-963a-56509c546377";
 
 #define ROLE_ARTIST 1  //Default role
@@ -181,13 +185,22 @@ class CMusicRole
 {
 public:
   CMusicRole() = default;
-  CMusicRole(std::string strRole, std::string strArtist) : idRole(-1), m_strRole(strRole), m_strArtist(strArtist), idArtist(-1) { }
-  CMusicRole(int role, std::string strRole, std::string strArtist, long ArtistId) : idRole(role), m_strRole(strRole), m_strArtist(strArtist), idArtist(ArtistId) { }
+  CMusicRole(std::string strRole, std::string strArtist)
+    : idRole(-1), m_strRole(std::move(strRole)), m_strArtist(std::move(strArtist)), idArtist(-1)
+  {
+  }
+  CMusicRole(int role, std::string strRole, std::string strArtist, int ArtistId)
+    : idRole(role),
+      m_strRole(std::move(strRole)),
+      m_strArtist(std::move(strArtist)),
+      idArtist(ArtistId)
+  {
+  }
   std::string GetArtist() const { return m_strArtist; }
   std::string GetRoleDesc() const { return m_strRole; }
   int GetRoleId() const { return idRole; }
-  long GetArtistId() const { return idArtist; }
-  void SetArtistId(long iArtistId) { idArtist = iArtistId;  }
+  int GetArtistId() const { return idArtist; }
+  void SetArtistId(int iArtistId) { idArtist = iArtistId;  }
 
   bool operator==(const CMusicRole& a) const
   {
@@ -200,7 +213,7 @@ private:
   int idRole;
   std::string m_strRole;
   std::string m_strArtist;
-  long idArtist;
+  int idArtist;
 };
 
 typedef std::vector<CMusicRole> VECMUSICROLES;

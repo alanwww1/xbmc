@@ -49,7 +49,9 @@ void CEpgUpdateRequest::Deliver()
   const std::shared_ptr<CPVREpg> epg = CServiceBroker::GetPVRManager().EpgContainer().GetByChannelUid(m_iClientID, m_iUniqueChannelID);
   if (!epg)
   {
-    CLog::LogF(LOGERROR, "Unable to obtain EPG for client %d and channel %d! Unable to deliver the epg update request!",
+    CLog::LogF(LOGERROR,
+               "Unable to obtain EPG for client {} and channel {}! Unable to deliver the epg "
+               "update request!",
                m_iClientID, m_iUniqueChannelID);
     return;
   }
@@ -77,7 +79,9 @@ void CEpgTagStateChange::Deliver()
   const std::shared_ptr<CPVREpg> epg = epgContainer.GetByChannelUid(m_epgtag->ClientID(), m_epgtag->UniqueChannelID());
   if (!epg)
   {
-    CLog::LogF(LOGERROR, "Unable to obtain EPG for client %d and channel %d! Unable to deliver state change for tag '%d'!",
+    CLog::LogF(LOGERROR,
+               "Unable to obtain EPG for client {} and channel {}! Unable to deliver state change "
+               "for tag '{}'!",
                m_epgtag->ClientID(), m_epgtag->UniqueChannelID(), m_epgtag->UniqueBroadcastID());
     return;
   }
@@ -309,18 +313,19 @@ bool CPVREpgContainer::PersistAll(unsigned int iMaxTimeslice) const
     {
       if (!processTimeslice.IsTimePast())
       {
-        CLog::Log(LOGDEBUG, "EPG Container: Persisting events for channel '%s'...",
-                  epg->GetChannelData()->ChannelName().c_str());
+        CLog::LogFC(LOGDEBUG, LOGEPG, "EPG Container: Persisting events for channel '{}'...",
+                    epg->GetChannelData()->ChannelName());
 
         bReturn &= epg->QueuePersistQuery(database);
 
         size_t queryCount = database->GetInsertQueriesCount() + database->GetDeleteQueriesCount();
-        if (queryCount > 10000)
+        if (queryCount > EPG_COMMIT_QUERY_COUNT_LIMIT)
         {
-          CLog::Log(LOGDEBUG, LOGEPG, "EPG Container: committing %d queries in loop.", queryCount);
+          CLog::LogFC(LOGDEBUG, LOGEPG, "EPG Container: committing {} queries in loop.",
+                      queryCount);
           database->CommitDeleteQueries();
           database->CommitInsertQueries();
-          CLog::Log(LOGDEBUG, LOGEPG, "EPG Container: committed %d queries in loop.", queryCount);
+          CLog::LogFC(LOGDEBUG, LOGEPG, "EPG Container: committed {} queries in loop.", queryCount);
         }
       }
 
@@ -401,7 +406,7 @@ void CPVREpgContainer::Process()
           if (processTimeslice.IsTimePast() || m_epgTagChanges.empty())
           {
             if (iProcessed > 0)
-              CLog::LogFC(LOGDEBUG, LOGEPG, "Processed %ld queued epg event changes.", iProcessed);
+              CLog::LogFC(LOGDEBUG, LOGEPG, "Processed {} queued epg event changes.", iProcessed);
 
             break;
           }
@@ -513,14 +518,22 @@ std::shared_ptr<CPVREpgInfoTag> CPVREpgContainer::GetTagById(const std::shared_p
   {
     retval = epg->GetTagByBroadcastId(iBroadcastId);
   }
-  else
+
+  return retval;
+}
+
+std::shared_ptr<CPVREpgInfoTag> CPVREpgContainer::GetTagByDatabaseId(int iDatabaseId) const
+{
+  std::shared_ptr<CPVREpgInfoTag> retval;
+
+  if (iDatabaseId <= 0)
+    return retval;
+
+  for (const auto& epgEntry : m_epgIdToEpgMap)
   {
-    for (const auto& epgEntry : m_epgIdToEpgMap)
-    {
-      retval = epgEntry.second->GetTagByBroadcastId(iBroadcastId);
-      if (retval)
-        break;
-    }
+    retval = epgEntry.second->GetTagByDatabaseId(iDatabaseId);
+    if (retval)
+      break;
   }
 
   return retval;
@@ -533,7 +546,7 @@ std::vector<std::shared_ptr<CPVREpgInfoTag>> CPVREpgContainer::GetTags(
   PersistAll(XbmcThreads::EndTime::InfiniteValue);
 
   const std::shared_ptr<CPVREpgDatabase> database = GetEpgDatabase();
-  const std::vector<std::shared_ptr<CPVREpgInfoTag>> results = database->GetEpgTags(searchData);
+  std::vector<std::shared_ptr<CPVREpgInfoTag>> results = database->GetEpgTags(searchData);
 
   for (const auto& tag : results)
   {
@@ -613,10 +626,17 @@ bool CPVREpgContainer::RemoveOldEntries()
   return true;
 }
 
-bool CPVREpgContainer::DeleteEpg(const std::shared_ptr<CPVREpg>& epg)
+bool CPVREpgContainer::QueueDeleteEpg(const std::shared_ptr<CPVREpg>& epg)
 {
   if (!epg || epg->EpgID() < 0)
     return false;
+
+  const std::shared_ptr<CPVREpgDatabase> database = GetEpgDatabase();
+  if (!database)
+  {
+    CLog::LogF(LOGERROR, "No EPG database");
+    return false;
+  }
 
   std::shared_ptr<CPVREpg> epgToDelete;
   {
@@ -631,9 +651,8 @@ bool CPVREpgContainer::DeleteEpg(const std::shared_ptr<CPVREpg>& epg)
     if (epgEntry1 != m_channelUidToEpgMap.end())
       m_channelUidToEpgMap.erase(epgEntry1);
 
-    CLog::LogFC(LOGDEBUG, LOGEPG, "Deleting EPG table %s (%d)", epg->Name().c_str(), epg->EpgID());
-
-    epgEntry->second->Delete(GetEpgDatabase());
+    CLog::LogFC(LOGDEBUG, LOGEPG, "Deleting EPG table {} ({})", epg->Name(), epg->EpgID());
+    epgEntry->second->QueueDeleteQueries(database);
 
     epgToDelete = epgEntry->second;
     m_epgIdToEpgMap.erase(epgEntry);
@@ -736,8 +755,17 @@ bool CPVREpgContainer::UpdateEPG(bool bOnlyPending /* = false */)
   if (bShowProgress && !bOnlyPending)
     progressHandler->DestroyProgress();
 
+  database->Lock();
   for (const auto& epg : invalidTables)
-    DeleteEpg(epg);
+  {
+    QueueDeleteEpg(epg);
+
+    size_t queryCount = database->GetDeleteQueriesCount();
+    if (queryCount > EPG_COMMIT_QUERY_COUNT_LIMIT)
+      database->CommitDeleteQueries();
+  }
+  database->CommitDeleteQueries();
+  database->Unlock();
 
   if (bInterrupted)
   {

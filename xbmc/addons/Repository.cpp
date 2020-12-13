@@ -108,7 +108,7 @@ CRepository::CRepository(const AddonInfoPtr& addonInfo)
   if (addonver)
     version = addonver->Version();
 
-  for (auto element : Type(ADDON_REPOSITORY)->GetElements("dir"))
+  for (const auto& element : Type(ADDON_REPOSITORY)->GetElements("dir"))
   {
     DirInfo dir = ParseDirConfiguration(element.second);
     if ((dir.minversion.empty() || version >= dir.minversion) &&
@@ -239,6 +239,7 @@ CRepository::FetchStatus CRepository::FetchIfChanged(const std::string& oldCheck
       int recheckAfterThisDir;
       if (!FetchChecksum(dir.checksum, part, recheckAfterThisDir))
       {
+        recheckAfter = 1 * 60 * 60; // retry after 1 hour
         CLog::Log(LOGERROR, "CRepository: failed read '%s'", dir.checksum.c_str());
         return STATUS_ERROR;
       }

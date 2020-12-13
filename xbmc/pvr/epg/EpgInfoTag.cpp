@@ -80,10 +80,10 @@ CPVREpgInfoTag::CPVREpgInfoTag(const EPG_TAG& data, int iClientId, const std::sh
     m_channelData = channelData;
 
     if (m_channelData->ClientId() != iClientId)
-      CLog::LogF(LOGERROR, "Client id mismatch (channel: %d, epg: %d)!",
-                 m_channelData->ClientId(), iClientId);
+      CLog::LogF(LOGERROR, "Client id mismatch (channel: {}, epg: {})!", m_channelData->ClientId(),
+                 iClientId);
     if (m_channelData->UniqueClientChannelId() != static_cast<int>(data.iUniqueChannelId))
-      CLog::LogF(LOGERROR, "Channel uid mismatch (channel: %d, epg: %d)!",
+      CLog::LogF(LOGERROR, "Channel uid mismatch (channel: {}, epg: {})!",
                  m_channelData->UniqueClientChannelId(), data.iUniqueChannelId);
   }
   else
@@ -153,7 +153,7 @@ bool CPVREpgInfoTag::operator !=(const CPVREpgInfoTag& right) const
 void CPVREpgInfoTag::Serialize(CVariant& value) const
 {
   CSingleLock lock(m_critSection);
-  value["broadcastid"] = m_iUniqueBroadcastID;
+  value["broadcastid"] = m_iDatabaseID; // Use DB id here as it is unique across PVR clients
   value["channeluid"] = m_channelData->UniqueClientChannelId();
   value["parentalrating"] = m_iParentalRating;
   value["rating"] = m_iStarRating;
@@ -185,6 +185,7 @@ void CPVREpgInfoTag::Serialize(CVariant& value) const
   value["wasactive"] = WasActive();
   value["isseries"] = IsSeries();
   value["serieslink"] = m_strSeriesLink;
+  value["clientid"] = m_channelData->ClientId();
 }
 
 int CPVREpgInfoTag::ClientID() const

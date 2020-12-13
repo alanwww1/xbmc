@@ -18,8 +18,8 @@
 #include "DVDCodecs/DVDFactoryCodec.h"
 #include "ServiceBroker.h"
 #include "cores/VideoPlayer/Buffers/VideoBuffer.h"
-#include "cores/VideoPlayer/Interface/Addon/DemuxCrypto.h"
-#include "cores/VideoPlayer/Interface/Addon/TimingConstants.h"
+#include "cores/VideoPlayer/Interface/DemuxCrypto.h"
+#include "cores/VideoPlayer/Interface/TimingConstants.h"
 #include "cores/VideoPlayer/VideoRenderers/RenderFlags.h"
 #include "cores/VideoPlayer/VideoRenderers/RenderManager.h"
 #include "media/decoderfilter/DecoderFilterManager.h"
@@ -38,6 +38,7 @@
 
 #include <cassert>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <GLES2/gl2.h>
@@ -136,9 +137,9 @@ void CMediaCodecVideoBuffer::Set(int bufferId, int textureId,
 {
   m_bufferId = bufferId;
   m_textureId = textureId;
-  m_surfacetexture = surfacetexture;
-  m_frameready = frameready;
-  m_videoview = videoview;
+  m_surfacetexture = std::move(surfacetexture);
+  m_frameready = std::move(frameready);
+  m_videoview = std::move(videoview);
 }
 
 bool CMediaCodecVideoBuffer::WaitForFrame(int millis)
@@ -314,7 +315,6 @@ CDVDVideoCodecAndroidMediaCodec::CDVDVideoCodecAndroidMediaCodec(CProcessInfo &p
 , m_formatname("mediacodec")
 , m_opened(false)
 , m_jnivideoview(nullptr)
-, m_jnisurface(nullptr)
 , m_textureId(0)
 , m_OutputDuration(0)
 , m_fpsDuration(0)
@@ -589,9 +589,8 @@ bool CDVDVideoCodecAndroidMediaCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptio
                 m_hints.cryptoSession->keySystem);
       goto FAIL;
     }
-    CJNIMediaCrypto crypto(uuid, std::vector<char>(m_hints.cryptoSession->sessionId,
-                                                   m_hints.cryptoSession->sessionId +
-                                                       m_hints.cryptoSession->sessionIdSize));
+    CJNIMediaCrypto crypto(uuid, std::vector<char>(m_hints.cryptoSession->sessionId.begin(),
+                                                   m_hints.cryptoSession->sessionId.end()));
     m_needSecureDecoder =
         crypto.requiresSecureDecoderComponent(m_mime) &&
         (m_hints.cryptoSession->flags & DemuxCryptoSession::FLAG_SECURE_DECODER) != 0;
@@ -648,7 +647,9 @@ bool CDVDVideoCodecAndroidMediaCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptio
     {
       std::vector<CJNIMediaCodecInfoCodecProfileLevel> profileLevels = codec_caps.profileLevels();
       if (std::find_if(profileLevels.cbegin(), profileLevels.cend(),
-        [&](const CJNIMediaCodecInfoCodecProfileLevel profileLevel){ return profileLevel.profile() == profile; }) == profileLevels.cend())
+                       [&](const CJNIMediaCodecInfoCodecProfileLevel& profileLevel) {
+                         return profileLevel.profile() == profile;
+                       }) == profileLevels.cend())
       {
         CLog::Log(LOGERROR, "CDVDVideoCodecAndroidMediaCodec::Open: profile not supported: %d", profile);
         continue;
@@ -698,9 +699,8 @@ bool CDVDVideoCodecAndroidMediaCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptio
     CLog::Log(LOGDEBUG, "CDVDVideoCodecAndroidMediaCodec::Open Initializing MediaCrypto");
 
     m_crypto =
-        new CJNIMediaCrypto(uuid, std::vector<char>(m_hints.cryptoSession->sessionId,
-                                                    m_hints.cryptoSession->sessionId +
-                                                        m_hints.cryptoSession->sessionIdSize));
+        new CJNIMediaCrypto(uuid, std::vector<char>(m_hints.cryptoSession->sessionId.begin(),
+                                                    m_hints.cryptoSession->sessionId.end()));
 
     if (!m_crypto)
     {
@@ -805,10 +805,6 @@ void CDVDVideoCodecAndroidMediaCodec::Dispose()
     m_state = MEDIACODEC_STATE_STOPPED;
   }
   ReleaseSurfaceTexture();
-
-  if (m_jnisurface)
-    m_jnisurface->release();
-  m_jnisurface = nullptr;
 
   m_InstanceGuard.exchange(false);
   if (m_render_surface)
@@ -1331,10 +1327,9 @@ bool CDVDVideoCodecAndroidMediaCodec::ConfigureMediaCodec(void)
   // configure and start the codec.
   // use the MediaFormat that we have setup.
   // use a null MediaCrypto, our content is not encrypted.
-
-  int flags = 0;
   m_codec->configure(mediaformat, m_jnivideosurface,
-                     m_crypto ? *m_crypto : CJNIMediaCrypto(jni::jhobject(NULL)), flags);
+                     m_crypto ? *m_crypto : CJNIMediaCrypto(jni::jhobject(NULL)), 0);
+
   if (xbmc_jnienv()->ExceptionCheck())
   {
     xbmc_jnienv()->ExceptionClear();
@@ -1558,7 +1553,7 @@ void CDVDVideoCodecAndroidMediaCodec::InitSurfaceTexture(void)
     m_surfaceTexture = std::shared_ptr<CJNISurfaceTexture>(new CJNISurfaceTexture(m_textureId));
     // hook the surfaceTexture OnFrameAvailable callback
     m_frameAvailable = std::shared_ptr<CDVDMediaCodecOnFrameAvailable>(new CDVDMediaCodecOnFrameAvailable(m_surfaceTexture));
-    m_jnisurface = new CJNISurface(*m_surfaceTexture);
+    m_jnivideosurface = CJNISurface(*m_surfaceTexture);
   }
   else
   {
@@ -1578,7 +1573,7 @@ void CDVDVideoCodecAndroidMediaCodec::ReleaseSurfaceTexture(void)
 
   // it is safe to delete here even though these items
   // were created in the main thread instance
-  SAFE_DELETE(m_jnisurface);
+  m_jnivideosurface = CJNISurface(jni::jhobject(NULL));
   m_frameAvailable.reset();
   m_surfaceTexture.reset();
 
@@ -1619,8 +1614,8 @@ void CDVDVideoCodecAndroidMediaCodec::surfaceDestroyed(CJNISurfaceHolder holder)
   if (m_state != MEDIACODEC_STATE_STOPPED && m_state != MEDIACODEC_STATE_UNINITIALIZED)
   {
     m_state = MEDIACODEC_STATE_STOPPED;
-    if (m_jnisurface)
-      m_jnisurface->release();
+    if (m_jnivideosurface)
+      m_jnivideosurface.release();
     m_codec->stop();
     xbmc_jnienv()->ExceptionClear();
   }

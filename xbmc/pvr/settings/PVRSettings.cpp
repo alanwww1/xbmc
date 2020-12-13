@@ -69,7 +69,7 @@ void CPVRSettings::Init(const std::set<std::string>& settingNames)
     SettingPtr setting = CServiceBroker::GetSettingsComponent()->GetSettings()->GetSetting(settingName);
     if (!setting)
     {
-      CLog::LogF(LOGERROR, "Unknown PVR setting '%s'", settingName.c_str());
+      CLog::LogF(LOGERROR, "Unknown PVR setting '{}'", settingName);
       continue;
     }
 
@@ -93,7 +93,7 @@ void CPVRSettings::OnSettingsLoaded()
   Init(settingNames);
 }
 
-void CPVRSettings::OnSettingChanged(std::shared_ptr<const CSetting> setting)
+void CPVRSettings::OnSettingChanged(const std::shared_ptr<const CSetting>& setting)
 {
   if (setting == nullptr)
     return;
@@ -113,7 +113,7 @@ bool CPVRSettings::GetBoolValue(const std::string& settingName) const
       return setting->GetValue();
   }
 
-  CLog::LogF(LOGERROR, "PVR setting '%s' not found or wrong type given", settingName.c_str());
+  CLog::LogF(LOGERROR, "PVR setting '{}' not found or wrong type given", settingName);
   return false;
 }
 
@@ -128,7 +128,7 @@ int CPVRSettings::GetIntValue(const std::string& settingName) const
       return setting->GetValue();
   }
 
-  CLog::LogF(LOGERROR, "PVR setting '%s' not found or wrong type given", settingName.c_str());
+  CLog::LogF(LOGERROR, "PVR setting '{}' not found or wrong type given", settingName);
   return -1;
 }
 
@@ -143,12 +143,14 @@ std::string CPVRSettings::GetStringValue(const std::string& settingName) const
       return setting->GetValue();
   }
 
-  CLog::LogF(LOGERROR, "PVR setting '%s' not found or wrong type given", settingName.c_str());
+  CLog::LogF(LOGERROR, "PVR setting '{}' not found or wrong type given", settingName);
   return "";
 }
 
-void CPVRSettings::MarginTimeFiller(
-  SettingConstPtr /*setting*/, std::vector<IntegerSettingOption>& list, int& current, void* /*data*/)
+void CPVRSettings::MarginTimeFiller(const SettingConstPtr& /*setting*/,
+                                    std::vector<IntegerSettingOption>& list,
+                                    int& current,
+                                    void* /*data*/)
 {
   list.clear();
 
@@ -163,7 +165,10 @@ void CPVRSettings::MarginTimeFiller(
   }
 }
 
-bool CPVRSettings::IsSettingVisible(const std::string& condition, const std::string& value, std::shared_ptr<const CSetting> setting, void* data)
+bool CPVRSettings::IsSettingVisible(const std::string& condition,
+                                    const std::string& value,
+                                    const std::shared_ptr<const CSetting>& setting,
+                                    void* data)
 {
   if (setting == nullptr)
     return false;
@@ -198,7 +203,10 @@ bool CPVRSettings::IsSettingVisible(const std::string& condition, const std::str
   }
 }
 
-bool CPVRSettings::CheckParentalPin(const std::string& condition, const std::string& value, std::shared_ptr<const CSetting> setting, void* data)
+bool CPVRSettings::CheckParentalPin(const std::string& condition,
+                                    const std::string& value,
+                                    const std::shared_ptr<const CSetting>& setting,
+                                    void* data)
 {
   return CServiceBroker::GetPVRManager().GUIActions()->CheckParentalPIN() == ParentalCheckResult::SUCCESS;
 }
