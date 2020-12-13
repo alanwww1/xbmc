@@ -9,11 +9,11 @@ testMain
 *.cproject
 .classpath
 *.sublime-*
-# KDevelop 4
+ KDevelop 4
 *.kdev4
-# gedit
+ gedit
 *~
-# CLion
+ CLion
 /.idea
 .vscode/
 # Created in vs2017 when using open folder
@@ -104,7 +104,7 @@ cmake_install.cmake
 /kodi-build*/
 /gtestresults.xml
 
-# /addons/
+/addons/
 /addons/packages
 /addons/skin.estuary/media/Makefile
 /addons/skin.estuary/media/*.xbt
@@ -146,7 +146,7 @@ cmake_install.cmake
 /lib/*/1
 /lib/*/win32/1
 
-# /lib/gtest
+/lib/gtest
 /lib/gtest/Makefile.in
 /lib/gtest/aclocal.m4
 /lib/gtest/build-aux/compile
@@ -203,7 +203,7 @@ cmake_install.cmake
 /project/Win32BuildSetup/noprompt
 /project/Win32BuildSetup/BUILD_WIN32/
 
-# /project/BuildDependencies
+/project/BuildDependencies
 /project/BuildDependencies/downloads
 /project/BuildDependencies/downloads2
 /project/BuildDependencies/msys32
@@ -222,21 +222,21 @@ cmake_install.cmake
 /project/BuildDependencies/win10-win32
 /project/BuildDependencies/win32
 
-# /system/players/VideoPlayer
+/system/players/VideoPlayer
 /system/players/VideoPlayer/*
 
-# /system
+/system
 /system/profiles.xml
 
-# /system/python
+/system/python
 /system/python/
 
-# /system/webserver
+/system/webserver
 /system/webserver
 
 /system/airplay
 
-#/tools/android
+/tools/android
 /tools/android/packaging/Makefile
 /tools/android/packaging/xbmc/activity_main.xml
 /tools/android/packaging/xbmc/AndroidManifest.xml
@@ -250,7 +250,7 @@ cmake_install.cmake
 /tools/android/packaging/xbmc/src/org/xbmc/kodi/XBMCVideoView.java
 /tools/android/packaging/xbmc/strings.xml
 
-#/tools/depends
+/tools/depends
 /tools/depends/**/config.cache
 /tools/depends/**/config.log
 /tools/depends/**/config.status
@@ -275,14 +275,14 @@ cmake_install.cmake
 /tools/depends/target/config-binaddons.site
 /tools/depends/target/binary-addons/native
 
-# /tools/EventClients/
+/tools/EventClients/
 /tools/EventClients/*.pyc
 /tools/EventClients/Makefile
 /tools/EventClients/Clients/OSXRemote/Makefile
 /tools/EventClients/Clients/OSXRemote/build/
 /tools/EventClients/Clients/WiiRemote/WiiRemote
 
-# /tools/darwin/
+/tools/darwin/
 /tools/darwin/Configurations/App.xcconfig
 /tools/darwin/Configurations/Common.xcconfig
 /tools/darwin/packaging/darwin_embedded/mkdeb-darwin_embedded.sh
@@ -291,19 +291,19 @@ cmake_install.cmake
 /tools/darwin/packaging/seatbeltunlock/mkdeb-seatbeltunlock.sh
 /tools/darwin/runtime/XBMCHelper
 
-# /tools/Linux/
+/tools/Linux/
 /tools/Linux/kodi.sh
 /tools/Linux/kodi-standalone.sh
 /tools/Linux/kodi-xsession.desktop
 
-# /tools/osx
+/tools/osx
 /tools/osx/XBMCHelper
 
-# /tools/TexturePacker
+/tools/TexturePacker
 /tools/TexturePacker/TexturePacker*
 /tools/TexturePacker/Makefile
 
-# /userdata/
+/userdata/
 /userdata/Database
 /userdata/playlists
 /userdata/Thumbnails
@@ -316,7 +316,7 @@ cmake_install.cmake
 
 /lib/libUPnP/Makefile
 
-# /portable_data
+/portable_data
 /portable_data
 
 /pvr-addons
