@@ -1,6 +1,16 @@
-[B]Kodi Privacy Policy[/B]
-[I]2016 Oct 23[/I]
+[B]Canadas Privacy Policy[/B]
+[I]2020 dec 13[/I]
 
+What is the Privacy Act? For Canadains such as my self?
+The Privacy Act is a key piece of Canada’s overall legal framework for protecting Canadains privacy. It is federal legislation focused on the protection of personal information held by the federal government and federal public-sector institutions.
+
+The Privacy Act applies to approximately 265 government institutions, including the federal government institutions listed in the Schedule to the Act, and Crown corporations and their wholly-owned subsidiaries. These institutions include federal agencies, departments, offices, national councils, agents of parliament, port authorities, museums and more.
+
+The Privacy Act is just one of the number of Canadian laws meant to protect privacy interests. More information on privacy laws in Canada is available here.(https://www.justice.gc.ca/eng/csj-sjc/pa-lprp/modern.html#s3)
+
+
+[B]Kodi Privacy Policy[/B]
+[I]2020 dec 13[/I]
 Your privacy is an important factor that the XBMC Foundation and Team Kodi considers in the development of all of our software and services. We are committed to being transparent and open. This Privacy Policy explains generally how we receive information about you, and what we do with that information once we have it.
 
 
@@ -46,10 +56,10 @@ We also don’t want your personal information for any longer than we need it, s
 
 We’re a global organization and our computers are in several different places around the world. We also use service providers whose computers may also be in various countries. This means that your information might end up on one of those computers in another country, and that country may have a different level of data protection regulation than yours. By giving us information, you consent to this kind of transfer of your information. No matter what country your information is in, we comply with applicable law and will also abide by the commitments we make in this privacy policy.
 
+If you are legaly mentaly disabled like my self, by law if any infromation collected about you must be provided to that person under the  privicy infromation act.
 If you are under 13, we don’t want your personal information, and you must not provide it to us. If you are a parent and believe that your child who is under 13 has provided us with personal information, please contact us to have your child’s information removed.
 
 
 [B]What if we change this privacy policy or any of our privacy notices?[/B]
 
-We may need to change this policy and our notices. The updates will be posted online. If the changes are substantive, we will announce the update through Kodi’s usual channels for such announcements such as blog posts and forums. Your continued use of the product or service after the effective date of such changes constitutes your acceptance of such changes. To make your review more convenient, we will post an effective date at the top of the page.
-
+You may need to change this policy and our notices. The updates will be posted online. If the changes are substantive, we will announce the update through Kodi’s usual channels for such announcements such as blog posts and forums. Your continued use of the product or service after the effective date of such changes constitutes your acceptance of such changes. To make your review more convenient, we will post an effective date at the top of the page.
