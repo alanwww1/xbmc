@@ -11,7 +11,6 @@ on:
       - ".github/workflows/gh-action-weblate-upload.yml"
 jobs:
   weblate:
-    if: github.repository == 'xbmc/xbmc'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,7 +21,7 @@ jobs:
         env:
           TOKEN: "${{ secrets.WEBLATE_TOKEN }}"
         run: | 
-          curl \
+          curl -v \
             --form file=@addons/resource.language.en_gb/resources/strings.po \
             --form method=source \
             -H "Authorization: Token $TOKEN" \
