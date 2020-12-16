@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<!--[if IEMobile 7]><html class="no-js ie iem7" lang="en" dir="ltr"><![endif]-->
+<!--[if lte IE 6]><html class="no-js ie lt-ie9 lt-ie8 lt-ie7" lang="en" dir="ltr"><![endif]-->
+<!--[if (IE 7)&(!IEMobile)]><html class="no-js ie lt-ie9 lt-ie8" lang="en" dir="ltr"><![endif]-->
+<!--[if IE 8]><html class="no-js ie lt-ie9" lang="en" dir="ltr"><![endif]-->
+<!--[if (gte IE 9)|(gt IEMobile 7)]><html class="no-js ie" lang="en" dir="ltr" prefix="og: http://ogp.me/ns# content: http://purl.org/rss/1.0/modules/content/ dc: http://purl.org/dc/terms/ foaf: http://xmlns.com/foaf/0.1/ rdfs: http://www.w3.org/2000/01/rdf-schema# sioc: http://rdfs.org/sioc/ns# sioct: http://rdfs.org/sioc/types# skos: http://www.w3.org/2004/02/skos/core# xsd: http://www.w3.org/2001/XMLSchema# schema: http://schema.org/"><![endif]-->
+<!--[if !IE]><!--><html class="no-js" lang="en" dir="ltr" prefix="og: http://ogp.me/ns# content: http://purl.org/rss/1.0/modules/content/ dc: http://purl.org/dc/terms/ foaf: http://xmlns.com/foaf/0.1/ rdfs: http://www.w3.org/2000/01/rdf-schema# sioc: http://rdfs.org/sioc/ns# sioct: http://rdfs.org/sioc/types# skos: http://www.w3.org/2004/02/skos/core# xsd: http://www.w3.org/2001/XMLSchema# schema: http://schema.org/"><!--<![endif]-->
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="cleartype" content="on" />
+<meta name="MobileOptimized" content="width" />
+<meta name="HandheldFriendly" content="true" />
+<link rel="profile" href="http://www.w3.org/1999/xhtml/vocab" />
+<meta name="description" content="2020 Oct 16Your privacy is an important factor that the XBMC Foundation and Team Kodi considers in the development of all of our software and services. We are committed to being transparent and open." />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=3.0" />
+<meta name="generator" content="Drupal 7 (http://drupal.org)" />
+<link rel="canonical" href="https://kodi.tv/kodi-privacy-policy" />
+<link rel="shortlink" href="https://kodi.tv/node/14140" />
+<meta property="og:site_name" content="Kodi | Open Source Home Theater Software" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Kodi Privacy Policy" />
+<meta property="og:url" content="https://kodi.tv/kodi-privacy-policy" />
+<meta property="og:description" content="2020 Oct 16Your privacy is an important factor that the XBMC Foundation and Team Kodi considers in the development of all of our software and services. We are committed to being transparent and open." />
+<meta property="og:updated_time" content="2020-10-17T04:48:03+11:00" />
+<meta property="og:image:type" content="image/jpeg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content="https://kodi.tv/kodi-privacy-policy" />
+<meta name="twitter:title" content="Kodi Privacy Policy" />
+<meta name="twitter:description" content="2020 Oct 16Your privacy is an important factor that the XBMC Foundation and Team Kodi considers in the development of all of our software and services. We are committed to being transparent and open." />
+<meta name="twitter:image:width" content="1200" />
+<meta name="twitter:image:height" content="630" />
+<meta property="article:published_time" content="2017-02-16T00:50:06+11:00" />
+<meta property="article:modified_time" content="2020-10-17T04:48:03+11:00" />
+<meta name="twitter:app:name:googleplay" content="Kodi" />
+<meta name="twitter:app:id:googleplay" content="org.xbmc.kodi" />
+<title>Kodi Privacy Policy | Kodi | Open Source Home Theater Software</title>
+<link rel="shortcut icon" href="/sites/default/themes/kodi/favicon.png" type="image/png">
+<link rel="apple-touch-icon-precomposed" href="/sites/default/themes/kodi/icon-152.png">
+<link rel="icon" href="/sites/default/themes/kodi/icon.png">
+<meta name="msapplication-TileColor" content="#111111">
+<meta name="msapplication-TileImage" content="/sites/default/themes/kodi/icon-144.png">
+<meta name="theme-color" content="#333333" />
+<link type="text/css" rel="stylesheet" href="https://kodi.tv/sites/default/files/css/css_PU548IzQG1EHlf1gybgZG8ANqGRSIRPcD9HKbaupo2s.css" media="all" />
+<link type="text/css" rel="stylesheet" href="https://kodi.tv/sites/default/files/css/css_Quh6Y9_OTb0iyJjXG0CI28Uo8672YtyJVUjMnXJSraY.css" media="all" />
+<link type="text/css" rel="stylesheet" href="https://kodi.tv/sites/default/files/css/css_eazPwF-6c1l2BerZWQn6QQIeKZ44MeK4pyGI-qFUPqc.css" media="all" />
+</head>
+<body class="html not-front not-logged-in page-node page-node- page-node-14140 node-type-page section-kodi-privacy-policy fe not-panels-page no-sidebars">
+<div class="l-body">
+<a href="#main-content" class="element-invisible element-focusable">Skip to main content</a>
+<div class="l-page">
+<nav class="l-nav"><div class="constraints">
+<div class="l-branding">
+<a href="/" title="Home" rel="home" class="site-logo"><img src="https://kodi.tv/sites/default/themes/kodi/logo-sbs.svg" alt="Home" /></a>
+</div>
+<div class="l-region l-region--navigation">
+<nav id="block-menu-block-1" role="navigation" class="block block--menu-block block--menu-block-1"><div class="block-inner">
+<h2 class="block__title"><span></span><span></span><span></span><span></span></h2>
+<div class="menu-block-wrapper menu-block-1 menu-name-main-menu parent-mlid-0 menu-level-1">
+<ul class="menu"><li class="first leaf menu-mlid-728"><a href="/" title="">Home</a></li>
+<li class="expanded menu-mlid-326"><a href="/about">About</a><ul class="menu"><li class="first leaf has-children menu-mlid-472"><a href="/contact-kodi-team">Contact</a></li>
+<li class="leaf menu-mlid-484"><a href="/sponsors">Sponsors</a></li>
+<li class="leaf menu-mlid-730"><a href="/about/software" title="">Software</a></li>
+<li class="last leaf menu-mlid-786"><a href="http://kodi.tv/about/xbmc-foundation" title="">Foundation</a></li>
+</ul></li>
+<li class="expanded menu-mlid-437"><a href="/addons" title="Extend Kodi functionality">Add-Ons</a><ul class="menu"><li class="first leaf menu-mlid-791"><a href="/addons/browse" title="">Search Add-Ons</a></li>
+<li class="last leaf menu-mlid-796"><a href="/addon-top-authors" title="">Top Authors</a></li>
+</ul></li>
+<li class="leaf menu-mlid-388"><a href="/blog" title="">News</a></li>
+<li class="leaf menu-mlid-478"><a href="http://forum.kodi.tv/" title="">Forum</a></li>
+<li class="leaf menu-mlid-477"><a href="http://kodi.wiki/" title="">Wiki</a></li>
+<li class="expanded menu-mlid-474"><a href="/get-involved">Contribute</a><ul class="menu"><li class="first leaf has-children menu-mlid-475"><a href="/contribute/donate" title="">Donate</a></li>
+<li class="leaf menu-mlid-1146"><a href="/store" title="Visit the Kodi store for some awesome Kodi merch!">Kodi Store</a></li>
+<li class="last leaf menu-mlid-479"><a href="https://github.com/xbmc" title="">GitHub</a></li>
+</ul></li>
+<li class="leaf menu-mlid-1326"><a href="/contribute/donate" title="">Donate</a></li>
+<li class="last leaf menu-mlid-327"><a href="/download" title="">Download</a></li>
+</ul></div>
+</div></nav>
+</div>
+</div></nav>
+<header class="l-header" role="banner"><div class="constraints">
+</div></header>
+</div>
+<div class="l-main">
+<div class="l-content" role="main">
+<a id="main-content"></a>
+<div class="l-title">
+<div class="constraints">
+<div class="l-region l-region--highlighted">
+<div id="block-kodi-core-social" class="block block--kodi-core block--kodi-core-social"><div class="block-inner">
+<div class="block__content">
+<ul class="social-networks"><li><a href="http://www.facebook.com/KodiEntertainment" title="Facebook" class="network-facebook"><i class="icon-facebook"></i></a></li>
+<li><a href="https://twitter.com/KodiTV" title="Twitter" class="network-twitter"><i class="icon-twitter"></i></a></li>
+<li><a href="https://www.youtube.com/c/TeamKodiOfficial" title="YouTube" class="network-youtube"><i class="icon-youtube"></i></a></li>
+<li><a href="https://github.com/xbmc" title="GitHub" class="network-github"><i class="icon-github"></i></a></li>
+<li><a href="/contribute/donate" title="Donate" class="network-paypal"><i class="icon-paypal"></i></a></li>
+</ul> </div>
+</div></div>
+</div>
+<h2 class="element-invisible">You are here</h2><ul class="breadcrumb"><li><a href="/">Home</a></li><li><a href="/about" title="">About</a></li></ul> <h1>Kodi Privacy Policy</h1>
+</div>
+</div>
+<div class="l-below-title">
+</div>
+<div class="l-system">
+</div>
+<div class="l-content-top" ">
+</div>
+<div class="l-main-content constraints constraints-content">
+<div class="l-region--content">
+<div about="/kodi-privacy-policy" typeof="foaf:Document" class="ds-1col node node--page view-mode-full  node--full node--page--full clearfix">
+<div class="page__content css-wrapper "><div class="pane-inner"><div class="page__body"><p>2020 Oct 16</p>
+<p>Your privacy is an important factor that the XBMC Foundation and Team Kodi considers in the development of all of our software and services. We are committed to being transparent and open. This Privacy Policy explains generally how we receive information about you, and what we do with that information once we have it.</p>
+<h2>What do we mean by “personal information”?</h2>
+<p>For us, “personal information” means information which identifies you, like your name or email address.</p>
+<p>Any information that falls outside of this is “non-personal information”.</p>
+<p>If we store your personal information with information that is non-personal, we will consider the combination as personal information. If we remove all personal information from a set of data then the remaining is non-personal information.</p>
+<p><section id="how-do-we-learn-information-about-you"><header><br /><h2>How do we learn information about you?</h2>
+<p>We learn information about you when:</p>
+<ul><li>You give it to us directly (e.g., when you choose to send us logs in the forums)</li>
+<li>We collect it automatically through our software and services (e.g., when your Kodi connects with our servers to update add-ons, or in download statistics provided by Google Play)</li>
+<li>When we try and understand more about you based on information you’ve given to us (e.g., when we use your platform information provided to the add-on server to figure out which platforms use Kodi the most, to better understand where we should focus our efforts)</li>
+<li>You visit the website, wiki, or forum (We employ GoatCounter on some websites, but it does not use cookies and does not collect personally identifiable information. To learn more, visit the <a href="https://www.goatcounter.com/gdpr">GoatCounter page</a>.) </li>
+</ul><h2>What do we do with your information once we have it?</h2>
+<p>Generally, we use your information to help us provide and improve our software and services for you (e.g., we use a log you send us to figure out why Kodi isn’t playing a video right or why it might have crashed, or we determine how many active users are using each platform in order to determine how to allocate resources per platform).</p>
+<h2>When do we share your information with others?</h2>
+<ul><li>When we have asked and received your permission to share it.</li>
+<li>When we are fulfilling our <a href="https://kodi.wiki/images/3/30/Delaware_Incorporation_Notice.pdf" target="_blank" title="XBMC Foundation Cert of Incorporation">educational purpose</a>. We sometimes publicly release information to make our software better and foster an open web, but when we do so, we will remove your personal information and try to disclose it in a way that minimizes the risk of you being re-identified. For example, here is <a href="/xbmc-statistics" title="XBMC Statistics">a blog post where we attempt to analyze from available data how many active users of XBMC existed at the time and share that info with the community</a>.</li>
+<li>When the law requires it. To date, this has never happened, and we do not anticipating it happening in the future, as the majority of the information we collect is already almost entirely anonymous and never shows unique user behavior, except in voluntarily submitted logs on our forum.</li>
+<li>If our organizational structure or status changes (if we undergo a restructuring, are acquired, or go bankrupt) we may pass your information to a successor or affiliate.</li>
+</ul><h2>How do we store and protect your personal information?</h2>
+<p>We are committed to protecting your personal information once we have it. We implement physical, business and technical security measures. Despite our efforts, if we learn of a security breach, we’ll notify you so that you can take appropriate protective steps.</p>
+<p>We also don’t want your personal information for any longer than we need it, so we only keep it long enough to do what we collected it for. Once we don’t need it, we take steps to destroy it unless we are required by law to keep it longer. In the case of logs provided to us in the forums, our servers do not store those logs, and we rely on the users submitting those logs to remove the links when they deem appropriate.</p>
+<h2>What else should you know?</h2>
+<p>We’re a global organization and our computers are in several different places around the world. We also use service providers whose computers may also be in various countries. This means that your information might end up on one of those computers in another country, and that country may have a different level of data protection regulation than yours. By giving us information, you consent to this kind of transfer of your information. No matter what country your information is in, we comply with applicable law and will also abide by the commitments we make in this privacy policy.</p>
+<p>If you are under 13, we don’t want your personal information, and you must not provide it to us. If you are a parent and believe that your child who is under 13 has provided us with personal information, please contact us to have your child’s information removed.</p>
+<h2>What if we change this privacy policy or any of our privacy notices?</h2>
+<p>We may need to change this policy and our notices. The updates will be posted online. If the changes are substantive, we will announce the update through Kodi’s usual channels for such announcements such as blog posts and forums. Your continued use of the product or service after the effective date of such changes constitutes your acceptance of such changes. To make your review more convenient, we will post an effective date at the top of the page.</p>
+<p> </p>
+<h2>History</h2>
+<p>2017 Mar 17 - Changelog</p>
+<ul><li>Updated how we learn about people to include information about Google Analytics and how it works and the fact that it can use cookies</li>
+</ul><p>2020 Oct 16 - Changelog</p>
+<ul><li>Removed the usage of Google Analytics, replaced with note about GoatCounter</li>
+</ul><p></p></header></section></p>
+</div></div></div></div>
+</div>
+</div>
+<div class="l-content-bottom" ">
+</div>
+</div>
+</div>
+<footer class="l-footer" role="contentinfo">
+<div class="l-region l-region--footer">
+<div id="block-block-3" class="block block--block block--block-3"><div class="block-inner">
+<h2 class="block__title">Kodi</h2>
+<div class="block__content">
+<p>Kodi (formerly XBMC) is a free and open source media player application developed by the XBMC/Kodi Foundation, a non-profit technology consortium. Kodi is available for multiple operating-systems and hardware platforms, featuring a 10-foot user interface for use with televisions and remote controls. It allows users to play and view most videos, music, podcasts, and other digital media files from local and network storage media and the internet.</p>
+</div>
+</div></div>
+<nav id="block-menu-block-2" role="navigation" class="block block--menu-block block--menu-block-2"><div class="block-inner">
+<div class="menu-block-wrapper menu-block-2 menu-name-menu-footer-menu parent-mlid-0 menu-level-1">
+<ul class="menu"><li class="first expanded active-trail menu-mlid-493"><a href="/about" title="" class="active-trail">About</a><ul class="menu"><li class="first leaf menu-mlid-494"><a href="/corporate-enquiries" title="">Corporate</a></li>
+<li class="leaf menu-mlid-495"><a href="/get-involved" title="">Get Involved</a></li>
+<li class="leaf menu-mlid-496"><a href="/known-list-of-gpl-violators" title="">GPL Violators</a></li>
+<li class="leaf menu-mlid-731"><a href="/about/software" title="">Kodi Software</a></li>
+<li class="leaf menu-mlid-498"><a href="/kodi-team">Kodi Team</a></li>
+<li class="leaf active-trail active menu-mlid-738"><a href="/kodi-privacy-policy" class="active-trail active">Privacy Policy</a></li>
+<li class="leaf menu-mlid-499"><a href="/sponsors" title="">Sponsorship</a></li>
+<li class="last leaf menu-mlid-500"><a href="/about/xbmc-foundation">XBMC Foundation</a></li>
+</ul></li>
+<li class="expanded menu-mlid-501"><a href="/sponsors" title="">Sponsors</a><ul class="menu"><li class="first leaf menu-mlid-1151"><a href="https://www.acquia.com/" title="">Acquia</a></li>
+<li class="last leaf menu-mlid-502"><a href="http://www.bytemark.co.uk/r/xbmc" title="">Bytemark</a></li>
+</ul></li>
+<li class="expanded menu-mlid-508"><a href="/" title="">Friends</a><ul class="menu"><li class="first leaf menu-mlid-509"><a href="http://fanart.tv/" title="">Fanart.TV</a></li>
+<li class="leaf menu-mlid-737"><a href="https://libreelec.tv/" title="">LibreELEC</a></li>
+<li class="leaf menu-mlid-3026"><a href="https://osmc.tv" title="OSMC">OSMC</a></li>
+<li class="leaf menu-mlid-732"><a href="https://musicbrainz.org/" title="">MusicBrainz.org</a></li>
+<li class="leaf menu-mlid-511"><a href="http://www.theaudiodb.com/" title="">TheAudioDB.com</a></li>
+<li class="leaf menu-mlid-512"><a href="http://thegamesdb.net/" title="">TheGamesDB.net</a></li>
+<li class="leaf menu-mlid-513"><a href="http://www.themoviedb.org/" title="">TheMovieDB.org</a></li>
+<li class="last leaf menu-mlid-514"><a href="http://www.thetvdb.com/" title="">TheTVDB.com</a></li>
+</ul></li>
+<li class="last expanded menu-mlid-516"><a href="/" title="">Social</a><ul class="menu"><li class="first leaf menu-mlid-518"><a href="https://www.facebook.com/KodiEntertainment" title="">Facebook</a></li>
+<li class="leaf menu-mlid-519"><a href="https://twitter.com/KodiTV" title="">Twitter</a></li>
+<li class="leaf menu-mlid-520"><a href="http://www.youtube.com/user/teamxbmc" title="">Youtube</a></li>
+<li class="leaf menu-mlid-521"><a href="/contribute/donate" title="">Paypal</a></li>
+<li class="last leaf menu-mlid-1281"><a href="http://feeds.kodi.tv/xbmc" title="">RSS</a></li>
+</ul></li>
+</ul></div>
+</div></nav>
+</div>
+</footer>
+</div>
+<div id="outdated"></div><script type="text/javascript" src="//s7.addthis.com/js/300/addthis_widget.js#pubid=ra-58b0ea65d1daa7e5"></script><script src="https://kodi.tv/sites/default/files/js/js_c_-deMNV1G_xf5ysKmTB5yvlSiV3NQz9Ktv19QEeVII.js"></script>
+<script>jQuery.extend(Drupal.settings, {"basePath":"\/","pathPrefix":"","field_group":{"html-element":"full"},"siteName":"Kodi | Open Source Home Theater Software","outdatedbrowser":{"bgColor":"#12b2e7","color":"#ffffff","lowerThan":"transform","languagePath":"https:\/\/kodi.tv\/sites\/all\/libraries\/outdatedbrowser\/outdatedbrowser\/lang\/en.html"},"ajaxPageState":{"js":{"sites\/all\/modules\/jquery_update\/replace\/jquery\/1.8\/jquery.js":1,"misc\/jquery-extend-3.4.0.js":1,"misc\/jquery-html-prefilter-3.5.0-backport.js":1,"misc\/jquery.once.js":1,"misc\/drupal.js":1,"sites\/all\/themes\/contrib\/omega\/omega\/js\/no-js.js":1,"sites\/default\/modules\/custom\/kodi_addons\/js\/kodi_addons.js":1,"sites\/default\/modules\/custom\/kodi_core\/js\/kodi_core.js":1,"sites\/default\/modules\/custom\/kodi_core\/js\/kodi_core.behaviors.js":1,"sites\/default\/modules\/custom\/kodi_downloads\/js\/kodi_downloads.js":1,"sites\/default\/modules\/custom\/kodi_features\/js\/kodi_features.js":1,"sites\/default\/modules\/custom\/kodi_news\/js\/kodi_news.js":1,"sites\/default\/modules\/custom\/kodi_products\/js\/kodi_products.js":1,"sites\/all\/libraries\/outdatedbrowser\/outdatedbrowser\/outdatedbrowser.min.js":1,"sites\/all\/modules\/field_group\/field_group.js":1,"sites\/all\/libraries\/slick\/slick.min.js":1,"sites\/all\/libraries\/magnific_popup\/jquery.magnific-popup.min.js":1,"sites\/all\/modules\/outdatedbrowser\/js\/outdatedbrowser.js":1,"sites\/default\/themes\/kodi\/js\/kodi.behaviors.js":1}}});</script>
+<script src="https://kodi.tv/sites/default/files/js/js_o1LDQCt9G9i5_3qO5y-t15gY9wE98qtFsF_p1nQZk40.js"></script>
+<script src="https://kodi.tv/sites/default/files/js/js_1ITtp0FB4sHedl3dRMzUUJMPLJufU4XIYckOIxFYIIk.js"></script>
+<script src="https://kodi.tv/sites/default/files/js/js_nl4nb-QT2JOYH1Yv7XbyZczMbDL9BLxbIA5o9nOiYW0.js"></script>
+</div>
+<div id="breakpoint"></div>
+</body>
+</html>
