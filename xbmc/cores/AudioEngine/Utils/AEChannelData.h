@@ -1,23 +1,12 @@
-#pragma once
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
 
 /**
  * The possible channels
@@ -32,22 +21,22 @@ enum AEChannel
   AE_CH_TC  , AE_CH_TBL, AE_CH_TBR, AE_CH_TBC, AE_CH_BLOC, AE_CH_BROC,
 
   /* p16v devices */
-  AE_CH_UNKNOWN1,
-  AE_CH_UNKNOWN2,
-  AE_CH_UNKNOWN3,
-  AE_CH_UNKNOWN4,
-  AE_CH_UNKNOWN5,
-  AE_CH_UNKNOWN6,
-  AE_CH_UNKNOWN7,
-  AE_CH_UNKNOWN8,
-  AE_CH_UNKNOWN9,
-  AE_CH_UNKNOWN10,
-  AE_CH_UNKNOWN11,
-  AE_CH_UNKNOWN12,
-  AE_CH_UNKNOWN13,
-  AE_CH_UNKNOWN14,
-  AE_CH_UNKNOWN15,
-  AE_CH_UNKNOWN16,
+  AE_CH_UNKNOWN1 , AE_CH_UNKNOWN2 , AE_CH_UNKNOWN3 , AE_CH_UNKNOWN4 ,
+  AE_CH_UNKNOWN5 , AE_CH_UNKNOWN6 , AE_CH_UNKNOWN7 , AE_CH_UNKNOWN8 ,
+  AE_CH_UNKNOWN9 , AE_CH_UNKNOWN10, AE_CH_UNKNOWN11, AE_CH_UNKNOWN12,
+  AE_CH_UNKNOWN13, AE_CH_UNKNOWN14, AE_CH_UNKNOWN15, AE_CH_UNKNOWN16,
+  AE_CH_UNKNOWN17, AE_CH_UNKNOWN18, AE_CH_UNKNOWN19, AE_CH_UNKNOWN20,
+  AE_CH_UNKNOWN21, AE_CH_UNKNOWN22, AE_CH_UNKNOWN23, AE_CH_UNKNOWN24,
+  AE_CH_UNKNOWN25, AE_CH_UNKNOWN26, AE_CH_UNKNOWN27, AE_CH_UNKNOWN28,
+  AE_CH_UNKNOWN29, AE_CH_UNKNOWN30, AE_CH_UNKNOWN31, AE_CH_UNKNOWN32,
+  AE_CH_UNKNOWN33, AE_CH_UNKNOWN34, AE_CH_UNKNOWN35, AE_CH_UNKNOWN36,
+  AE_CH_UNKNOWN37, AE_CH_UNKNOWN38, AE_CH_UNKNOWN39, AE_CH_UNKNOWN40,
+  AE_CH_UNKNOWN41, AE_CH_UNKNOWN42, AE_CH_UNKNOWN43, AE_CH_UNKNOWN44,
+  AE_CH_UNKNOWN45, AE_CH_UNKNOWN46, AE_CH_UNKNOWN47, AE_CH_UNKNOWN48,
+  AE_CH_UNKNOWN49, AE_CH_UNKNOWN50, AE_CH_UNKNOWN51, AE_CH_UNKNOWN52,
+  AE_CH_UNKNOWN53, AE_CH_UNKNOWN54, AE_CH_UNKNOWN55, AE_CH_UNKNOWN56,
+  AE_CH_UNKNOWN57, AE_CH_UNKNOWN58, AE_CH_UNKNOWN59, AE_CH_UNKNOWN60,
+  AE_CH_UNKNOWN61, AE_CH_UNKNOWN62, AE_CH_UNKNOWN63, AE_CH_UNKNOWN64,
 
   AE_CH_MAX
 };
@@ -105,14 +94,8 @@ enum AEDataFormat
   AE_FMT_DOUBLE,
   AE_FMT_FLOAT,
 
-  /* Bitstream formats */
-  AE_FMT_AAC,
-  AE_FMT_AC3,
-  AE_FMT_DTS,
-  AE_FMT_EAC3,
-  AE_FMT_TRUEHD,
-  AE_FMT_DTSHD,
-  AE_FMT_LPCM,
+  // Bitstream
+  AE_FMT_RAW,
 
   /* planar formats */
   AE_FMT_U8P,

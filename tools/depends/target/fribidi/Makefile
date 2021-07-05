@@ -3,18 +3,37 @@ DEPS= ../../Makefile.include Makefile
 
 # lib name, version
 LIBNAME=fribidi
-VERSION=0.19.1
+VERSION=1.0.10
 SOURCE=$(LIBNAME)-$(VERSION)
 ARCHIVE=$(SOURCE).tar.gz
-export CFLAGS+=-D__STDC_INT64__
+
+MESON_BUILD_TYPE=release
+
+ifeq ($(DEBUG_BUILD), yes)
+  MESON_BUILD_TYPE=debug
+endif
+
 # configuration settings
-CONFIGURE=cp -f $(CONFIG_SUB) $(CONFIG_GUESS) .; \
-          ./configure --prefix=$(PREFIX) --disable-docs --enable-malloc \
-          --disable-shared --with-glib=no
+CONFIGURE = $(NATIVEPREFIX)/bin/python3 $(NATIVEPREFIX)/bin/meson \
+	--buildtype=$(MESON_BUILD_TYPE) \
+	--prefix=$(PREFIX) \
+	-Ddocs=false \
+	-Dtests=false \
+	-Dbin=false \
+	-Ddefault_library=static
 
-LIBDYLIB=$(PLATFORM)/lib/.libs/lib$(LIBNAME).a
+ifeq ($(CROSS_COMPILING), yes)
+CONFIGURE += --cross-file $(PREFIX)/share/cross-file.meson
+export CC=$(CC_FOR_BUILD)
+export CXX=$(CXX_FOR_BUILD)
+export CFLAGS=$(CFLAGS_FOR_BUILD)
+export CXXFLAGS=$(CXXFLAGS_FOR_BUILD)
+else
+export CC CXX CFLAGS CXXFLAGS
+endif
+export PKG_CONFIG_LIBDIR=$(PREFIX)/lib/pkgconfig
 
-CLEAN_FILES=$(ARCHIVE) $(PLATFORM)
+LIBDYLIB=$(PLATFORM)/build/lib/lib$(LIBNAME).a
 
 all: .installed-$(PLATFORM)
 
@@ -24,14 +43,13 @@ $(TARBALLS_LOCATION)/$(ARCHIVE):
 $(PLATFORM): $(TARBALLS_LOCATION)/$(ARCHIVE) $(DEPS)
 	rm -rf $(PLATFORM)/*; mkdir -p $(PLATFORM)
 	cd $(PLATFORM); $(ARCHIVE_TOOL) $(ARCHIVE_TOOL_FLAGS) $(TARBALLS_LOCATION)/$(ARCHIVE)
-	cd $(PLATFORM); $(CONFIGURE)
+	cd $(PLATFORM); $(CONFIGURE) . build
 
 $(LIBDYLIB): $(PLATFORM)
-	$(MAKE) -C $(PLATFORM)
-	touch $@
+	cd $(PLATFORM)/build; $(NATIVEPREFIX)/bin/ninja -v
 
 .installed-$(PLATFORM): $(LIBDYLIB)
-	$(MAKE) -C $(PLATFORM) install
+	cd $(PLATFORM)/build; $(NATIVEPREFIX)/bin/ninja -v install
 	touch $@
 
 clean:
@@ -40,4 +58,3 @@ clean:
 
 distclean::
 	rm -rf $(PLATFORM) .installed-$(PLATFORM)
-

@@ -1,22 +1,12 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
 
 //  CCdInfo   -  Information about media type of an inserted cd
 //  CCdIoSupport -  Wrapper class for libcdio with the interface of CIoSupport
@@ -24,21 +14,17 @@
 //
 // by Bobbin007 in 2003
 //  CD-Text support by Mog - Oct 2004
-//
-//
-//
 
-#pragma once
+#include "threads/CriticalSection.h"
 
-#include "system.h" // for HAS_DVD_DRIVE
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
 
-#ifdef HAS_DVD_DRIVE
+#include "PlatformDefs.h" // for ssize_t typedef, used by cdio
 
 #include <cdio/cdio.h>
-#include "threads/CriticalSection.h"
-#include <memory>
-#include <map>
-#include <string>
 
 namespace MEDIA_DETECT
 {
@@ -46,48 +32,46 @@ namespace MEDIA_DETECT
 #define STRONG "__________________________________\n"
 //#define NORMAL ""
 
-#define FS_NO_DATA              0   /* audio only */
-#define FS_HIGH_SIERRA   1
-#define FS_ISO_9660    2
-#define FS_INTERACTIVE   3
-#define FS_HFS     4
-#define FS_UFS     5
-#define FS_EXT2     6
+#define FS_NO_DATA              0  /* audio only */
+#define FS_HIGH_SIERRA          1
+#define FS_ISO_9660             2
+#define FS_INTERACTIVE          3
+#define FS_HFS                  4
+#define FS_UFS                  5
+#define FS_EXT2                 6
 #define FS_ISO_HFS              7  /* both hfs & isofs filesystem */
 #define FS_ISO_9660_INTERACTIVE 8  /* both CD-RTOS and isofs filesystem */
-#define FS_3DO     9
-#define FS_UDFX     10
-#define FS_UDF     11
-#define FS_ISO_UDF   12
-#define FS_UNKNOWN    15
-#define FS_MASK     15
+#define FS_3DO                  9
+#define FS_UDF                 11
+#define FS_ISO_UDF             12
+#define FS_UNKNOWN             15
+#define FS_MASK                15
 
-#define XA      16
-#define MULTISESSION   32
-#define PHOTO_CD    64
-#define HIDDEN_TRACK   128
-#define CDTV     256
-#define BOOTABLE    512
-#define VIDEOCDI    1024
-#define ROCKRIDGE    2048
-#define JOLIET     4096
-#define CVD      8192   /* Choiji Video CD */
+#define XA                     16
+#define MULTISESSION           32
+#define PHOTO_CD               64
+#define HIDDEN_TRACK          128
+#define CDTV                  256
+#define BOOTABLE              512
+#define VIDEOCDI             1024
+#define ROCKRIDGE            2048
+#define JOLIET               4096
+#define CVD                  8192 /* Choiji Video CD */
 
-#define IS_ISOFS    0
-#define IS_CD_I     1
-#define IS_CDTV     2
+#define IS_ISOFS      0
+#define IS_CD_I       1
+#define IS_CDTV       2
 #define IS_CD_RTOS    3
-#define IS_HS     4
-#define IS_BRIDGE    5
-#define IS_XA     6
-#define IS_PHOTO_CD    7
-#define IS_EXT2     8
-#define IS_UFS     9
-#define IS_BOOTABLE    10
-#define IS_VIDEO_CD    11 /* Video CD */
-#define IS_CVD     12 /* Chinese Video CD - slightly incompatible with SVCD */
-#define IS_UDFX     13
-#define IS_UDF     14
+#define IS_HS         4
+#define IS_BRIDGE     5
+#define IS_XA         6
+#define IS_PHOTO_CD   7
+#define IS_EXT2       8
+#define IS_UFS        9
+#define IS_BOOTABLE  10
+#define IS_VIDEO_CD  11  /* Video CD */
+#define IS_CVD       12  /* Chinese Video CD - slightly incompatible with SVCD */
+#define IS_UDF       14
 
 typedef struct signature
 {
@@ -102,14 +86,14 @@ typedef std::map<cdtext_field_t, std::string> xbmc_cdtext_t;
 
 typedef struct TRACKINFO
 {
-  int nfsInfo;  // Information of the Tracks Filesystem
-  int nJolietLevel; // Jouliet Level
-  int ms_offset;  // Multisession Offset
-  int isofs_size;  // Size of the ISO9660 Filesystem
-  int nFrames;  // Can be used for cddb query
-  int nMins;   // minutes playtime part of Track
-  int nSecs;   // seconds playtime part of Track
-  xbmc_cdtext_t cdtext; //  CD-Text for this track
+  int nfsInfo;          // Information of the Tracks Filesystem
+  int nJolietLevel;     // Jouliet Level
+  int ms_offset;        // Multisession Offset
+  int isofs_size;       // Size of the ISO9660 Filesystem
+  int nFrames;          // Can be used for cddb query
+  int nMins;            // minutes playtime part of Track
+  int nSecs;            // seconds playtime part of Track
+  xbmc_cdtext_t cdtext; // CD-Text for this track
 }
 trackinfo;
 
@@ -176,9 +160,6 @@ public:
   // CD-ROM with Panasonic 3DO filesystem
   bool Is3DO( int nTrack ) { return ((m_ti[nTrack - 1].nfsInfo & FS_MASK) == FS_3DO); }
 
-  // CD-ROM with XBOX UDFX filesystem
-  bool IsUDFX( int nTrack ) { return ((m_ti[nTrack - 1].nfsInfo & FS_MASK) == FS_UDFX); }
-
   // Mixed Mode CD-ROM
   bool IsMixedMode( int nTrack ) { return (m_nFirstData == 1 && m_nNumAudio > 0); }
 
@@ -218,7 +199,7 @@ public:
   bool IsUDF( int nTrack ) { return ((m_ti[nTrack - 1].nfsInfo & FS_MASK) == FS_UDF); }
 
   // Has the cd a filesystem that is readable by the xbox
-  bool IsValidFs() { return (IsISOHFS(1) || IsIso9660(1) || IsIso9660Interactive(1) || IsISOUDF(1) || IsUDF(1) || IsUDFX(1) || IsAudio(1)); }
+  bool IsValidFs() { return (IsISOHFS(1) || IsIso9660(1) || IsIso9660Interactive(1) || IsISOUDF(1) || IsUDF(1) || IsAudio(1)); }
 
   void SetFirstTrack( int nTrack ) { m_nFirstTrack = nTrack; }
   void SetTrackCount( int nCount ) { m_nNumTrack = nCount; }
@@ -226,8 +207,12 @@ public:
   void SetFirstDataTrack( int nTrack ) { m_nFirstData = nTrack; }
   void SetDataTrackCount( int nCount ) { m_nNumData = nCount; }
   void SetAudioTrackCount( int nCount ) { m_nNumAudio = nCount; }
-  void SetTrackInformation( int nTrack, trackinfo nInfo ) { if ( nTrack > 0 && nTrack <= 99 ) m_ti[nTrack - 1] = nInfo; }
-  void SetDiscCDTextInformation( xbmc_cdtext_t cdtext ) { m_cdtext = cdtext; }
+  void SetTrackInformation(int nTrack, trackinfo nInfo)
+  {
+    if (nTrack > 0 && nTrack <= 99)
+      m_ti[nTrack - 1] = std::move(nInfo);
+  }
+  void SetDiscCDTextInformation(xbmc_cdtext_t cdtext) { m_cdtext = std::move(cdtext); }
 
   void SetCddbDiscId( uint32_t ulCddbDiscId ) { m_ulCddbDiscId = ulCddbDiscId; }
   void SetDiscLength( int nLength ) { m_nLength = nLength; }
@@ -238,14 +223,14 @@ public:
 
 private:
   int m_nFirstData;        /* # of first data track */
-  int m_nNumData;               /* # of data tracks */
-  int m_nFirstAudio;      /* # of first audio track */
-  int m_nNumAudio;             /* # of audio tracks */
+  int m_nNumData;          /* # of data tracks */
+  int m_nFirstAudio;       /* # of first audio track */
+  int m_nNumAudio;         /* # of audio tracks */
   int m_nNumTrack;
   int m_nFirstTrack;
   trackinfo m_ti[100];
   uint32_t m_ulCddbDiscId;
-  int m_nLength;   // Disclength can be used for cddb query, also see trackinfo.nFrames
+  int m_nLength;           // Disclength can be used for cddb query, also see trackinfo.nFrames
   bool m_bHasCDDBInfo;
   std::string m_strDiscLabel;
   xbmc_cdtext_t m_cdtext;  //  CD-Text for this disc
@@ -287,15 +272,15 @@ public:
   CCdIoSupport();
   virtual ~CCdIoSupport();
 
-  HRESULT EjectTray();
-  HRESULT CloseTray();
+  bool EjectTray();
+  bool CloseTray();
 
   HANDLE OpenCDROM();
   HANDLE OpenIMAGE( std::string& strFilename );
-  INT ReadSector(HANDLE hDevice, DWORD dwSector, LPSTR lpczBuffer);
-  INT ReadSectorMode2(HANDLE hDevice, DWORD dwSector, LPSTR lpczBuffer);
-  INT ReadSectorCDDA(HANDLE hDevice, DWORD dwSector, LPSTR lpczBuffer);
-  VOID CloseCDROM(HANDLE hDevice);
+  int ReadSector(HANDLE hDevice, DWORD dwSector, char* lpczBuffer);
+  int ReadSectorMode2(HANDLE hDevice, DWORD dwSector, char* lpczBuffer);
+  int ReadSectorCDDA(HANDLE hDevice, DWORD dwSector, char* lpczBuffer);
+  void CloseCDROM(HANDLE hDevice);
 
   void PrintAnalysis(int fs, int num_audio);
 
@@ -315,35 +300,33 @@ protected:
 
   uint32_t CddbDiscId();
   int CddbDecDigitSum(int n);
-  UINT MsfSeconds(msf_t *msf);
+  unsigned int MsfSeconds(msf_t *msf);
 
 private:
   char buffer[7][CDIO_CD_FRAMESIZE_RAW];  /* for CD-Data */
   static signature_t sigs[17];
-  int i, j;                                                           /* index */
-  int m_nStartTrack;                                   /* first sector of track */
-  int m_nIsofsSize;                                      /* size of session */
+  int i = 0, j = 0;                               /* index */
+  int m_nStartTrack;                      /* first sector of track */
+  int m_nIsofsSize;                       /* size of session */
   int m_nJolietLevel;
-  int m_nMsOffset;                /* multisession offset found by track-walking */
-  int m_nDataStart;                                       /* start of data area */
+  int m_nMsOffset;                        /* multisession offset found by track-walking */
+  int m_nDataStart;                       /* start of data area */
   int m_nFs;
   int m_nUDFVerMinor;
   int m_nUDFVerMajor;
 
   CdIo* cdio;
-  track_t m_nNumTracks;
-  track_t m_nFirstTrackNum;
+  track_t m_nNumTracks = CDIO_INVALID_TRACK;
+  track_t m_nFirstTrackNum = CDIO_INVALID_TRACK;
 
   std::string m_strDiscLabel;
 
   int m_nFirstData;        /* # of first data track */
-  int m_nNumData;                /* # of data tracks */
-  int m_nFirstAudio;      /* # of first audio track */
-  int m_nNumAudio;              /* # of audio tracks */
+  int m_nNumData;          /* # of data tracks */
+  int m_nFirstAudio;       /* # of first audio track */
+  int m_nNumAudio;         /* # of audio tracks */
 
   std::shared_ptr<CLibcdio> m_cdio;
 };
 
 }
-
-#endif

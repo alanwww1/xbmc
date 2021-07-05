@@ -1,31 +1,21 @@
-#pragma once
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
+
+#include "MediaSource.h" // Definition of VECSOURCES
+#include "utils/Digest.h"
 
 #include <climits>
 #include <cmath>
-#include <vector>
-#include <string.h>
 #include <stdint.h>
-#include "utils/StringUtils.h"
-#include "MediaSource.h"
+#include <string.h>
+#include <vector>
 
 #define ARRAY_SIZE(X)         (sizeof(X)/sizeof((X)[0]))
 
@@ -37,32 +27,17 @@
 class CFileItemList;
 class CURL;
 
-struct sortstringbyname
-{
-  bool operator()(const std::string& strItem1, const std::string& strItem2)
-  {
-    std::string strLine1 = strItem1;
-    std::string strLine2 = strItem2;
-    StringUtils::ToLower(strLine1);
-    StringUtils::ToLower(strLine2);
-    return strcmp(strLine1.c_str(), strLine2.c_str()) < 0;
-  }
-};
-
 struct ExternalStreamInfo
 {
   std::string name;
   std::string language;
-  unsigned int flag;
-
-  ExternalStreamInfo() : flag(0){};
+  unsigned int flag = 0;
 };
 
 class CUtil
 {
+  CUtil() = delete;
 public:
-  CUtil(void);
-  virtual ~CUtil(void);
   static void CleanString(const std::string& strFileName,
                           std::string& strTitle,
                           std::string& strTitleAndYear,
@@ -73,22 +48,21 @@ public:
   static std::string GetTitleFromPath(const std::string& strFileNameAndPath, bool bIsFolder = false);
   static void GetQualifiedFilename(const std::string &strBasePath, std::string &strFilename);
   static void RunShortcut(const char* szPath);
-  static void GetHomePath(std::string& strPath, const std::string& strTarget = ""); // default target is "KODI_HOME"
-  static bool IsPVR(const std::string& strFile);
-  static bool IsHTSP(const std::string& strFile);
-  static bool IsLiveTV(const std::string& strFile);
-  static bool IsTVRecording(const std::string& strFile);
+  static std::string GetHomePath(
+      const std::string& strTarget = "KODI_HOME"); // default target is "KODI_HOME"
   static bool ExcludeFileOrFolder(const std::string& strFileOrFolder, const std::vector<std::string>& regexps);
   static void GetFileAndProtocol(const std::string& strURL, std::string& strDir);
   static int GetDVDIfoTitle(const std::string& strPathFile);
 
   static bool IsPicture(const std::string& strFile);
+  /// Get resolved filesystem location of splash image
+  static std::string GetSplashPath();
 
   /*! \brief retrieve MD5sum of a file
    \param strPath - path to the file to MD5sum
    \return md5 sum of the file
    */
-  static std::string GetFileMD5(const std::string& strPath);
+  static std::string GetFileDigest(const std::string& strPath, KODI::UTILITY::CDigest::Type type);
   static bool GetDirectoryName(const std::string& strFileName, std::string& strDescription);
   static void GetDVDDriveIcon(const std::string& strPath, std::string& strIcon);
   static void RemoveTempFiles();
@@ -96,12 +70,24 @@ public:
 
   static void ClearSubtitles();
   static void ScanForExternalSubtitles(const std::string& strMovie, std::vector<std::string>& vecSubtitles );
-  static int ScanArchiveForSubtitles( const std::string& strArchivePath, const std::string& strMovieFileNameNoExt, std::vector<std::string>& vecSubtitles );
-  static void GetExternalStreamDetailsFromFilename(const std::string& strMovie, const std::string& strSubtitles, ExternalStreamInfo& info); 
+
+  /** \brief Retrieves stream info of external associated files, e.g., subtitles, for a given video.
+  *   \param[in] videoPath The full path of the video file.
+  *   \param[in] associatedFile A file that provides additional streams for the given video file.
+  *   \return stream info for the given associatedFile
+  */
+  static ExternalStreamInfo GetExternalStreamDetailsFromFilename(const std::string& videoPath, const std::string& associatedFile);
   static bool FindVobSubPair( const std::vector<std::string>& vecSubtitles, const std::string& strIdxPath, std::string& strSubPath );
   static bool IsVobSub(const std::vector<std::string>& vecSubtitles, const std::string& strSubPath);
   static std::string GetVobSubSubFromIdx(const std::string& vobSubIdx);
   static std::string GetVobSubIdxFromSub(const std::string& vobSub);
+
+  /** \brief Retrieves paths of external audio files for a given video.
+  *   \param[in] videoPath The full path of the video file.
+  *   \param[out] vecAudio A vector containing the full paths of all found external audio files.
+  */
+  static void ScanForExternalAudio(const std::string& videoPath, std::vector<std::string>& vecAudio);
+  static void ScanForExternalDemuxSub(const std::string& videoPath, std::vector<std::string>& vecSubtitles);
   static int64_t ToInt64(uint32_t high, uint32_t low);
   static std::string GetNextFilename(const std::string &fn_template, int max);
   static std::string GetNextPathname(const std::string &path_template, int max);
@@ -123,7 +109,7 @@ public:
   static std::string MakeLegalPath(const std::string &strPath, int LegalType=LEGAL_NONE);
 #endif
   static std::string ValidatePath(const std::string &path, bool bFixDoubleSlashes = false); ///< return a validated path, with correct directory separators.
-  
+
   static bool IsUsingTTFSubtitles();
 
   /*! \brief Split a comma separated parameter list into separate parameters.
@@ -174,12 +160,6 @@ public:
   static bool SupportsReadFileOperations(const std::string& strPath);
   static std::string GetDefaultFolderThumb(const std::string &folderThumb);
 
-#ifdef UNIT_TESTING
-  static bool TestSplitExec();
-  static bool TestGetQualifiedFilename();
-  static bool TestMakeLegalPath();
-#endif
-
   static void InitRandomSeed();
 
   // Get decimal integer representation of roman digit, ivxlcdm are valid
@@ -189,7 +169,7 @@ public:
   // return -1 on error, valid range is 1-3999
   static int TranslateRomanNumeral(const char* roman_numeral);
 
-#ifdef TARGET_POSIX
+#if defined(TARGET_POSIX) && !defined(TARGET_DARWIN_TVOS)
   //
   // Forks to execute a shell command.
   //
@@ -211,10 +191,65 @@ public:
    */
   static int GetRandomNumber();
 
+  static int64_t ConvertSecsToMilliSecs(double secs) { return static_cast<int64_t>(secs * 1000); }
+  static double ConvertMilliSecsToSecs(int64_t offset) { return offset / 1000.0; }
+  static int64_t ConvertMilliSecsToSecsInt(int64_t offset) { return offset / 1000; }
+  static int64_t ConvertMilliSecsToSecsIntRounded(int64_t offset) { return ConvertMilliSecsToSecsInt(offset + 499); }
+
+  /** \brief Copy files from the application bundle over to the user data directory in Application Support/Kodi.
+  */
+  static void CopyUserDataIfNeeded(const std::string& strPath,
+                                   const std::string& file,
+                                   const std::string& destname = "");
+
 #if !defined(TARGET_WINDOWS)
 private:
   static unsigned int s_randomSeed;
 #endif
+
+  protected:
+    /** \brief Retrieves the base path and the filename of a given video.
+    *   \param[in]  videoPath The full path of the video file.
+    *   \param[out] basePath The base path of the given video.
+    *   \param[out] videoFileName The file name of the given video..
+    */
+    static void GetVideoBasePathAndFileName(const std::string& videoPath,
+                                            std::string& basePath,
+                                            std::string& videoFileName);
+
+    /** \brief Retrieves FileItems that could contain associated files of a given video.
+    *   \param[in]  videoPath The full path of the video file.
+    *   \param[in]  item_exts A | separated string of extensions specifying the associated files.
+    *   \param[in]  sub_dirs A vector of sub directory names to look for.
+    *   \param[out] items A List of FileItems to scan for associated files.
+    */
+    static void GetItemsToScan(const std::string& videoPath,
+                               const std::string& item_exts,
+                               const std::vector<std::string>& sub_dirs,
+                               CFileItemList& items);
+
+    /** \brief Searches for associated files of a given video.
+    *   \param[in]  videoName The name of the video file.
+    *   \param[in]  items A List of FileItems to scan for associated files.
+    *   \param[in]  item_exts A vector of extensions specifying the associated files.
+    *   \param[out] associatedFiles A vector containing the full paths of all found associated files.
+    */
+    static void ScanPathsForAssociatedItems(const std::string& videoName,
+                                            const CFileItemList& items,
+                                            const std::vector<std::string>& item_exts,
+                                            std::vector<std::string>& associatedFiles);
+
+    /** \brief Searches in an archive for associated files of a given video.
+    *   \param[in]  strArchivePath The full path of the archive.
+    *   \param[in]  videoNameNoExt The filename of the video without extension for which associated files should be retrieved.
+    *   \param[in]  item_exts A vector of extensions specifying the associated files.
+    *   \param[out] associatedFiles A vector containing the full paths of all found associated files.
+    */
+    static int ScanArchiveForAssociatedItems(const std::string& strArchivePath,
+                                             const std::string& videoNameNoExt,
+                                             const std::vector<std::string>& item_exts,
+                                             std::vector<std::string>& associatedFiles);
+
 };
 
 

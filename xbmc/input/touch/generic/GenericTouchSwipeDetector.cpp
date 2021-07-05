@@ -1,51 +1,42 @@
 /*
- *      Copyright (C) 2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2013-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #endif
+#include "GenericTouchSwipeDetector.h"
+
 #include <math.h>
 #include <stdlib.h>
 
-#include "GenericTouchSwipeDetector.h"
-
 // maximum time between touch down and up (in nanoseconds)
-#define SWIPE_MAX_TIME            500000000
-// maxmium swipe distance between touch down and up (in multiples of screen DPI)
-#define SWIPE_MIN_DISTANCE        0.5f
+#define SWIPE_MAX_TIME 500000000
+// maximum swipe distance between touch down and up (in multiples of screen DPI)
+#define SWIPE_MIN_DISTANCE 0.5f
 // original maximum variance of the touch movement
-#define SWIPE_MAX_VARIANCE        0.2f
-// tangens of the maximum angle (20 degrees) the touch movement may vary in a
+#define SWIPE_MAX_VARIANCE 0.2f
+// tangents of the maximum angle (20 degrees) the touch movement may vary in a
 // direction perpendicular to the swipe direction (in radians)
 // => tan(20 deg) = tan(20 * M_PI / 180)
-#define SWIPE_MAX_VARIANCE_ANGLE  0.36397023f
+#define SWIPE_MAX_VARIANCE_ANGLE 0.36397023f
 
-CGenericTouchSwipeDetector::CGenericTouchSwipeDetector(ITouchActionHandler *handler, float dpi)
+CGenericTouchSwipeDetector::CGenericTouchSwipeDetector(ITouchActionHandler* handler, float dpi)
   : IGenericTouchGestureDetector(handler, dpi),
-    m_directions(TouchMoveDirectionLeft | TouchMoveDirectionRight | TouchMoveDirectionUp | TouchMoveDirectionDown),
-    m_swipeDetected(false), m_size(0)
-{ }
-
-bool CGenericTouchSwipeDetector::OnTouchDown(unsigned int index, const Pointer &pointer)
+    m_directions(TouchMoveDirectionLeft | TouchMoveDirectionRight | TouchMoveDirectionUp |
+                 TouchMoveDirectionDown),
+    m_swipeDetected(false),
+    m_size(0)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+}
+
+bool CGenericTouchSwipeDetector::OnTouchDown(unsigned int index, const Pointer& pointer)
+{
+  if (index >= MAX_POINTERS)
     return false;
 
   m_size += 1;
@@ -55,14 +46,15 @@ bool CGenericTouchSwipeDetector::OnTouchDown(unsigned int index, const Pointer &
   // reset all values
   m_done = false;
   m_swipeDetected = false;
-  m_directions = TouchMoveDirectionLeft | TouchMoveDirectionRight | TouchMoveDirectionUp | TouchMoveDirectionDown;
+  m_directions = TouchMoveDirectionLeft | TouchMoveDirectionRight | TouchMoveDirectionUp |
+                 TouchMoveDirectionDown;
 
   return true;
 }
 
-bool CGenericTouchSwipeDetector::OnTouchUp(unsigned int index, const Pointer &pointer)
+bool CGenericTouchSwipeDetector::OnTouchUp(unsigned int index, const Pointer& pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= MAX_POINTERS)
     return false;
 
   m_size -= 1;
@@ -85,13 +77,14 @@ bool CGenericTouchSwipeDetector::OnTouchUp(unsigned int index, const Pointer &po
   pointer.velocity(velocityX, velocityY, false);
 
   // call the OnSwipe() callback
-  OnSwipe((TouchMoveDirection)m_directions, pointer.down.x, pointer.down.y, pointer.current.x, pointer.current.y, velocityX, velocityY, m_size + 1);
+  OnSwipe((TouchMoveDirection)m_directions, pointer.down.x, pointer.down.y, pointer.current.x,
+          pointer.current.y, velocityX, velocityY, m_size + 1);
   return true;
 }
 
-bool CGenericTouchSwipeDetector::OnTouchMove(unsigned int index, const Pointer &pointer)
+bool CGenericTouchSwipeDetector::OnTouchMove(unsigned int index, const Pointer& pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= MAX_POINTERS)
     return false;
 
   // only handle swipes of moved pointers
@@ -117,8 +110,8 @@ bool CGenericTouchSwipeDetector::OnTouchMove(unsigned int index, const Pointer &
     return false;
   }
 
-  float deltaXabs = abs(pointer.current.x - pointer.down.x);
-  float deltaYabs = abs(pointer.current.y - pointer.down.y);
+  float deltaXabs = fabs(pointer.current.x - pointer.down.x);
+  float deltaYabs = fabs(pointer.current.y - pointer.down.y);
   float varXabs = deltaYabs * SWIPE_MAX_VARIANCE_ANGLE + (m_dpi * SWIPE_MAX_VARIANCE) / 2;
   float varYabs = deltaXabs * SWIPE_MAX_VARIANCE_ANGLE + (m_dpi * SWIPE_MAX_VARIANCE) / 2;
 
@@ -141,7 +134,7 @@ bool CGenericTouchSwipeDetector::OnTouchMove(unsigned int index, const Pointer &
     else if (deltaXabs > m_dpi * SWIPE_MIN_DISTANCE)
       m_swipeDetected = true;
   }
-  
+
   if (m_directions & TouchMoveDirectionUp)
   {
     // check if the movement went too much in X direction
@@ -167,13 +160,13 @@ bool CGenericTouchSwipeDetector::OnTouchMove(unsigned int index, const Pointer &
     m_done = true;
     return false;
   }
-  
+
   return true;
 }
 
-bool CGenericTouchSwipeDetector::OnTouchUpdate(unsigned int index, const Pointer &pointer)
+bool CGenericTouchSwipeDetector::OnTouchUpdate(unsigned int index, const Pointer& pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= MAX_POINTERS)
     return false;
 
   if (m_done)

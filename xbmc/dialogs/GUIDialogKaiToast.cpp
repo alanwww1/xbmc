@@ -1,41 +1,29 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "GUIDialogKaiToast.h"
-#include "guilib/GUIAudioManager.h"
-#include "guilib/GUIWindowManager.h"
+
+#include "ServiceBroker.h"
+#include "guilib/GUIFadeLabelControl.h"
+#include "guilib/GUIMessage.h"
+#include "peripherals/Peripherals.h"
 #include "threads/SingleLock.h"
 #include "utils/TimeUtils.h"
 
 #define POPUP_ICON                400
 #define POPUP_CAPTION_TEXT        401
 #define POPUP_NOTIFICATION_BUTTON 402
-#define POPUP_ICON_INFO           403
-#define POPUP_ICON_WARNING        404
-#define POPUP_ICON_ERROR          405
 
 CGUIDialogKaiToast::TOASTQUEUE CGUIDialogKaiToast::m_notifications;
 CCriticalSection CGUIDialogKaiToast::m_critical;
 
 CGUIDialogKaiToast::CGUIDialogKaiToast(void)
-: CGUIDialog(WINDOW_DIALOG_KAI_TOAST, "DialogKaiToast.xml")
+  : CGUIDialog(WINDOW_DIALOG_KAI_TOAST, "DialogNotification.xml", DialogModalityType::MODELESS)
 {
   m_loadType = LOAD_ON_GUI_INIT;
   m_timer = 0;
@@ -43,9 +31,7 @@ CGUIDialogKaiToast::CGUIDialogKaiToast(void)
   m_toastMessageTime = 0;
 }
 
-CGUIDialogKaiToast::~CGUIDialogKaiToast(void)
-{
-}
+CGUIDialogKaiToast::~CGUIDialogKaiToast(void) = default;
 
 bool CGUIDialogKaiToast::OnMessage(CGUIMessage& message)
 {
@@ -67,13 +53,6 @@ bool CGUIDialogKaiToast::OnMessage(CGUIMessage& message)
   return CGUIDialog::OnMessage(message);
 }
 
-void CGUIDialogKaiToast::OnWindowLoaded()
-{
-  CGUIDialog::OnWindowLoaded();
-  CGUIMessage msg(GUI_MSG_GET_FILENAME, GetID(), POPUP_ICON);
-  m_defaultIcon = msg.GetLabel();
-}
-
 void CGUIDialogKaiToast::QueueNotification(eMessageType eType, const std::string& aCaption, const std::string& aDescription, unsigned int displayTime /*= TOAST_DISPLAY_TIME*/, bool withSound /*= true*/, unsigned int messageTime /*= TOAST_MESSAGE_TIME*/)
 {
   AddToQueue("", eType, aCaption, aDescription, displayTime, withSound, messageTime);
@@ -92,6 +71,14 @@ void CGUIDialogKaiToast::QueueNotification(const std::string& aImageFile, const 
 void CGUIDialogKaiToast::AddToQueue(const std::string& aImageFile, const eMessageType eType, const std::string& aCaption, const std::string& aDescription, unsigned int displayTime /*= TOAST_DISPLAY_TIME*/, bool withSound /*= true*/, unsigned int messageTime /*= TOAST_MESSAGE_TIME*/)
 {
   CSingleLock lock(m_critical);
+
+  if (!m_notifications.empty())
+  {
+    const auto& last = m_notifications.back();
+    if (last.eType == eType && last.imagefile == aImageFile && last.caption == aCaption &&
+        last.description == aDescription)
+      return; // avoid duplicates in a row.
+  }
 
   Notification toast;
   toast.eType = eType;
@@ -112,6 +99,13 @@ bool CGUIDialogKaiToast::DoWork()
   if (!m_notifications.empty() &&
       CTimeUtils::GetFrameTime() - m_timer > m_toastMessageTime)
   {
+    // if we have a fade label control for the text to display, ensure the whole text was shown
+    // (scrolled to the end) before we move on to the next message
+    const CGUIFadeLabelControl* notificationText =
+        dynamic_cast<const CGUIFadeLabelControl*>(GetControl(POPUP_NOTIFICATION_BUTTON));
+    if (notificationText && !notificationText->AllLabelsShown())
+      return false;
+
     Notification toast = m_notifications.front();
     m_notifications.pop();
     lock.Leave();
@@ -119,7 +113,7 @@ bool CGUIDialogKaiToast::DoWork()
     m_toastDisplayTime = toast.displayTime;
     m_toastMessageTime = toast.messageTime;
 
-    CSingleLock lock2(g_graphicsContext);
+    CSingleLock lock2(CServiceBroker::GetWinSystem()->GetGfxContext());
 
     if(!Initialize())
       return false;
@@ -130,31 +124,24 @@ bool CGUIDialogKaiToast::DoWork()
 
     // set the appropriate icon
     {
-      std::string strTypeImage = toast.imagefile;
-
-      if (strTypeImage.empty())
+      std::string icon = toast.imagefile;
+      if (icon.empty())
       {
-        int imageControl = POPUP_ICON;
-
-        if (toast.eType == Info)
-          imageControl = POPUP_ICON_INFO;
-        else if (toast.eType == Warning)
-          imageControl = POPUP_ICON_WARNING;
+        if (toast.eType == Warning)
+          icon = "DefaultIconWarning.png";
         else if (toast.eType == Error)
-          imageControl = POPUP_ICON_ERROR;
-
-        CGUIMessage msg(GUI_MSG_GET_FILENAME, GetID(), imageControl);
-        if (OnMessage(msg))
-          strTypeImage = msg.GetLabel();
+          icon = "DefaultIconError.png";
         else
-          strTypeImage = m_defaultIcon;
+          icon = "DefaultIconInfo.png";
       }
-
-      SET_CONTROL_FILENAME(POPUP_ICON, strTypeImage);
+      SET_CONTROL_FILENAME(POPUP_ICON, icon);
     }
 
     //  Play the window specific init sound for each notification queued
     SetSound(toast.withSound);
+
+    // Activate haptics for this notification
+    CServiceBroker::GetPeripherals().OnUserNotification();
 
     ResetTimer();
     return true;
@@ -177,7 +164,22 @@ void CGUIDialogKaiToast::FrameMove()
 
   // now check if we should exit
   if (CTimeUtils::GetFrameTime() - m_timer > m_toastDisplayTime)
-    Close();
-  
+  {
+    bool bClose = true;
+
+    // if we have a fade label control for the text to display, ensure the whole text was shown
+    // (scrolled to the end) before we're closing the toast dialog
+    const CGUIFadeLabelControl* notificationText =
+        dynamic_cast<const CGUIFadeLabelControl*>(GetControl(POPUP_NOTIFICATION_BUTTON));
+    if (notificationText)
+    {
+      CSingleLock lock(m_critical);
+      bClose = notificationText->AllLabelsShown() && m_notifications.empty();
+    }
+
+    if (bClose)
+      Close();
+  }
+
   CGUIDialog::FrameMove();
 }

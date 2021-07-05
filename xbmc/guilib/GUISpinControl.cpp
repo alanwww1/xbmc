@@ -1,40 +1,45 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "GUISpinControl.h"
-#include "Key.h"
-#include "utils/StringUtils.h"
-#include <stdio.h>
 
-using namespace std;
+#include "GUIMessage.h"
+#include "input/Key.h"
+#include "utils/StringUtils.h"
+
+#include <stdio.h>
 
 #define SPIN_BUTTON_DOWN 1
 #define SPIN_BUTTON_UP   2
 
-CGUISpinControl::CGUISpinControl(int parentID, int controlID, float posX, float posY, float width, float height, const CTextureInfo& textureUp, const CTextureInfo& textureDown, const CTextureInfo& textureUpFocus, const CTextureInfo& textureDownFocus, const CLabelInfo &labelInfo, int iType)
-    : CGUIControl(parentID, controlID, posX, posY, width, height)
-    , m_imgspinUp(posX, posY, width, height, textureUp)
-    , m_imgspinDown(posX, posY, width, height, textureDown)
-    , m_imgspinUpFocus(posX, posY, width, height, textureUpFocus)
-    , m_imgspinDownFocus(posX, posY, width, height, textureDownFocus)
-    , m_label(posX, posY, width, height, labelInfo)
+CGUISpinControl::CGUISpinControl(int parentID,
+                                 int controlID,
+                                 float posX,
+                                 float posY,
+                                 float width,
+                                 float height,
+                                 const CTextureInfo& textureUp,
+                                 const CTextureInfo& textureDown,
+                                 const CTextureInfo& textureUpFocus,
+                                 const CTextureInfo& textureDownFocus,
+                                 const CTextureInfo& textureUpDisabled,
+                                 const CTextureInfo& textureDownDisabled,
+                                 const CLabelInfo& labelInfo,
+                                 int iType)
+  : CGUIControl(parentID, controlID, posX, posY, width, height),
+    m_imgspinUp(CGUITexture::CreateTexture(posX, posY, width, height, textureUp)),
+    m_imgspinDown(CGUITexture::CreateTexture(posX, posY, width, height, textureDown)),
+    m_imgspinUpFocus(CGUITexture::CreateTexture(posX, posY, width, height, textureUpFocus)),
+    m_imgspinDownFocus(CGUITexture::CreateTexture(posX, posY, width, height, textureDownFocus)),
+    m_imgspinUpDisabled(CGUITexture::CreateTexture(posX, posY, width, height, textureUpDisabled)),
+    m_imgspinDownDisabled(
+        CGUITexture::CreateTexture(posX, posY, width, height, textureDownDisabled)),
+    m_label(posX, posY, width, height, labelInfo)
 {
   m_bReverse = false;
   m_iStart = 0;
@@ -56,8 +61,37 @@ CGUISpinControl::CGUISpinControl(int parentID, int controlID, float posX, float 
   m_showOnePage = true;
 }
 
-CGUISpinControl::~CGUISpinControl(void)
-{}
+CGUISpinControl::CGUISpinControl(const CGUISpinControl& control)
+  : CGUIControl(control),
+    m_iStart(control.m_iStart),
+    m_iEnd(control.m_iEnd),
+    m_fStart(control.m_fStart),
+    m_fEnd(control.m_fEnd),
+    m_iValue(control.m_iValue),
+    m_fValue(control.m_fValue),
+    m_iType(control.m_iType),
+    m_iSelect(control.m_iSelect),
+    m_bReverse(control.m_bReverse),
+    m_fInterval(control.m_fInterval),
+    m_vecLabels(control.m_vecLabels),
+    m_vecValues(control.m_vecValues),
+    m_vecStrValues(control.m_vecStrValues),
+    m_imgspinUp(control.m_imgspinUp->Clone()),
+    m_imgspinDown(control.m_imgspinDown->Clone()),
+    m_imgspinUpFocus(control.m_imgspinUpFocus->Clone()),
+    m_imgspinDownFocus(control.m_imgspinDownFocus->Clone()),
+    m_imgspinUpDisabled(control.m_imgspinUpDisabled->Clone()),
+    m_imgspinDownDisabled(control.m_imgspinDownDisabled->Clone()),
+    m_label(control.m_label),
+    m_bShowRange(control.m_bShowRange),
+    m_iTypedPos(control.m_iTypedPos),
+    m_currentItem(control.m_currentItem),
+    m_itemsPerPage(control.m_itemsPerPage),
+    m_numItems(control.m_numItems),
+    m_showOnePage(control.m_showOnePage)
+{
+  std::strcpy(m_szTyped, control.m_szTyped);
+}
 
 bool CGUISpinControl::OnAction(const CAction &action)
 {
@@ -258,10 +292,11 @@ bool CGUISpinControl::OnMessage(CGUIMessage& message)
     case GUI_MSG_SET_LABELS:
       if (message.GetPointer())
       {
-        const vector< pair<string, int> > *labels = (const vector< pair<string, int> > *)message.GetPointer();
+        auto labels =
+            static_cast<const std::vector<std::pair<std::string, int>>*>(message.GetPointer());
         Clear();
-        for (vector< pair<string, int> >::const_iterator i = labels->begin(); i != labels->end(); ++i)
-          AddLabel(i->first, i->second);
+        for (const auto& i : *labels)
+          AddLabel(i.first, i.second);
         SetValue( message.GetParam1());
       }
       break;
@@ -298,7 +333,7 @@ bool CGUISpinControl::OnMessage(CGUIMessage& message)
 
     case GUI_MSG_MOVE_OFFSET:
       {
-        int count = (int)message.GetParam1();
+        int count = message.GetParam1();
         while (count < 0)
         {
           MoveUp();
@@ -320,24 +355,30 @@ bool CGUISpinControl::OnMessage(CGUIMessage& message)
 void CGUISpinControl::AllocResources()
 {
   CGUIControl::AllocResources();
-  m_imgspinUp.AllocResources();
-  m_imgspinUpFocus.AllocResources();
-  m_imgspinDown.AllocResources();
-  m_imgspinDownFocus.AllocResources();
+  m_imgspinUp->AllocResources();
+  m_imgspinUpFocus->AllocResources();
+  m_imgspinDown->AllocResources();
+  m_imgspinDownFocus->AllocResources();
+  m_imgspinUpDisabled->AllocResources();
+  m_imgspinDownDisabled->AllocResources();
 
-  m_imgspinDownFocus.SetPosition(m_posX, m_posY);
-  m_imgspinDown.SetPosition(m_posX, m_posY);
-  m_imgspinUp.SetPosition(m_posX + m_imgspinDown.GetWidth(), m_posY);
-  m_imgspinUpFocus.SetPosition(m_posX + m_imgspinDownFocus.GetWidth(), m_posY);
+  m_imgspinDownFocus->SetPosition(m_posX, m_posY);
+  m_imgspinDown->SetPosition(m_posX, m_posY);
+  m_imgspinDownDisabled->SetPosition(m_posX, m_posY);
+  m_imgspinUp->SetPosition(m_posX + m_imgspinDown->GetWidth(), m_posY);
+  m_imgspinUpFocus->SetPosition(m_posX + m_imgspinDownFocus->GetWidth(), m_posY);
+  m_imgspinUpDisabled->SetPosition(m_posX + m_imgspinDownDisabled->GetWidth(), m_posY);
 }
 
 void CGUISpinControl::FreeResources(bool immediately)
 {
   CGUIControl::FreeResources(immediately);
-  m_imgspinUp.FreeResources(immediately);
-  m_imgspinUpFocus.FreeResources(immediately);
-  m_imgspinDown.FreeResources(immediately);
-  m_imgspinDownFocus.FreeResources(immediately);
+  m_imgspinUp->FreeResources(immediately);
+  m_imgspinUpFocus->FreeResources(immediately);
+  m_imgspinDown->FreeResources(immediately);
+  m_imgspinDownFocus->FreeResources(immediately);
+  m_imgspinUpDisabled->FreeResources(immediately);
+  m_imgspinDownDisabled->FreeResources(immediately);
   m_iTypedPos = 0;
   strcpy(m_szTyped, "");
 }
@@ -345,20 +386,24 @@ void CGUISpinControl::FreeResources(bool immediately)
 void CGUISpinControl::DynamicResourceAlloc(bool bOnOff)
 {
   CGUIControl::DynamicResourceAlloc(bOnOff);
-  m_imgspinUp.DynamicResourceAlloc(bOnOff);
-  m_imgspinUpFocus.DynamicResourceAlloc(bOnOff);
-  m_imgspinDown.DynamicResourceAlloc(bOnOff);
-  m_imgspinDownFocus.DynamicResourceAlloc(bOnOff);
+  m_imgspinUp->DynamicResourceAlloc(bOnOff);
+  m_imgspinUpFocus->DynamicResourceAlloc(bOnOff);
+  m_imgspinDown->DynamicResourceAlloc(bOnOff);
+  m_imgspinDownFocus->DynamicResourceAlloc(bOnOff);
+  m_imgspinUpDisabled->DynamicResourceAlloc(bOnOff);
+  m_imgspinDownDisabled->DynamicResourceAlloc(bOnOff);
 }
 
 void CGUISpinControl::SetInvalid()
 {
   CGUIControl::SetInvalid();
   m_label.SetInvalid();
-  m_imgspinUp.SetInvalid();
-  m_imgspinUpFocus.SetInvalid();
-  m_imgspinDown.SetInvalid();
-  m_imgspinDownFocus.SetInvalid();
+  m_imgspinUp->SetInvalid();
+  m_imgspinUpFocus->SetInvalid();
+  m_imgspinDown->SetInvalid();
+  m_imgspinDownFocus->SetInvalid();
+  m_imgspinUpDisabled->SetInvalid();
+  m_imgspinDownDisabled->SetInvalid();
 }
 
 void CGUISpinControl::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions)
@@ -410,11 +455,11 @@ void CGUISpinControl::Process(unsigned int currentTime, CDirtyRegionList &dirtyr
     {
       if (m_bShowRange)
       {
-        text = StringUtils::Format("(%i/%i) %s", m_iValue + 1, (int)m_vecLabels.size(), std::string(m_vecLabels[m_iValue]).c_str() );
+        text = StringUtils::Format("(%i/%i) %s", m_iValue + 1, (int)m_vecLabels.size(), m_vecLabels[m_iValue].c_str() );
       }
       else
       {
-        text = StringUtils::Format("%s", std::string(m_vecLabels[m_iValue]).c_str() );
+        text = StringUtils::Format("%s", m_vecLabels[m_iValue].c_str() );
       }
     }
     else text = StringUtils::Format("?%i?", m_iValue);
@@ -429,16 +474,23 @@ void CGUISpinControl::Process(unsigned int currentTime, CDirtyRegionList &dirtyr
   if (!arrowsOnRight)
   {
     const float space = 5;
-    changed |= m_imgspinDownFocus.SetPosition(m_posX + textWidth + space, m_posY);
-    changed |= m_imgspinDown.SetPosition(m_posX + textWidth + space, m_posY);
-    changed |= m_imgspinUpFocus.SetPosition(m_posX + textWidth + space + m_imgspinDown.GetWidth(), m_posY);
-    changed |= m_imgspinUp.SetPosition(m_posX + textWidth + space + m_imgspinDown.GetWidth(), m_posY);
+    changed |= m_imgspinDownFocus->SetPosition(m_posX + textWidth + space, m_posY);
+    changed |= m_imgspinDown->SetPosition(m_posX + textWidth + space, m_posY);
+    changed |= m_imgspinDownDisabled->SetPosition(m_posX + textWidth + space, m_posY);
+    changed |= m_imgspinUpFocus->SetPosition(m_posX + textWidth + space + m_imgspinDown->GetWidth(),
+                                             m_posY);
+    changed |=
+        m_imgspinUp->SetPosition(m_posX + textWidth + space + m_imgspinDown->GetWidth(), m_posY);
+    changed |= m_imgspinUpDisabled->SetPosition(
+        m_posX + textWidth + space + m_imgspinDownDisabled->GetWidth(), m_posY);
   }
 
-  changed |= m_imgspinDownFocus.Process(currentTime);
-  changed |= m_imgspinDown.Process(currentTime);
-  changed |= m_imgspinUp.Process(currentTime);
-  changed |= m_imgspinUpFocus.Process(currentTime);
+  changed |= m_imgspinDownFocus->Process(currentTime);
+  changed |= m_imgspinDown->Process(currentTime);
+  changed |= m_imgspinUp->Process(currentTime);
+  changed |= m_imgspinUpFocus->Process(currentTime);
+  changed |= m_imgspinUpDisabled->Process(currentTime);
+  changed |= m_imgspinDownDisabled->Process(currentTime);
   changed |= m_label.Process(currentTime);
 
   if (changed)
@@ -452,19 +504,24 @@ void CGUISpinControl::Render()
   if ( HasFocus() )
   {
     if (m_iSelect == SPIN_BUTTON_UP)
-      m_imgspinUpFocus.Render();
+      m_imgspinUpFocus->Render();
     else
-      m_imgspinUp.Render();
+      m_imgspinUp->Render();
 
     if (m_iSelect == SPIN_BUTTON_DOWN)
-      m_imgspinDownFocus.Render();
+      m_imgspinDownFocus->Render();
     else
-      m_imgspinDown.Render();
+      m_imgspinDown->Render();
+  }
+  else if ( !HasFocus() && !IsDisabled() )
+  {
+    m_imgspinUp->Render();
+    m_imgspinDown->Render();
   }
   else
   {
-    m_imgspinUp.Render();
-    m_imgspinDown.Render();
+    m_imgspinUpDisabled->Render();
+    m_imgspinDownDisabled->Render();
   }
 
   if (m_label.GetLabelInfo().font)
@@ -477,7 +534,8 @@ void CGUISpinControl::Render()
     if (arrowsOnRight)
       RenderText(m_posX - space - textWidth, m_posY, textWidth, m_height);
     else
-      RenderText(m_posX + m_imgspinDown.GetWidth() + m_imgspinUp.GetWidth() + space, m_posY, textWidth, m_height);
+      RenderText(m_posX + m_imgspinDown->GetWidth() + m_imgspinUp->GetWidth() + space, m_posY,
+                 textWidth, m_height);
 
     // set our hit rectangle for MouseOver events
     m_hitRect = m_label.GetRenderRect();
@@ -524,6 +582,9 @@ void CGUISpinControl::SetValueFromLabel(const std::string &label)
   }
   else
     m_iValue = atoi(label.c_str());
+
+  MarkDirtyRegion();
+  SetInvalid();
 }
 
 void CGUISpinControl::SetValue(int iValue)
@@ -538,6 +599,7 @@ void CGUISpinControl::SetValue(int iValue)
   else
     m_iValue = iValue;
 
+  MarkDirtyRegion();
   SetInvalid();
 }
 
@@ -586,19 +648,19 @@ std::string CGUISpinControl::GetStringValue() const
   return "";
 }
 
-void CGUISpinControl::AddLabel(const string& strLabel, int iValue)
+void CGUISpinControl::AddLabel(const std::string& strLabel, int iValue)
 {
   m_vecLabels.push_back(strLabel);
   m_vecValues.push_back(iValue);
 }
 
-void CGUISpinControl::AddLabel(const string& strLabel, const string& strValue)
+void CGUISpinControl::AddLabel(const std::string& strLabel, const std::string& strValue)
 {
   m_vecLabels.push_back(strLabel);
   m_vecStrValues.push_back(strValue);
 }
 
-const string CGUISpinControl::GetLabel() const
+const std::string CGUISpinControl::GetLabel() const
 {
   if (m_iValue >= 0 && m_iValue < (int)m_vecLabels.size())
   {
@@ -611,17 +673,18 @@ void CGUISpinControl::SetPosition(float posX, float posY)
 {
   CGUIControl::SetPosition(posX, posY);
 
-  m_imgspinDownFocus.SetPosition(posX, posY);
-  m_imgspinDown.SetPosition(posX, posY);
+  m_imgspinDownFocus->SetPosition(posX, posY);
+  m_imgspinDown->SetPosition(posX, posY);
+  m_imgspinDownDisabled->SetPosition(posX, posY);
 
-  m_imgspinUp.SetPosition(m_posX + m_imgspinDown.GetWidth(), m_posY);
-  m_imgspinUpFocus.SetPosition(m_posX + m_imgspinDownFocus.GetWidth(), m_posY);
-
+  m_imgspinUp->SetPosition(m_posX + m_imgspinDown->GetWidth(), m_posY);
+  m_imgspinUpFocus->SetPosition(m_posX + m_imgspinDownFocus->GetWidth(), m_posY);
+  m_imgspinUpDisabled->SetPosition(m_posX + m_imgspinDownDisabled->GetWidth(), m_posY);
 }
 
 float CGUISpinControl::GetWidth() const
 {
-  return m_imgspinDown.GetWidth() * 2 ;
+  return m_imgspinDown->GetWidth() * 2;
 }
 
 bool CGUISpinControl::CanMoveUp(bool bTestReverse)
@@ -917,7 +980,7 @@ int CGUISpinControl::GetMaximum() const
 
 bool CGUISpinControl::HitTest(const CPoint &point) const
 {
-  if (m_imgspinUpFocus.HitTest(point) || m_imgspinDownFocus.HitTest(point))
+  if (m_imgspinUpFocus->HitTest(point) || m_imgspinDownFocus->HitTest(point))
     return true;
   return CGUIControl::HitTest(point);
 }
@@ -925,7 +988,7 @@ bool CGUISpinControl::HitTest(const CPoint &point) const
 bool CGUISpinControl::OnMouseOver(const CPoint &point)
 {
   int select = m_iSelect;
-  if (m_imgspinDownFocus.HitTest(point))
+  if (m_imgspinDownFocus->HitTest(point))
     m_iSelect = SPIN_BUTTON_DOWN;
   else
     m_iSelect = SPIN_BUTTON_UP;
@@ -940,21 +1003,27 @@ EVENT_RESULT CGUISpinControl::OnMouseEvent(const CPoint &point, const CMouseEven
 {
   if (event.m_id == ACTION_MOUSE_LEFT_CLICK)
   {
-    if (m_imgspinUpFocus.HitTest(point))
+    if (m_imgspinUpFocus->HitTest(point))
       MoveUp();
-    else if (m_imgspinDownFocus.HitTest(point))
+    else if (m_imgspinDownFocus->HitTest(point))
       MoveDown();
     return EVENT_RESULT_HANDLED;
   }
   else if (event.m_id == ACTION_MOUSE_WHEEL_UP)
   {
-    MoveUp();
-    return EVENT_RESULT_HANDLED;
+    if (m_imgspinUpFocus->HitTest(point) || m_imgspinDownFocus->HitTest(point))
+    {
+      MoveUp();
+      return EVENT_RESULT_HANDLED;
+    }
   }
   else if (event.m_id == ACTION_MOUSE_WHEEL_DOWN)
   {
-    MoveDown();
-    return EVENT_RESULT_HANDLED;
+    if (m_imgspinUpFocus->HitTest(point) || m_imgspinDownFocus->HitTest(point))
+    {
+      MoveDown();
+      return EVENT_RESULT_HANDLED;
+    }
   }
   return EVENT_RESULT_UNHANDLED;
 }
@@ -984,10 +1053,12 @@ bool CGUISpinControl::UpdateColors()
 {
   bool changed = CGUIControl::UpdateColors();
   changed |= m_label.UpdateColors();
-  changed |= m_imgspinDownFocus.SetDiffuseColor(m_diffuseColor);
-  changed |= m_imgspinDown.SetDiffuseColor(m_diffuseColor);
-  changed |= m_imgspinUp.SetDiffuseColor(m_diffuseColor);
-  changed |= m_imgspinUpFocus.SetDiffuseColor(m_diffuseColor);
+  changed |= m_imgspinDownFocus->SetDiffuseColor(m_diffuseColor);
+  changed |= m_imgspinDown->SetDiffuseColor(m_diffuseColor);
+  changed |= m_imgspinUp->SetDiffuseColor(m_diffuseColor);
+  changed |= m_imgspinUpFocus->SetDiffuseColor(m_diffuseColor);
+  changed |= m_imgspinUpDisabled->SetDiffuseColor(m_diffuseColor);
+  changed |= m_imgspinDownDisabled->SetDiffuseColor(m_diffuseColor);
 
   return changed;
 }

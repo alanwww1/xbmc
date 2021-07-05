@@ -1,30 +1,16 @@
-#pragma once
 /*
- *      Copyright (C) 2011-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2011-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "system.h"
+#pragma once
 
-#if defined(TARGET_DARWIN_OSX)
 #include <list>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include <CoreAudio/CoreAudio.h>
 
@@ -53,13 +39,13 @@ const AudioChannelLabel g_LabelMap[] =
   kAudioChannelLabel_Right,                 // PCM_FRONT_RIGHT,
   kAudioChannelLabel_Center,                // PCM_FRONT_CENTER,
   kAudioChannelLabel_LFEScreen,             // PCM_LOW_FREQUENCY,
-  kAudioChannelLabel_LeftSurroundDirect,    // PCM_BACK_LEFT, *** This is incorrect, but has been changed to match dvdplayer
-  kAudioChannelLabel_RightSurroundDirect,   // PCM_BACK_RIGHT, *** This is incorrect, but has been changed to match dvdplayer
+  kAudioChannelLabel_LeftSurroundDirect,    // PCM_BACK_LEFT, *** This is incorrect, but has been changed to match VideoPlayer
+  kAudioChannelLabel_RightSurroundDirect,   // PCM_BACK_RIGHT, *** This is incorrect, but has been changed to match VideoPlayer
   kAudioChannelLabel_LeftCenter,            // PCM_FRONT_LEFT_OF_CENTER,
   kAudioChannelLabel_RightCenter,           // PCM_FRONT_RIGHT_OF_CENTER,
   kAudioChannelLabel_CenterSurround,        // PCM_BACK_CENTER,
-  kAudioChannelLabel_LeftSurround,          // PCM_SIDE_LEFT, *** This is incorrect, but has been changed to match dvdplayer
-  kAudioChannelLabel_RightSurround,         // PCM_SIDE_RIGHT, *** This is incorrect, but has been changed to match dvdplayer
+  kAudioChannelLabel_LeftSurround,          // PCM_SIDE_LEFT, *** This is incorrect, but has been changed to match VideoPlayer
+  kAudioChannelLabel_RightSurround,         // PCM_SIDE_RIGHT, *** This is incorrect, but has been changed to match VideoPlayer
   kAudioChannelLabel_VerticalHeightLeft,    // PCM_TOP_FRONT_LEFT,
   kAudioChannelLabel_VerticalHeightRight,   // PCM_TOP_FRONT_RIGHT,
   kAudioChannelLabel_VerticalHeightCenter,  // PCM_TOP_FRONT_CENTER,
@@ -87,5 +73,3 @@ public:
 protected:
   AudioChannelLayout* m_pLayout;
 };
-
-#endif

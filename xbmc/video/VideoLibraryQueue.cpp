@@ -1,40 +1,31 @@
 /*
- *      Copyright (C) 2014 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2014-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "VideoLibraryQueue.h"
+
 #include "GUIUserMessages.h"
+#include "ServiceBroker.h"
 #include "Util.h"
+#include "guilib/GUIComponent.h"
 #include "guilib/GUIWindowManager.h"
 #include "threads/SingleLock.h"
-#include "video/VideoDatabase.h"
 #include "video/jobs/VideoLibraryCleaningJob.h"
 #include "video/jobs/VideoLibraryJob.h"
 #include "video/jobs/VideoLibraryMarkWatchedJob.h"
+#include "video/jobs/VideoLibraryRefreshingJob.h"
+#include "video/jobs/VideoLibraryResetResumePointJob.h"
 #include "video/jobs/VideoLibraryScanningJob.h"
 
-using namespace std;
+#include <utility>
 
 CVideoLibraryQueue::CVideoLibraryQueue()
-  : CJobQueue(false, 1, CJob::PRIORITY_LOW_PAUSABLE),
-    m_jobs(),
-    m_cleaning(false)
+  : CJobQueue(false, 1, CJob::PRIORITY_LOW),
+    m_jobs()
 { }
 
 CVideoLibraryQueue::~CVideoLibraryQueue()
@@ -43,7 +34,7 @@ CVideoLibraryQueue::~CVideoLibraryQueue()
   m_jobs.clear();
 }
 
-CVideoLibraryQueue& CVideoLibraryQueue::Get()
+CVideoLibraryQueue& CVideoLibraryQueue::GetInstance()
 {
   static CVideoLibraryQueue s_instance;
   return s_instance;
@@ -86,6 +77,7 @@ void CVideoLibraryQueue::StopLibraryScanning()
   // cancel all scanning jobs
   for (VideoLibraryJobs::const_iterator job = tmpScanningJobs.begin(); job != tmpScanningJobs.end(); ++job)
     CancelJob(*job);
+  Refresh();
 }
 
 void CVideoLibraryQueue::CleanLibrary(const std::set<int>& paths /* = std::set<int>() */, bool asynchronous /* = true */, CGUIDialogProgressBarHandle* progressBar /* = NULL */)
@@ -96,11 +88,14 @@ void CVideoLibraryQueue::CleanLibrary(const std::set<int>& paths /* = std::set<i
     AddJob(cleaningJob);
   else
   {
+    m_modal = true;
     m_cleaning = true;
     cleaningJob->DoWork();
 
     delete cleaningJob;
     m_cleaning = false;
+    m_modal = false;
+    Refresh();
   }
 }
 
@@ -110,10 +105,34 @@ void CVideoLibraryQueue::CleanLibraryModal(const std::set<int>& paths /* = std::
   if (IsRunning())
     return;
 
+  m_modal = true;
   m_cleaning = true;
   CVideoLibraryCleaningJob cleaningJob(paths, true);
   cleaningJob.DoWork();
   m_cleaning = false;
+  m_modal = false;
+  Refresh();
+}
+
+void CVideoLibraryQueue::RefreshItem(CFileItemPtr item, bool ignoreNfo /* = false */, bool forceRefresh /* = true */, bool refreshAll /* = false */, const std::string& searchTitle /* = "" */)
+{
+  AddJob(new CVideoLibraryRefreshingJob(std::move(item), forceRefresh, refreshAll, ignoreNfo,
+                                        searchTitle));
+}
+
+bool CVideoLibraryQueue::RefreshItemModal(CFileItemPtr item, bool forceRefresh /* = true */, bool refreshAll /* = false */)
+{
+  // we can't perform a modal library cleaning if other jobs are running
+  if (IsRunning())
+    return false;
+
+  m_modal = true;
+  CVideoLibraryRefreshingJob refreshingJob(std::move(item), forceRefresh, refreshAll);
+
+  bool result = refreshingJob.DoModal();
+  m_modal = false;
+
+  return result;
 }
 
 void CVideoLibraryQueue::MarkAsWatched(const CFileItemPtr &item, bool watched)
@@ -122,6 +141,14 @@ void CVideoLibraryQueue::MarkAsWatched(const CFileItemPtr &item, bool watched)
     return;
 
   AddJob(new CVideoLibraryMarkWatchedJob(item, watched));
+}
+
+void CVideoLibraryQueue::ResetResumePoint(const CFileItemPtr& item)
+{
+  if (item == nullptr)
+    return;
+
+  AddJob(new CVideoLibraryResetResumePointJob(item));
 }
 
 void CVideoLibraryQueue::AddJob(CVideoLibraryJob *job)
@@ -152,13 +179,21 @@ void CVideoLibraryQueue::CancelJob(CVideoLibraryJob *job)
     return;
 
   CSingleLock lock(m_critical);
+  // remember the job type needed later because the job might be deleted
+  // in the call to CJobQueue::CancelJob()
+  std::string jobType;
+  if (job->GetType() != NULL)
+    jobType = job->GetType();
+
+  // check if the job supports cancellation and cancel it
   if (job->CanBeCancelled())
     job->Cancel();
 
+  // remove the job from the job queue
   CJobQueue::CancelJob(job);
 
   // remove the job from our list of queued/running jobs
-  VideoLibraryJobMap::iterator jobsIt = m_jobs.find(job->GetType());
+  VideoLibraryJobMap::iterator jobsIt = m_jobs.find(jobType);
   if (jobsIt != m_jobs.end())
     jobsIt->second.erase(job);
 }
@@ -174,7 +209,14 @@ void CVideoLibraryQueue::CancelAllJobs()
 
 bool CVideoLibraryQueue::IsRunning() const
 {
-  return CJobQueue::IsProcessing() || m_cleaning;
+  return CJobQueue::IsProcessing() || m_modal;
+}
+
+void CVideoLibraryQueue::Refresh()
+{
+  CUtil::DeleteVideoDatabaseDirectoryCache();
+  CGUIMessage msg(GUI_MSG_NOTIFY_ALL, 0, 0, GUI_MSG_UPDATE);
+  CServiceBroker::GetGUI()->GetWindowManager().SendThreadMessage(msg);
 }
 
 void CVideoLibraryQueue::OnJobComplete(unsigned int jobID, bool success, CJob *job)
@@ -182,11 +224,7 @@ void CVideoLibraryQueue::OnJobComplete(unsigned int jobID, bool success, CJob *j
   if (success)
   {
     if (QueueEmpty())
-    {
-      CUtil::DeleteVideoDatabaseDirectoryCache();
-      CGUIMessage msg(GUI_MSG_NOTIFY_ALL, 0, 0, GUI_MSG_UPDATE);
-      g_windowManager.SendThreadMessage(msg);
-    }
+      Refresh();
   }
 
   {

@@ -1,21 +1,9 @@
 /*
- *      Copyright (C) 2007-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2007-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 // C++ Implementation: CKeyboard
@@ -24,18 +12,25 @@
 //#define DEBUG_KEYBOARD_GETCHAR
 
 #include "KeyboardStat.h"
-#include "KeyboardLayoutConfiguration.h"
-#include "windowing/XBMC_events.h"
-#include "utils/TimeUtils.h"
+
+#include "ServiceBroker.h"
+#include "input/InputTypes.h"
 #include "input/XBMC_keytable.h"
 #include "input/XBMC_vkeys.h"
 #include "peripherals/Peripherals.h"
 #include "peripherals/devices/PeripheralHID.h"
+#include "threads/SystemClock.h"
+#include "utils/log.h"
+#include "windowing/XBMC_events.h"
 
-using namespace std;
-using namespace PERIPHERALS;
+using namespace KODI;
+using namespace INPUT;
 
-CKeyboardStat g_Keyboard;
+bool operator==(const XBMC_keysym& lhs, const XBMC_keysym& rhs)
+{
+  return lhs.mod == rhs.mod && lhs.scancode == rhs.scancode && lhs.sym == rhs.sym &&
+         lhs.unicode == rhs.unicode;
+}
 
 CKeyboardStat::CKeyboardStat()
 {
@@ -43,34 +38,36 @@ CKeyboardStat::CKeyboardStat()
   m_lastKeyTime = 0;
 }
 
-CKeyboardStat::~CKeyboardStat()
-{
-}
-
 void CKeyboardStat::Initialize()
 {
 }
 
-bool CKeyboardStat::LookupSymAndUnicodePeripherals(XBMC_keysym &keysym, uint8_t *key, char *unicode)
+bool CKeyboardStat::LookupSymAndUnicodePeripherals(XBMC_keysym& keysym, uint8_t* key, char* unicode)
 {
-  vector<CPeripheral *> hidDevices;
-  if (g_peripherals.GetPeripheralsWithFeature(hidDevices, FEATURE_HID))
+  using namespace PERIPHERALS;
+
+  PeripheralVector hidDevices;
+  if (CServiceBroker::GetPeripherals().GetPeripheralsWithFeature(hidDevices, FEATURE_HID))
   {
-    for (unsigned int iDevicePtr = 0; iDevicePtr < hidDevices.size(); iDevicePtr++)
+    for (auto& peripheral : hidDevices)
     {
-      CPeripheralHID *hidDevice = (CPeripheralHID *) hidDevices.at(iDevicePtr);
-      if (hidDevice && hidDevice->LookupSymAndUnicode(keysym, key, unicode))
+      std::shared_ptr<CPeripheralHID> hidDevice =
+          std::static_pointer_cast<CPeripheralHID>(peripheral);
+      if (hidDevice->LookupSymAndUnicode(keysym, key, unicode))
         return true;
     }
   }
   return false;
 }
 
-const CKey CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
-{ uint8_t vkey;
+CKey CKeyboardStat::TranslateKey(XBMC_keysym& keysym) const
+{
+  uint32_t keycode;
+  uint8_t vkey;
   wchar_t unicode;
   char ascii;
   uint32_t modifiers;
+  uint32_t lockingModifiers;
   unsigned int held;
   XBMCKEYTABLE keytable;
 
@@ -86,11 +83,21 @@ const CKey CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
   if (keysym.mod & XBMCKMOD_META)
     modifiers |= CKey::MODIFIER_META;
 
-  CLog::Log(LOGDEBUG, "Keyboard: scancode: 0x%02x, sym: 0x%04x, unicode: 0x%04x, modifier: 0x%x", keysym.scancode, keysym.sym, keysym.unicode, keysym.mod);
+  lockingModifiers = 0;
+  if (keysym.mod & XBMCKMOD_NUM)
+    lockingModifiers |= CKey::MODIFIER_NUMLOCK;
+  if (keysym.mod & XBMCKMOD_CAPS)
+    lockingModifiers |= CKey::MODIFIER_CAPSLOCK;
+  if (keysym.mod & XBMCKMOD_MODE)
+    lockingModifiers |= CKey::MODIFIER_SCROLLLOCK;
+
+  CLog::Log(LOGDEBUG, "Keyboard: scancode: 0x%02x, sym: 0x%04x, unicode: 0x%04x, modifier: 0x%x",
+            keysym.scancode, keysym.sym, keysym.unicode, keysym.mod);
 
   // The keysym.unicode is usually valid, even if it is zero. A zero
   // unicode just means this is a non-printing keypress. The ascii and
   // vkey will be set below.
+  keycode = keysym.sym;
   unicode = keysym.unicode;
   ascii = 0;
   vkey = 0;
@@ -114,6 +121,8 @@ const CKey CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
   // will match keys like \ that are on different keys on regional keyboards.
   else if (KeyTableLookupUnicode(keysym.unicode, &keytable))
   {
+    if (keycode == 0)
+      keycode = keytable.sym;
     vkey = keytable.vkey;
     ascii = keytable.ascii;
   }
@@ -137,28 +146,29 @@ const CKey CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
   {
     if (!vkey && !ascii)
     {
-      if (keysym.mod & XBMCKMOD_LSHIFT) vkey = 0xa0;
-      else if (keysym.mod & XBMCKMOD_RSHIFT) vkey = 0xa1;
-      else if (keysym.mod & XBMCKMOD_LALT) vkey = 0xa4;
-      else if (keysym.mod & XBMCKMOD_RALT) vkey = 0xa5;
-      else if (keysym.mod & XBMCKMOD_LCTRL) vkey = 0xa2;
-      else if (keysym.mod & XBMCKMOD_RCTRL) vkey = 0xa3;
+      if (keysym.mod & XBMCKMOD_LSHIFT)
+        vkey = 0xa0;
+      else if (keysym.mod & XBMCKMOD_RSHIFT)
+        vkey = 0xa1;
+      else if (keysym.mod & XBMCKMOD_LALT)
+        vkey = 0xa4;
+      else if (keysym.mod & XBMCKMOD_RALT)
+        vkey = 0xa5;
+      else if (keysym.mod & XBMCKMOD_LCTRL)
+        vkey = 0xa2;
+      else if (keysym.mod & XBMCKMOD_RCTRL)
+        vkey = 0xa3;
       else if (keysym.unicode > 32 && keysym.unicode < 128)
         // only TRUE ASCII! (Otherwise XBMC crashes! No unicode not even latin 1!)
         ascii = (char)(keysym.unicode & 0xff);
     }
   }
 
-  // At this point update the key hold time
-  if (keysym.mod == m_lastKeysym.mod && keysym.scancode == m_lastKeysym.scancode && keysym.sym == m_lastKeysym.sym && keysym.unicode == m_lastKeysym.unicode)
+  if (keysym == m_lastKeysym)
   {
-    held = CTimeUtils::GetFrameTime() - m_lastKeyTime;
-  }
-  else
-  {
-    m_lastKeysym = keysym;
-    m_lastKeyTime = CTimeUtils::GetFrameTime();
-    held = 0;
+    held = XbmcThreads::SystemClockMillis() - m_lastKeyTime;
+    if (held > HOLD_TRESHOLD)
+      modifiers |= CKey::MODIFIER_LONG;
   }
 
   // For all shift-X keys except shift-A to shift-Z and shift-F1 to shift-F24 the
@@ -168,14 +178,24 @@ const CKey CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
   // The function keys are exempted because function keys have no shifted value and
   // the Nyxboard remote uses keys like Shift-F3 for some buttons.
   if (modifiers == CKey::MODIFIER_SHIFT)
-    if ((unicode < 'A' || unicode > 'Z') && (unicode < 'a' || unicode > 'z') && (vkey < XBMCVK_F1 || vkey > XBMCVK_F24))
+    if ((unicode < 'A' || unicode > 'Z') && (unicode < 'a' || unicode > 'z') &&
+        (vkey < XBMCVK_F1 || vkey > XBMCVK_F24))
       modifiers = 0;
 
   // Create and return a CKey
 
-  CKey key(vkey, unicode, ascii, modifiers, held);
+  CKey key(keycode, vkey, unicode, ascii, modifiers, lockingModifiers, held);
 
   return key;
+}
+
+void CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
+{
+  if (!(m_lastKeysym == keysym))
+  {
+    m_lastKeysym = keysym;
+    m_lastKeyTime = XbmcThreads::SystemClockMillis();
+  }
 }
 
 void CKeyboardStat::ProcessKeyUp(void)
@@ -185,17 +205,18 @@ void CKeyboardStat::ProcessKeyUp(void)
 }
 
 // Return the key name given a key ID
-// Used to make the debug log more intelligable
+// Used to make the debug log more intelligible
 // The KeyID includes the flags for ctrl, alt etc
 
 std::string CKeyboardStat::GetKeyName(int KeyID)
-{ int keyid;
+{
+  int keyid;
   std::string keyname;
   XBMCKEYTABLE keytable;
 
   keyname.clear();
 
-// Get modifiers
+  // Get modifiers
 
   if (KeyID & CKey::MODIFIER_CTRL)
     keyname.append("ctrl-");
@@ -207,17 +228,26 @@ std::string CKeyboardStat::GetKeyName(int KeyID)
     keyname.append("win-");
   if (KeyID & CKey::MODIFIER_META)
     keyname.append("meta-");
+  if (KeyID & CKey::MODIFIER_LONG)
+    keyname.append("long-");
 
-// Now get the key name
+  // Now get the key name
 
   keyid = KeyID & 0xFF;
-  if (KeyTableLookupVKeyName(keyid, &keytable))
+  bool VKeyFound = KeyTableLookupVKeyName(keyid, &keytable);
+  if (VKeyFound)
     keyname.append(keytable.keyname);
   else
     keyname += StringUtils::Format("%i", keyid);
-  keyname += StringUtils::Format(" (0x%02x)", KeyID);
+
+  // in case this might be an universalremote keyid
+  // we also print the possible corresponding obc code
+  // so users can easily find it in their universalremote
+  // map xml
+  if (VKeyFound || keyid > 255)
+    keyname += StringUtils::Format(" (0x%02x)", KeyID);
+  else // obc keys are 255 -rawid
+    keyname += StringUtils::Format(" (0x%02x, obc%i)", KeyID, 255 - KeyID);
 
   return keyname;
 }
-
-

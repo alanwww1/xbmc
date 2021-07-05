@@ -1,21 +1,9 @@
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "cores/AudioEngine/Utils/AEUtil.h"
@@ -23,9 +11,9 @@
 #include "utils/log.h"
 
 extern "C" {
-#include "libavutil/channel_layout.h"
-#include "libavutil/opt.h"
-#include "libswresample/swresample.h"
+#include <libavutil/channel_layout.h>
+#include <libavutil/opt.h>
+#include <libswresample/swresample.h>
 }
 
 using namespace ActiveAE;
@@ -33,32 +21,32 @@ using namespace ActiveAE;
 CActiveAEResampleFFMPEG::CActiveAEResampleFFMPEG()
 {
   m_pContext = NULL;
-  m_loaded = true;
+  m_doesResample = false;
 }
 
 CActiveAEResampleFFMPEG::~CActiveAEResampleFFMPEG()
 {
-  if (m_pContext)
-    swr_free(&m_pContext);
+  swr_free(&m_pContext);
 }
 
-bool CActiveAEResampleFFMPEG::Init(uint64_t dst_chan_layout, int dst_channels, int dst_rate, AVSampleFormat dst_fmt, int dst_bits, int dst_dither, uint64_t src_chan_layout, int src_channels, int src_rate, AVSampleFormat src_fmt, int src_bits, int src_dither, bool upmix, bool normalize, CAEChannelInfo *remapLayout, AEQuality quality)
+bool CActiveAEResampleFFMPEG::Init(SampleConfig dstConfig, SampleConfig srcConfig, bool upmix, bool normalize, double centerMix,
+                                   CAEChannelInfo *remapLayout, AEQuality quality, bool force_resample)
 {
-  if (!m_loaded)
-    return false;
+  m_dst_chan_layout = dstConfig.channel_layout;
+  m_dst_channels = dstConfig.channels;
+  m_dst_rate = dstConfig.sample_rate;
+  m_dst_fmt = dstConfig.fmt;
+  m_dst_bits = dstConfig.bits_per_sample;
+  m_dst_dither_bits = dstConfig.dither_bits;
+  m_src_chan_layout = srcConfig.channel_layout;
+  m_src_channels = srcConfig.channels;
+  m_src_rate = srcConfig.sample_rate;
+  m_src_fmt = srcConfig.fmt;
+  m_src_bits = srcConfig.bits_per_sample;
+  m_src_dither_bits = srcConfig.dither_bits;
 
-  m_dst_chan_layout = dst_chan_layout;
-  m_dst_channels = dst_channels;
-  m_dst_rate = dst_rate;
-  m_dst_fmt = dst_fmt;
-  m_dst_bits = dst_bits;
-  m_dst_dither_bits = dst_dither;
-  m_src_chan_layout = src_chan_layout;
-  m_src_channels = src_channels;
-  m_src_rate = src_rate;
-  m_src_fmt = src_fmt;
-  m_src_bits = src_bits;
-  m_src_dither_bits = src_dither;
+  if (m_src_rate != m_dst_rate)
+    m_doesResample = true;
 
   if (m_dst_chan_layout == 0)
     m_dst_chan_layout = av_get_default_channel_layout(m_dst_channels);
@@ -69,7 +57,7 @@ bool CActiveAEResampleFFMPEG::Init(uint64_t dst_chan_layout, int dst_channels, i
                                                         m_src_chan_layout, m_src_fmt, m_src_rate,
                                                         0, NULL);
 
-  if(!m_pContext)
+  if (!m_pContext)
   {
     CLog::Log(LOGERROR, "CActiveAEResampleFFMPEG::Init - create context failed");
     return false;
@@ -105,6 +93,8 @@ bool CActiveAEResampleFFMPEG::Init(uint64_t dst_chan_layout, int dst_channels, i
   {
      av_opt_set_double(m_pContext, "rematrix_maxval", 1.0, 0);
   }
+
+  av_opt_set_double(m_pContext, "center_mix_level", centerMix, 0);
 
   if (remapLayout)
   {
@@ -181,22 +171,30 @@ bool CActiveAEResampleFFMPEG::Init(uint64_t dst_chan_layout, int dst_channels, i
 
 int CActiveAEResampleFFMPEG::Resample(uint8_t **dst_buffer, int dst_samples, uint8_t **src_buffer, int src_samples, double ratio)
 {
+  int delta = 0;
+  int distance = 0;
   if (ratio != 1.0)
   {
-    if (swr_set_compensation(m_pContext,
-                                            (dst_samples*ratio-dst_samples)*m_dst_rate/m_src_rate,
-                                             dst_samples*m_dst_rate/m_src_rate) < 0)
+    delta = (src_samples*ratio-src_samples)*m_dst_rate/m_src_rate;
+    distance = src_samples*m_dst_rate/m_src_rate;
+    m_doesResample = true;
+  }
+
+  if (m_doesResample)
+  {
+    if (swr_set_compensation(m_pContext, delta, distance) < 0)
     {
       CLog::Log(LOGERROR, "CActiveAEResampleFFMPEG::Resample - set compensation failed");
-      return 0;
+      return -1;
     }
   }
 
-  int ret = swr_convert(m_pContext, dst_buffer, dst_samples, (const uint8_t**)src_buffer, src_samples);
+  //! @bug libavresample isn't const correct
+  int ret = swr_convert(m_pContext, dst_buffer, dst_samples, const_cast<const uint8_t**>(src_buffer), src_samples);
   if (ret < 0)
   {
     CLog::Log(LOGERROR, "CActiveAEResampleFFMPEG::Resample - resample failed");
-    return 0;
+    return -1;
   }
 
   // special handling for S24 formats which are carried in S32

@@ -1,119 +1,70 @@
-#pragma once
 /*
- *      Copyright (C) 2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2013-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
+#pragma once
+
+#include "addons/IAddon.h"
+
+#include <memory>
 #include <string>
 #include <vector>
 
-#include "ILanguageInvocationHandler.h"
-#include "addons/IAddon.h"
-
 class CLanguageInvokerThread;
+class ILanguageInvocationHandler;
 
-typedef enum {
+typedef enum
+{
   InvokerStateUninitialized,
   InvokerStateInitialized,
   InvokerStateRunning,
   InvokerStateStopping,
-  InvokerStateDone,
+  InvokerStateScriptDone,
+  InvokerStateExecutionDone,
   InvokerStateFailed
 } InvokerState;
 
 class ILanguageInvoker
 {
 public:
-  ILanguageInvoker(ILanguageInvocationHandler *invocationHandler)
-    : m_id(-1), m_state(InvokerStateUninitialized),
-      m_invocationHandler(invocationHandler)
-  { }
-  virtual ~ILanguageInvoker() { }
+  explicit ILanguageInvoker(ILanguageInvocationHandler *invocationHandler);
+  virtual ~ILanguageInvoker();
 
-  virtual bool Execute(const std::string &script, const std::vector<std::string> &arguments = std::vector<std::string>())
-  {
-    if (m_invocationHandler)
-      m_invocationHandler->OnScriptStarted(this);
-
-    return execute(script, arguments);
-  }
-  virtual bool Stop(bool abort = false) { return stop(abort); }
+  virtual bool Execute(const std::string &script, const std::vector<std::string> &arguments = std::vector<std::string>());
+  virtual bool Stop(bool abort = false);
+  virtual bool IsStopping() const;
 
   void SetId(int id) { m_id = id; }
   int GetId() const { return m_id; }
   const ADDON::AddonPtr& GetAddon() const { return m_addon; }
   void SetAddon(const ADDON::AddonPtr &addon) { m_addon = addon; }
   InvokerState GetState() const { return m_state; }
-  bool IsActive() const { return GetState() > InvokerStateUninitialized && GetState() < InvokerStateDone; }
-  bool IsRunning() const { return GetState() == InvokerStateRunning; }
-  virtual bool IsStopping() const { return GetState() == InvokerStateStopping; }
+  bool IsActive() const;
+  bool IsRunning() const;
+  void Reset() { m_state = InvokerStateUninitialized; };
 
 protected:
   friend class CLanguageInvokerThread;
 
+  /**
+   * Called to notify the script is aborting.
+   */
+  virtual void AbortNotification();
+
   virtual bool execute(const std::string &script, const std::vector<std::string> &arguments) = 0;
   virtual bool stop(bool abort) = 0;
 
-  virtual void pulseGlobalEvent()
-  {
-    if (m_invocationHandler)
-      m_invocationHandler->PulseGlobalEvent();
-  }
+  virtual void pulseGlobalEvent();
+  virtual bool onExecutionInitialized();
+  virtual void onExecutionFailed();
+  virtual void onExecutionDone();
+  virtual void onExecutionFinalized();
 
-  virtual bool onExecutionInitialized()
-  {
-    if (m_invocationHandler == NULL)
-      return false;
-
-    return m_invocationHandler->OnScriptInitialized(this);
-  }
-
-  virtual void onAbortRequested()
-  {
-    if (m_invocationHandler)
-      m_invocationHandler->OnScriptAbortRequested(this);
-  }
-
-  virtual void onExecutionFailed()
-  {
-    if (m_invocationHandler)
-      m_invocationHandler->OnScriptEnded(this);
-  }
-
-  virtual void onExecutionDone()
-  {
-    if (m_invocationHandler)
-      m_invocationHandler->OnScriptEnded(this);
-  }
-
-  virtual void onExecutionFinalized()
-  {
-    if (m_invocationHandler)
-      m_invocationHandler->OnScriptFinalized(this);
-  }
-
-  void setState(InvokerState state)
-  {
-    if (state <= m_state)
-      return;
-
-    m_state = state;
-  }
+  void setState(InvokerState state);
 
   ADDON::AddonPtr m_addon;
 
@@ -122,3 +73,5 @@ private:
   InvokerState m_state;
   ILanguageInvocationHandler *m_invocationHandler;
 };
+
+typedef std::shared_ptr<ILanguageInvoker> LanguageInvokerPtr;

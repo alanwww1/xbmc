@@ -1,5 +1,6 @@
 ROOT_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 -include ../../Makefile.include
+DEPS=Makefile
 
 ifeq ($(NATIVEPREFIX),)
   PREFIX = $(ROOT_DIR)
@@ -12,6 +13,7 @@ ifeq ($(NATIVEPLATFORM),)
   EXTRA_CONFIGURE = --enable-static
 else
   PLATFORM = $(NATIVEPLATFORM)
+  DEPS += ../../Makefile.include
 endif
 
 ifeq ($(NATIVE_OS), linux)
@@ -21,8 +23,8 @@ ifeq ($(NATIVE_OS), android)
   EXTRA_CONFIGURE = --enable-static
 endif
 
-ifeq ($(XBMCROOT),)
-  XBMCROOT = $(ROOT_DIR)/../../../..
+ifeq ($(CMAKE_SOURCE_DIR),)
+  CMAKE_SOURCE_DIR = $(ROOT_DIR)/../../../..
 endif
 
 SOURCE=$(ROOT_DIR)/src
@@ -32,7 +34,7 @@ APPBIN=$(PREFIX)/bin/TexturePacker
 
 all: .installed-$(PLATFORM)
 
-$(PLATFORM): ../libsquish-native/.installed-$(PLATFORM)
+$(PLATFORM): $(DEPS)
 	-rm -rf $(PLATFORM)/*; mkdir -p $(PLATFORM)
 	cd $(PLATFORM); cp -a $(SOURCE)/* .
 	cd $(PLATFORM); ./autogen.sh
@@ -42,18 +44,15 @@ $(PLATFORM): ../libsquish-native/.installed-$(PLATFORM)
 $(APP): $(PLATFORM)
 	$(MAKE) -C $(PLATFORM)
 
-../libsquish-native/.installed-$(PLATFORM):
-	$(MAKE) -C ../libsquish-native
-
 .installed-$(PLATFORM): $(APP)
 	$(MAKE) -C $(PLATFORM) install
 	touch $@
 	#TEMP workaround for skins: create legacy link. Remove me when skins are fixed
-	@mkdir -p $(XBMCROOT)/tools/TexturePacker
-	@[ -f $(XBMCROOT)/tools/TexturePacker/TexturePacker ] && rm $(XBMCROOT)/tools/TexturePacker/TexturePacker || :
-	@ln -s $(APPBIN) $(XBMCROOT)/tools/TexturePacker/TexturePacker
-	@echo "all:" > $(XBMCROOT)/tools/TexturePacker/Makefile
-	@echo "\t@echo "WARNING: use of tools/TexturePacker/TexturePacker is deprecated, please update your skins Makefile"" >> $(XBMCROOT)/tools/TexturePacker/Makefile
+	@mkdir -p $(CMAKE_SOURCE_DIR)/tools/TexturePacker
+	@[ -f $(CMAKE_SOURCE_DIR)/tools/TexturePacker/TexturePacker ] && rm $(CMAKE_SOURCE_DIR)/tools/TexturePacker/TexturePacker || :
+	@ln -sf $(APPBIN) $(CMAKE_SOURCE_DIR)/tools/TexturePacker/TexturePacker
+	@echo "all:" > $(CMAKE_SOURCE_DIR)/tools/TexturePacker/Makefile
+	@echo "\t@echo "WARNING: use of tools/TexturePacker/TexturePacker is deprecated, please update your skins Makefile"" >> $(CMAKE_SOURCE_DIR)/tools/TexturePacker/Makefile
 
 clean:
 	$(MAKE) -C $(PLATFORM) clean

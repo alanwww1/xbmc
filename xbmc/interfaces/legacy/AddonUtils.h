@@ -1,22 +1,12 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
 
 /*
  * addon.h
@@ -25,12 +15,11 @@
  *      Author: jim
  */
 
-#pragma once
-
 //#define ENABLE_XBMC_TRACE_API
 
 #include "threads/SingleLock.h"
 
+#include <memory>
 #include <vector>
 
 #ifdef TARGET_WINDOWS
@@ -41,36 +30,39 @@
  * This file contains the public definitions for the Addon api. It's meant to be used
  * by those writing language bindings.
  */
+
+namespace XBMCAddon
+{
+class LanguageHook;
+}
+
 namespace XBMCAddonUtils
 {
-  //***********************************************************
-  // Some simple helpers
-  void guiLock();
-  void guiUnlock();
-  //***********************************************************
-
   class GuiLock
   {
   public:
-    GuiLock() { guiLock(); }
-    ~GuiLock() { guiUnlock(); }
+    GuiLock(XBMCAddon::LanguageHook* languageHook, bool offScreen);
+    ~GuiLock();
+
+  protected:
+    XBMCAddon::LanguageHook* m_languageHook = nullptr;
+    bool m_offScreen = false;
   };
 
   class InvertSingleLockGuard
   {
     CSingleLock& lock;
   public:
-    InvertSingleLockGuard(CSingleLock& _lock) : lock(_lock) { lock.Leave(); }
+    explicit InvertSingleLockGuard(CSingleLock& _lock) : lock(_lock) { lock.Leave(); }
     ~InvertSingleLockGuard() { lock.Enter(); }
   };
 
-#define LOCKGUI XBMCAddonUtils::GuiLock __gl
 
   /*
    * Looks in references.xml for image name
    * If none exist return default image name
    */
-  const char *getDefaultImage(char* cControlType, char* cTextureType, char* cDefault);
+  const char *getDefaultImage(const char* cControlType, const char* cTextureType);
 
 #ifdef ENABLE_XBMC_TRACE_API
   class TraceGuard
@@ -82,7 +74,7 @@ namespace XBMCAddonUtils
 
     const char* getSpaces();
 
-    TraceGuard(const char* _function);
+    explicit TraceGuard(const char* _function);
     TraceGuard();
     ~TraceGuard();
   };

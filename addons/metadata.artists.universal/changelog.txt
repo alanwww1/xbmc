@@ -1,3 +1,65 @@
+[B]4.3.3[/B]
+fixed: artist type scraping
+
+[B]4.3.2[/B]
+fixed: allmusic scraping
+
+[B]4.3.1[/B]
+changed: use new language directory structure
+added: assets tag in addon.xml
+
+[B]4.3.0[/B]
+added: fetch disambiguation for GetArtistSearchResults
+
+
+[B]4.2.1[/B]
+fixed: dependency error
+
+[B]4.2.0[/B]
+added: scraping extra artwork from theaudiodb.com
+
+[B]4.1.5[/B]
+added: artist sort name from Musicbrainz and artist banner from fanart.tv
+
+[B]4.1.4[/B]
+changed: include some other valid MB artist types in the previous fix
+
+[B]4.1.3[/B]
+fixed: artist types sometimes scrapes incorrectly
+
+[B]4.1.2[/B]
+fixed: search results after MB API changes
+
+[B]4.1.1[/B]
+changed: dash is not replaced with /- any longer
+
+[B]4.1.0[/B]
+added: Artist type, gender and disambiguation from MusicBrainz
+
+[B]4.0.0[/B]
+added: Artist Clearlogo from fanart.tv; bump version for Leia
+
+[B]3.7.3[/B]
+cleanup: sources and options what won't work
+
+[B]3.7.2[/B]
+Fixed: another try to fix all scenarios for mbid resolution
+
+[B]3.7.1[/B]
+Fixed: mbid resolution under certain scenarios
+
+[B]3.7.0[/B]
+Added: ability to define MusicBrainz mirror
+
+[B]3.6.2[/B]
+Update author name
+
+[B]3.6.1[/B]
+Fixed: Won't scrape MBID randomly
+
+[B]3.6.0[/B]
+Changed: Language is now a selection list
+
 [B]3.5.0[/B]
 Added: Scraping Styles and Moods from TheAudioDb.com
 

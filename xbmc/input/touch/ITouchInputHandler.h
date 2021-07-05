@@ -1,33 +1,25 @@
-#pragma once
 /*
- *      Copyright (C) 2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2013-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include <stdint.h>
+#pragma once
 
 #include "input/touch/ITouchInputHandling.h"
+
+#include <atomic>
+#include <stdint.h>
 
 /*!
  * \ingroup touch
  * \brief Touch input event
  */
-typedef enum {
+typedef enum
+{
+  TouchInputUnchanged = 0,
   TouchInputAbort,
   TouchInputDown,
   TouchInputUp,
@@ -46,10 +38,8 @@ typedef enum {
 class ITouchInputHandler : public ITouchInputHandling
 {
 public:
-  ITouchInputHandler()
-    : m_dpi(160.0f)
-  { }
-  virtual ~ITouchInputHandler() { }
+  ITouchInputHandler() : m_dpi(160.0f) {}
+  ~ITouchInputHandler() override = default;
 
   /*!
    * \brief Handle a touch event
@@ -57,20 +47,21 @@ public:
    * Handles the given touch event at the given location.
    * This takes into account all the currently active pointers
    * which need to be updated before calling this method to
-   * actually interprete and handle the changes in touch.
+   * actually interpret and handle the changes in touch.
    *
    * \param event    The actual touch event (abort, down, up, move)
    * \param x        The x coordinate (with sub-pixel) of the touch
    * \param y        The y coordinate (with sub-pixel) of the touch
-   * \param time     The time (in nanoseconds) when this touch occured
+   * \param time     The time (in nanoseconds) when this touch occurred
    * \param pointer  The number of the touch pointer which caused this event (default 0)
    * \param size     The size of the touch pointer (with sub-pixel) (default 0.0)
-   * 
+   *
    * \return True if the event was handled otherwise false.
-   * 
+   *
    * \sa Update
    */
-  virtual bool HandleTouchInput(TouchInput event, float x, float y, int64_t time, int32_t pointer = 0, float size = 0.0f) = 0;
+  virtual bool HandleTouchInput(
+      TouchInput event, float x, float y, int64_t time, int32_t pointer = 0, float size = 0.0f) = 0;
 
   /*!
    * \brief Update the coordinates of a pointer
@@ -85,20 +76,29 @@ public:
    * \param pointer  The number of the touch pointer which caused this event (default 0)
    * \param x        The x coordinate (with sub-pixel) of the touch
    * \param y        The y coordinate (with sub-pixel) of the touch
-   * \param time     The time (in nanoseconds) when this touch occured
+   * \param time     The time (in nanoseconds) when this touch occurred
    * \param size     The size of the touch pointer (with sub-pixel) (default 0.0)
-   * 
+   *
    * \return True if the pointer was updated otherwise false.
-   * 
+   *
    * \sa Handle
    */
-  virtual bool UpdateTouchPointer(int32_t pointer, float x, float y, int64_t time, float size = 0.0f) { return false; }
+  virtual bool UpdateTouchPointer(
+      int32_t pointer, float x, float y, int64_t time, float size = 0.0f)
+  {
+    return false;
+  }
 
-  void SetScreenDPI(float dpi) { if (dpi > 0.0f) m_dpi = dpi; }
+  void SetScreenDPI(float dpi)
+  {
+    if (dpi > 0.0f)
+      m_dpi = dpi;
+  }
+  float GetScreenDPI() { return m_dpi; }
 
 protected:
   /*!
    * \brief DPI value of the touch screen
    */
-  float m_dpi;
+  std::atomic<float> m_dpi;
 };

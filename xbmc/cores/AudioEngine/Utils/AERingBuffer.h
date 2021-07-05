@@ -1,23 +1,12 @@
-#pragma once
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
 
 #define AE_RING_BUFFER_OK 0;
 #define AE_RING_BUFFER_EMPTY 1;
@@ -26,8 +15,10 @@
 
 //#define AE_RING_BUFFER_DEBUG
 
-#include "utils/log.h"  //CLog
-#include <string.h>     //memset, memcpy
+#include "utils/log.h"
+#include "utils/MemUtils.h"
+
+#include <string.h>
 
 /**
  * This buffer can be used by one read and one write thread at any one time
@@ -38,28 +29,9 @@
 class AERingBuffer {
 
 public:
-  AERingBuffer() :
-    m_iReadPos(0),
-    m_iWritePos(0),
-    m_iRead(0),
-    m_iWritten(0),
-    m_iSize(0),
-    m_planes(0),
-    m_Buffer(NULL)
-  {
-  }
+  AERingBuffer() = default;
 
-  AERingBuffer(unsigned int size, unsigned int planes = 1) :
-    m_iReadPos(0),
-    m_iWritePos(0),
-    m_iRead(0),
-    m_iWritten(0),
-    m_iSize(0),
-    m_planes(0),
-    m_Buffer(NULL)
-  {
-    Create(size, planes);
-  }
+  AERingBuffer(unsigned int size, unsigned int planes = 1) { Create(size, planes); }
 
   ~AERingBuffer()
   {
@@ -67,7 +39,7 @@ public:
     CLog::Log(LOGDEBUG, "AERingBuffer::~AERingBuffer: Deleting buffer.");
 #endif
     for (unsigned int i = 0; i < m_planes; i++)
-      _aligned_free(m_Buffer[i]);
+      KODI::MEMORY::AlignedFree(m_Buffer[i]);
     delete[] m_Buffer;
   }
 
@@ -81,7 +53,7 @@ public:
     m_Buffer = new unsigned char*[planes];
     for (unsigned int i = 0; i < planes; i++)
     {
-      m_Buffer[i] = (unsigned char*)_aligned_malloc(size,16);
+      m_Buffer[i] = static_cast<unsigned char*>(KODI::MEMORY::AlignedMalloc(size, 16));
       if (!m_Buffer[i])
         return false;
       memset(m_Buffer[i], 0, size);
@@ -129,7 +101,8 @@ public:
     if ( m_iSize > size + m_iWritePos )
     {
 #ifdef AE_RING_BUFFER_DEBUG
-      CLog::Log(LOGDEBUG, "AERingBuffer: Written to: %u size: %u space before: %u\n", m_iWritePos, size, space);
+      CLog::Log(LOGDEBUG, "AERingBuffer: Written to: %u size: %u space before: %u", m_iWritePos,
+                size, space);
 #endif
       memcpy(m_Buffer[plane] + m_iWritePos, src, size);
     }
@@ -139,7 +112,9 @@ public:
       unsigned int first = m_iSize - m_iWritePos;
       unsigned int second = size - first;
 #ifdef AE_RING_BUFFER_DEBUG
-      CLog::Log(LOGDEBUG, "AERingBuffer: Written to (split) first: %u second: %u size: %u space before: %u\n", first, second, size, space);
+      CLog::Log(LOGDEBUG,
+                "AERingBuffer: Written to (split) first: %u second: %u size: %u space before: %u",
+                first, second, size, space);
 #endif
       memcpy(m_Buffer[plane] + m_iWritePos, src, first);
       memcpy(m_Buffer[plane], src + first, second);
@@ -183,7 +158,8 @@ public:
     if ( size + m_iReadPos < m_iSize )
     {
 #ifdef AE_RING_BUFFER_DEBUG
-      CLog::Log(LOGDEBUG, "AERingBuffer: Reading from: %u size: %u space before: %u\n", m_iWritePos, size, space);
+      CLog::Log(LOGDEBUG, "AERingBuffer: Reading from: %u size: %u space before: %u", m_iWritePos,
+                size, space);
 #endif
       if (dest)
         memcpy(dest, m_Buffer[plane] + m_iReadPos, size);
@@ -194,7 +170,9 @@ public:
       unsigned int first = m_iSize - m_iReadPos;
       unsigned int second = size - first;
 #ifdef AE_RING_BUFFER_DEBUG
-      CLog::Log(LOGDEBUG, "AERingBuffer: Reading from (split) first: %u second: %u size: %u space before: %u\n", first, second, size, space);
+      CLog::Log(LOGDEBUG,
+                "AERingBuffer: Reading from (split) first: %u second: %u size: %u space before: %u",
+                first, second, size, space);
 #endif
       if (dest)
       {
@@ -213,7 +191,7 @@ public:
    */
   void Dump()
   {
-    unsigned char *bufferContents =  (unsigned char *)_aligned_malloc(m_iSize*m_planes + 1,16);
+    unsigned char *bufferContents = static_cast<unsigned char*>(KODI::MEMORY::AlignedMalloc(m_iSize * m_planes + 1, 16));
     unsigned char *dest = bufferContents;
     for (unsigned int j = 0; j < m_planes; j++)
     {
@@ -227,7 +205,7 @@ public:
     }
     bufferContents[m_iSize*m_planes] = '\0';
     CLog::Log(LOGDEBUG, "AERingBuffer::Dump()\n%s",bufferContents);
-    _aligned_free(bufferContents);
+    KODI::MEMORY::AlignedFree(bufferContents);
   }
 
   /**
@@ -294,11 +272,11 @@ private:
     m_iRead+=size;
   }
 
-  unsigned int m_iReadPos;
-  unsigned int m_iWritePos;
-  unsigned int m_iRead;
-  unsigned int m_iWritten;
-  unsigned int m_iSize;
-  unsigned int m_planes;
-  unsigned char **m_Buffer;
+  unsigned int m_iReadPos = 0;
+  unsigned int m_iWritePos = 0;
+  unsigned int m_iRead = 0;
+  unsigned int m_iWritten = 0;
+  unsigned int m_iSize = 0;
+  unsigned int m_planes = 0;
+  unsigned char** m_Buffer = nullptr;
 };

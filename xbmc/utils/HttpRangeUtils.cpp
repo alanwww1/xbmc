@@ -1,29 +1,22 @@
 /*
- *      Copyright (C) 2015 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2015-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#include <algorithm>
 
 #include "HttpRangeUtils.h"
 #include "Util.h"
+#ifdef HAS_WEB_SERVER
 #include "network/httprequesthandler/IHTTPRequestHandler.h"
+#endif // HAS_WEB_SERVER
+#include "utils/StringUtils.h"
 #include "utils/Variant.h"
 
-#include <algorithm>
+#include <inttypes.h>
 
 #define HEADER_NEWLINE        "\r\n"
 #define HEADER_SEPARATOR      HEADER_NEWLINE HEADER_NEWLINE
@@ -34,11 +27,6 @@
 #define HEADER_CONTENT_RANGE_FORMAT_BYTES   "bytes " HEADER_CONTENT_RANGE_VALUE "-" HEADER_CONTENT_RANGE_VALUE "/"
 #define CONTENT_RANGE_FORMAT_TOTAL          HEADER_CONTENT_RANGE_FORMAT_BYTES HEADER_CONTENT_RANGE_VALUE
 #define CONTENT_RANGE_FORMAT_TOTAL_UNKNOWN  HEADER_CONTENT_RANGE_FORMAT_BYTES HEADER_CONTENT_RANGE_VALUE_UNKNOWN
-
-CHttpRange::CHttpRange()
-  : m_first(1),
-    m_last(0)
-{ }
 
 CHttpRange::CHttpRange(uint64_t firstPosition, uint64_t lastPosition)
   : m_first(firstPosition),
@@ -260,7 +248,7 @@ bool CHttpRanges::Parse(const std::string& header, uint64_t totalLength)
   // split the value of the "Range" header by ","
   std::vector<std::string> rangeValues = StringUtils::Split(rangesValue, ",");
 
-  for (std::vector<std::string>::const_iterator range = rangeValues.begin(); range != rangeValues.end(); range++)
+  for (std::vector<std::string>::const_iterator range = rangeValues.begin(); range != rangeValues.end(); ++range)
   {
     // there must be a "-" in the range definition
     if (range->find("-") == std::string::npos)
@@ -369,6 +357,8 @@ std::string HttpRangeUtils::GenerateContentRangeHeaderValue(uint64_t start, uint
   return StringUtils::Format(CONTENT_RANGE_FORMAT_TOTAL_UNKNOWN, start, end);
 }
 
+#ifdef HAS_WEB_SERVER
+
 std::string HttpRangeUtils::GenerateMultipartBoundary()
 {
   static char chars[] = "-_1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -430,3 +420,5 @@ std::string HttpRangeUtils::GenerateMultipartBoundaryEnd(const std::string& mult
 
   return HEADER_NEWLINE HEADER_BOUNDARY + multipartBoundary + HEADER_BOUNDARY;
 }
+
+#endif // HAS_WEB_SERVER

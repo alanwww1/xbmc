@@ -1,17 +1,18 @@
 include ../../Makefile.include
-DEPS= ../../Makefile.include Makefile
+DEPS= ../../Makefile.include Makefile tvos.patch
 
 # lib name, version
 LIBNAME=libbluray
-VERSION=0.2.1
+VERSION=1.1.2
 SOURCE=$(LIBNAME)-$(VERSION)
 ARCHIVE=$(SOURCE).tar.bz2
 
 # configuration settings
-CONFIGURE=./configure --prefix=$(PREFIX) --exec-prefix=$(PREFIX) \
-  --disable-examples --disable-doxygen-doc
+CONFIGURE=./configure --prefix=$(PREFIX) --disable-shared --exec-prefix=$(PREFIX) \
+  --disable-examples --disable-doxygen-doc \
+  --disable-bdjava-jar
 
-LIBDYLIB=$(PLATFORM)/src/.libs/libbluray.la
+LIBDYLIB=$(PLATFORM)/.libs/libbluray.la
 
 all: .installed-$(PLATFORM)
 
@@ -22,22 +23,18 @@ $(PLATFORM): $(TARBALLS_LOCATION)/$(ARCHIVE) $(DEPS)
 	rm -rf $(PLATFORM); mkdir -p $(PLATFORM)
 	cd $(PLATFORM); $(ARCHIVE_TOOL) $(ARCHIVE_TOOL_FLAGS) $(TARBALLS_LOCATION)/$(ARCHIVE)
 	# libbluray has borked Makefile.am with respect to CFLAGS, remove the offending line
-	sed -i -e "s|CFLAGS=|#CFLAGS=|" $(PLATFORM)/src/Makefile.am
-	sed -i -e "s|CFLAGS=|#CFLAGS=|" $(PLATFORM)/src/examples/Makefile.am
+	sed -i -e "s|CFLAGS=|#CFLAGS=|" $(PLATFORM)/Makefile.am
 	cd $(PLATFORM); ./bootstrap
 	cd $(PLATFORM); $(CONFIGURE)
+ifeq ($(TARGET_PLATFORM),appletvos)
+	cd $(PLATFORM); patch -p1 -i ../tvos.patch
+endif
 
 $(LIBDYLIB): $(PLATFORM)
 	$(MAKE) -C $(PLATFORM)
 
 .installed-$(PLATFORM): $(LIBDYLIB)
 	$(MAKE) -C $(PLATFORM) install
-ifeq ($(OS),android)
-	rm -f $(PREFIX)/lib/libbluray.la $(PREFIX)/lib/libbluray.so $(PREFIX)/lib/libbluray.so.1
-	mv -f $(PREFIX)/lib/libbluray.so.1.0.0 $(PREFIX)/lib/libbluray.so
-	$(RPL) -e "libbluray.so.1" "libbluray.so\x00\x00" $(PREFIX)/lib/libbluray.so
-	-$(READELF) --dynamic $(PREFIX)/lib/libbluray.so | grep ibrary
-endif
 	touch $@
 
 clean:

@@ -1,43 +1,56 @@
 /*
- *      Copyright (C) 2005-2015 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 
 #include "GUIDialogSimpleMenu.h"
-#include "guilib/GUIWindowManager.h"
+
 #include "GUIDialogSelect.h"
-#include "settings/DiscSettings.h"
-#include "settings/Settings.h"
-#include "utils/URIUtils.h"
+#include "ServiceBroker.h"
+#include "URL.h"
+#include "dialogs/GUIDialogBusy.h"
 #include "filesystem/Directory.h"
 #include "filesystem/File.h"
+#include "guilib/GUIComponent.h"
+#include "guilib/GUIWindowManager.h"
+#include "settings/DiscSettings.h"
+#include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
+#include "threads/IRunnable.h"
+#include "utils/URIUtils.h"
+#include "utils/Variant.h"
 #include "utils/log.h"
 #include "video/VideoInfoTag.h"
-#include "URL.h"
+
+namespace
+{
+class CGetDirectoryItems : public IRunnable
+{
+public:
+  CGetDirectoryItems(const std::string &path, CFileItemList &items, const XFILE::CDirectory::CHints &hints)
+  : m_path(path), m_items(items), m_hints(hints)
+  {
+  }
+  void Run() override
+  {
+    m_result = XFILE::CDirectory::GetDirectory(m_path, m_items, m_hints);
+  }
+  bool m_result;
+protected:
+  std::string m_path;
+  CFileItemList &m_items;
+  XFILE::CDirectory::CHints m_hints;
+};
+}
+
 
 bool CGUIDialogSimpleMenu::ShowPlaySelection(CFileItem& item)
 {
-  /* if asked to resume somewhere, we should not show anything */
-  if (item.m_lStartOffset)
-    return true;
-
-  if (CSettings::Get().GetInt("disc.playback") != BD_PLAYBACK_SIMPLE_MENU)
+  if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_DISC_PLAYBACK) != BD_PLAYBACK_SIMPLE_MENU)
     return true;
 
   std::string path;
@@ -48,12 +61,13 @@ bool CGUIDialogSimpleMenu::ShowPlaySelection(CFileItem& item)
 
   if (item.IsBDFile())
   {
-    std::string root = URIUtils::GetParentPath(path);
+    std::string root = URIUtils::GetParentPath(item.GetDynPath());
     URIUtils::RemoveSlashAtEnd(root);
     if (URIUtils::GetFileName(root) == "BDMV")
     {
       CURL url("bluray://");
       url.SetHostName(URIUtils::GetParentPath(root));
+      url.SetFileName("root");
       return ShowPlaySelection(item, url.Get());
     }
   }
@@ -61,7 +75,7 @@ bool CGUIDialogSimpleMenu::ShowPlaySelection(CFileItem& item)
   if (item.IsDiscImage())
   {
     CURL url2("udf://");
-    url2.SetHostName(item.GetPath());
+    url2.SetHostName(item.GetDynPath());
     url2.SetFileName("BDMV/index.bdmv");
     if (XFILE::CFile::Exists(url2.Get()))
     {
@@ -69,6 +83,7 @@ bool CGUIDialogSimpleMenu::ShowPlaySelection(CFileItem& item)
 
       CURL url("bluray://");
       url.SetHostName(url2.Get());
+      url.SetFileName("root");
       return ShowPlaySelection(item, url.Get());
     }
   }
@@ -80,7 +95,7 @@ bool CGUIDialogSimpleMenu::ShowPlaySelection(CFileItem& item, const std::string&
 
   CFileItemList items;
 
-  if (!XFILE::CDirectory::GetDirectory(directory, items, XFILE::CDirectory::CHints(), true))
+  if (!GetDirectoryItems(directory, items, XFILE::CDirectory::CHints()))
   {
     CLog::Log(LOGERROR, "CGUIWindowVideoBase::ShowPlaySelection - Failed to get play directory for %s", directory.c_str());
     return true;
@@ -92,17 +107,17 @@ bool CGUIDialogSimpleMenu::ShowPlaySelection(CFileItem& item, const std::string&
     return true;
   }
 
-  CGUIDialogSelect* dialog = (CGUIDialogSelect*)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
+  CGUIDialogSelect* dialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(WINDOW_DIALOG_SELECT);
   while (true)
   {
     dialog->Reset();
-    dialog->SetHeading(25006 /* Select playback item */);
-    dialog->SetItems(&items);
+    dialog->SetHeading(CVariant{25006}); // Select playback item
+    dialog->SetItems(items);
     dialog->SetUseDetails(true);
-    dialog->DoModal();
+    dialog->Open();
 
-    CFileItemPtr item_new = dialog->GetSelectedItem();
-    if (!item_new || dialog->GetSelectedLabel() < 0)
+    CFileItemPtr item_new = dialog->GetSelectedFileItem();
+    if (!item_new || dialog->GetSelectedItem() < 0)
     {
       CLog::Log(LOGDEBUG, "CGUIWindowVideoBase::ShowPlaySelection - User aborted %s", directory.c_str());
       break;
@@ -110,7 +125,7 @@ bool CGUIDialogSimpleMenu::ShowPlaySelection(CFileItem& item, const std::string&
 
     if (item_new->m_bIsFolder == false)
     {
-      std::string original_path = item.GetPath();
+      std::string original_path = item.GetDynPath();
       item.Reset();
       item = *item_new;
       item.SetProperty("original_listitem_url", original_path);
@@ -118,7 +133,7 @@ bool CGUIDialogSimpleMenu::ShowPlaySelection(CFileItem& item, const std::string&
     }
 
     items.Clear();
-    if (!XFILE::CDirectory::GetDirectory(item_new->GetPath(), items, XFILE::CDirectory::CHints(), true) || items.IsEmpty())
+    if (!GetDirectoryItems(item_new->GetDynPath(), items, XFILE::CDirectory::CHints()) || items.IsEmpty())
     {
       CLog::Log(LOGERROR, "CGUIWindowVideoBase::ShowPlaySelection - Failed to get any items %s", item_new->GetPath().c_str());
       break;
@@ -126,4 +141,15 @@ bool CGUIDialogSimpleMenu::ShowPlaySelection(CFileItem& item, const std::string&
   }
 
   return false;
+}
+
+bool CGUIDialogSimpleMenu::GetDirectoryItems(const std::string &path, CFileItemList &items,
+                                             const XFILE::CDirectory::CHints &hints)
+{
+  CGetDirectoryItems getItems(path, items, hints);
+  if (!CGUIDialogBusy::Wait(&getItems, 100, true))
+  {
+    return false;
+  }
+  return getItems.m_result;
 }

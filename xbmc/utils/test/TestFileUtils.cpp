@@ -1,43 +1,30 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "utils/FileUtils.h"
 #include "filesystem/File.h"
-
 #include "test/TestUtils.h"
+#include "utils/FileUtils.h"
 
-#include "gtest/gtest.h"
+#include <gtest/gtest.h>
 
 TEST(TestFileUtils, DeleteItem_CFileItemPtr)
 {
   XFILE::CFile *tmpfile;
   std::string tmpfilepath;
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
   tmpfilepath = XBMC_TEMPFILEPATH(tmpfile);
 
   CFileItemPtr item(new CFileItem(tmpfilepath));
   item->SetPath(tmpfilepath);
   item->m_bIsFolder = false;
   item->Select(true);
-
+  tmpfile->Close();  //Close tmpfile before we try to delete it
   EXPECT_TRUE(CFileUtils::DeleteItem(item));
 }
 
@@ -45,7 +32,8 @@ TEST(TestFileUtils, DeleteItemString)
 {
   XFILE::CFile *tmpfile;
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
+  tmpfile->Close();  //Close tmpfile before we try to delete it
   EXPECT_TRUE(CFileUtils::DeleteItem(XBMC_TEMPFILEPATH(tmpfile)));
 }
 

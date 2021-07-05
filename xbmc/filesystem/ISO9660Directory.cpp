@@ -1,116 +1,81 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "ISO9660Directory.h"
-#include "iso9660.h"
-#include "Util.h"
-#include "utils/URIUtils.h"
-#include "utils/StringUtils.h"
-#include "URL.h"
+
 #include "FileItem.h"
+#include "URL.h"
+#include "utils/URIUtils.h"
+
+#include <cdio++/iso9660.hpp>
 
 using namespace XFILE;
 
-CISO9660Directory::CISO9660Directory(void)
-{}
-
-CISO9660Directory::~CISO9660Directory(void)
-{}
-
-bool CISO9660Directory::GetDirectory(const CURL& url, CFileItemList &items)
+bool CISO9660Directory::GetDirectory(const CURL& url, CFileItemList& items)
 {
-  std::string strRoot = url.Get();
+  CURL url2(url);
+  if (!url2.IsProtocol("iso9660"))
+  {
+    url2.Reset();
+    url2.SetProtocol("iso9660");
+    url2.SetHostName(url.Get());
+  }
+
+  std::string strRoot(url2.Get());
+  std::string strSub(url2.GetFileName());
+
   URIUtils::AddSlashAtEnd(strRoot);
+  URIUtils::AddSlashAtEnd(strSub);
 
-  // Scan active disc if not done before
-  if (!m_isoReader.IsScanned())
-    m_isoReader.Scan();
+  std::unique_ptr<ISO9660::IFS> iso(new ISO9660::IFS);
 
-  WIN32_FIND_DATA wfd;
-  HANDLE hFind;
-
-  memset(&wfd, 0, sizeof(wfd));
-
-  std::string strSearchMask;
-  std::string strDirectory = url.GetFileName();
-  if (strDirectory != "")
-  {
-    strSearchMask = StringUtils::Format("\\%s", strDirectory.c_str());
-  }
-  else
-  {
-    strSearchMask = "\\";
-  }
-  for (int i = 0; i < (int)strSearchMask.size(); ++i )
-  {
-    if (strSearchMask[i] == '/') strSearchMask[i] = '\\';
-  }
-
-  hFind = m_isoReader.FindFirstFile((char*)strSearchMask.c_str(), &wfd);
-  if (hFind == NULL)
+  if (!iso->open(url2.GetHostName().c_str()))
     return false;
 
-  do
+  std::vector<ISO9660::Stat*> isoFiles;
+
+  if (iso->readdir(strSub.c_str(), isoFiles))
   {
-    if (wfd.cFileName[0] != 0)
+    for (const auto file : isoFiles)
     {
-      if ( (wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) )
+      std::string filename(file->p_stat->filename);
+
+      if (file->p_stat->type == 2)
       {
-        std::string strDir = wfd.cFileName;
-        if (strDir != "." && strDir != "..")
+        if (filename != "." && filename != "..")
         {
-          CFileItemPtr pItem(new CFileItem(wfd.cFileName));
-          std::string path = strRoot + wfd.cFileName;
-          URIUtils::AddSlashAtEnd(path);
-          pItem->SetPath(path);
+          CFileItemPtr pItem(new CFileItem(filename));
+          std::string strDir(strRoot + filename);
+          URIUtils::AddSlashAtEnd(strDir);
+          pItem->SetPath(strDir);
           pItem->m_bIsFolder = true;
-          FILETIME localTime;
-          FileTimeToLocalFileTime(&wfd.ftLastWriteTime, &localTime);
-          pItem->m_dateTime=localTime;
           items.Add(pItem);
         }
       }
       else
       {
-        CFileItemPtr pItem(new CFileItem(wfd.cFileName));
-        pItem->SetPath(strRoot + wfd.cFileName);
+        CFileItemPtr pItem(new CFileItem(filename));
+        pItem->SetPath(strRoot + filename);
         pItem->m_bIsFolder = false;
-        pItem->m_dwSize = CUtil::ToInt64(wfd.nFileSizeHigh, wfd.nFileSizeLow);
-        FILETIME localTime;
-        FileTimeToLocalFileTime(&wfd.ftLastWriteTime, &localTime);
-        pItem->m_dateTime=localTime;
+        pItem->m_dwSize = file->p_stat->size;
         items.Add(pItem);
       }
     }
-  }
-  while (m_isoReader.FindNextFile(hFind, &wfd));
-  m_isoReader.FindClose(hFind);
 
-  return true;
+    isoFiles.clear();
+    return true;
+  }
+
+  return false;
 }
 
 bool CISO9660Directory::Exists(const CURL& url)
 {
   CFileItemList items;
-  if (GetDirectory(url,items))
-    return true;
-
-  return false;
+  return GetDirectory(url, items);
 }

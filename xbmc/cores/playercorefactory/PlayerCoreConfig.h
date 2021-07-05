@@ -1,61 +1,53 @@
-#pragma once
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "utils/XBMCTinyXML.h"
-#include "cores/IPlayer.h"
-#include "PlayerCoreFactory.h"
-#include "cores/dvdplayer/DVDPlayer.h"
-#include "cores/paplayer/PAPlayer.h"
+#pragma once
+
 #include "cores/ExternalPlayer/ExternalPlayer.h"
+#include "cores/IPlayer.h"
+#include "cores/RetroPlayer/RetroPlayer.h"
+#include "cores/VideoPlayer/VideoPlayer.h"
+#include "cores/paplayer/PAPlayer.h"
 #ifdef HAS_UPNP
 #include "network/upnp/UPnPPlayer.h"
 #endif
+#include "utils/XBMCTinyXML.h"
 #include "utils/log.h"
+
+#include <utility>
+
+#include "system.h"
 
 class CPlayerCoreConfig
 {
-friend class CPlayerCoreFactory;
-
 public:
-  CPlayerCoreConfig(std::string name, const EPLAYERCORES eCore, const TiXmlElement* pConfig, const std::string& id = ""):
-    m_name(name),
-    m_id(id)
+  CPlayerCoreConfig(std::string name,
+                    std::string type,
+                    const TiXmlElement* pConfig,
+                    const std::string& id = "")
+    : m_name(std::move(name)), m_id(id), m_type(std::move(type))
   {
-    m_eCore = eCore;
     m_bPlaysAudio = false;
     m_bPlaysVideo = false;
 
     if (pConfig)
     {
-      m_config = (TiXmlElement*)pConfig->Clone();
-      const char *szAudio = pConfig->Attribute("audio");
-      const char *szVideo = pConfig->Attribute("video");
-      m_bPlaysAudio = szAudio && stricmp(szAudio, "true") == 0;
-      m_bPlaysVideo = szVideo && stricmp(szVideo, "true") == 0;
+      m_config = static_cast<TiXmlElement*>(pConfig->Clone());
+      const char *sAudio = pConfig->Attribute("audio");
+      const char *sVideo = pConfig->Attribute("video");
+      m_bPlaysAudio = sAudio && StringUtils::CompareNoCase(sAudio, "true") == 0;
+      m_bPlaysVideo = sVideo && StringUtils::CompareNoCase(sVideo, "true") == 0;
     }
     else
     {
-      m_config = NULL;
+      m_config = nullptr;
     }
-    CLog::Log(LOGDEBUG, "CPlayerCoreConfig::<ctor>: created player %s for core %d", m_name.c_str(), m_eCore);
+    CLog::Log(LOGDEBUG, "CPlayerCoreConfig::<ctor>: created player %s", m_name.c_str());
   }
 
   virtual ~CPlayerCoreConfig()
@@ -73,11 +65,6 @@ public:
     return m_id;
   }
 
-  const EPLAYERCORES& GetType() const
-  {
-    return m_eCore;
-  }
-
   bool PlaysAudio() const
   {
     return m_bPlaysAudio;
@@ -91,17 +78,34 @@ public:
   IPlayer* CreatePlayer(IPlayerCallback& callback) const
   {
     IPlayer* pPlayer;
-    switch(m_eCore)
+    if (m_type.compare("video") == 0)
     {
-      case EPC_MPLAYER:
-      case EPC_DVDPLAYER: pPlayer = new CDVDPlayer(callback); break;
-      case EPC_PAPLAYER: pPlayer = new PAPlayer(callback); break;
-      case EPC_EXTPLAYER: pPlayer = new CExternalPlayer(callback); break;
-#if defined(HAS_UPNP)
-      case EPC_UPNPPLAYER: pPlayer = new UPNP::CUPnPPlayer(callback, m_id.c_str()); break;
-#endif
-      default: return NULL;
+      pPlayer = new CVideoPlayer(callback);
     }
+    else if (m_type.compare("music") == 0)
+    {
+      pPlayer = new PAPlayer(callback);
+    }
+    else if (m_type.compare("game") == 0)
+    {
+      pPlayer = new KODI::RETRO::CRetroPlayer(callback);
+    }
+    else if (m_type.compare("external") == 0)
+    {
+      pPlayer = new CExternalPlayer(callback);
+    }
+
+#if defined(HAS_UPNP)
+    else if (m_type.compare("remote") == 0)
+    {
+      pPlayer = new UPNP::CUPnPPlayer(callback, m_id.c_str());
+    }
+#endif
+    else
+      return nullptr;
+
+    pPlayer->m_name = m_name;
+    pPlayer->m_type = m_type;
 
     if (pPlayer->Initialize(m_config))
     {
@@ -110,15 +114,14 @@ public:
     else
     {
       SAFE_DELETE(pPlayer);
-      return NULL;
+      return nullptr;
     }
   }
 
-private:
   std::string m_name;
-  std::string m_id;
+  std::string m_id; // uuid for upnp
+  std::string m_type;
   bool m_bPlaysAudio;
   bool m_bPlaysVideo;
-  EPLAYERCORES m_eCore;
   TiXmlElement* m_config;
 };

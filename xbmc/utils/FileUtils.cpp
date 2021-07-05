@@ -1,25 +1,13 @@
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2020 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
 #include "FileUtils.h"
-#include "guilib/GUIWindowManager.h"
-#include "dialogs/GUIDialogYesNo.h"
+#include "ServiceBroker.h"
 #include "guilib/GUIKeyboardFactory.h"
 #include "utils/log.h"
 #include "guilib/LocalizeStrings.h"
@@ -27,40 +15,39 @@
 #include "FileOperationJob.h"
 #include "URIUtils.h"
 #include "filesystem/MultiPathDirectory.h"
-#include <vector>
+#include "filesystem/SpecialProtocol.h"
+#include "filesystem/StackDirectory.h"
 #include "settings/MediaSourceSettings.h"
 #include "Util.h"
 #include "StringUtils.h"
 #include "URL.h"
 #include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
+#include "storage/MediaManager.h"
+#include "utils/Variant.h"
+
+#if defined(TARGET_WINDOWS)
+#include "platform/win32/WIN32Util.h"
+#include "utils/CharsetConverter.h"
+#endif
+
+#include <vector>
 
 using namespace XFILE;
-using namespace std;
 
-bool CFileUtils::DeleteItem(const std::string &strPath, bool force)
+bool CFileUtils::DeleteItem(const std::string &strPath)
 {
   CFileItemPtr item(new CFileItem(strPath));
   item->SetPath(strPath);
   item->m_bIsFolder = URIUtils::HasSlashAtEnd(strPath);
   item->Select(true);
-  return DeleteItem(item, force);
+  return DeleteItem(item);
 }
 
-bool CFileUtils::DeleteItem(const CFileItemPtr &item, bool force)
+bool CFileUtils::DeleteItem(const CFileItemPtr &item)
 {
   if (!item || item->IsParentFolder())
     return false;
-
-  CGUIDialogYesNo* pDialog = (CGUIDialogYesNo*)g_windowManager.GetWindow(WINDOW_DIALOG_YES_NO);
-  if (!force && pDialog)
-  {
-    pDialog->SetHeading(122);
-    pDialog->SetLine(0, 125);
-    pDialog->SetLine(1, CURL(item->GetPath()).GetWithoutUserDetails());
-    pDialog->SetLine(2, "");
-    pDialog->DoModal();
-    if (!pDialog->IsConfirmed()) return false;
-  }
 
   // Create a temporary item list containing the file/folder for deletion
   CFileItemPtr pItemTemp(new CFileItem(*item));
@@ -81,13 +68,13 @@ bool CFileUtils::RenameFile(const std::string &strFile)
   URIUtils::RemoveSlashAtEnd(strFileAndPath);
   std::string strFileName = URIUtils::GetFileName(strFileAndPath);
   std::string strPath = URIUtils::GetDirectory(strFileAndPath);
-  if (CGUIKeyboardFactory::ShowAndGetInput(strFileName, g_localizeStrings.Get(16013), false))
+  if (CGUIKeyboardFactory::ShowAndGetInput(strFileName, CVariant{g_localizeStrings.Get(16013)}, false))
   {
     strPath = URIUtils::AddFileToFolder(strPath, strFileName);
-    CLog::Log(LOGINFO,"FileUtils: rename %s->%s\n", strFileAndPath.c_str(), strPath.c_str());
+    CLog::Log(LOGINFO, "FileUtils: rename %s->%s", strFileAndPath.c_str(), strPath.c_str());
     if (URIUtils::IsMultiPath(strFileAndPath))
     { // special case for multipath renames - rename all the paths.
-      vector<std::string> paths;
+      std::vector<std::string> paths;
       CMultiPathDirectory::GetPaths(strFileAndPath, paths);
       bool success = false;
       for (unsigned int i = 0; i < paths.size(); ++i)
@@ -108,10 +95,9 @@ bool CFileUtils::RenameFile(const std::string &strFile)
 
 bool CFileUtils::RemoteAccessAllowed(const std::string &strPath)
 {
-  const unsigned int SourcesSize = 5;
   std::string SourceNames[] = { "programs", "files", "video", "music", "pictures" };
 
-  string realPath = URIUtils::GetRealPath(strPath);
+  std::string realPath = URIUtils::GetRealPath(strPath);
   // for rar:// and zip:// paths we need to extract the path to the archive
   // instead of using the VFS path
   while (URIUtils::IsInArchive(realPath))
@@ -124,6 +110,8 @@ bool CFileUtils::RemoteAccessAllowed(const std::string &strPath)
   else if (StringUtils::StartsWithNoCase(realPath, "videodb://"))
     return true;
   else if (StringUtils::StartsWithNoCase(realPath, "library://video"))
+    return true;
+  else if (StringUtils::StartsWithNoCase(realPath, "library://music"))
     return true;
   else if (StringUtils::StartsWithNoCase(realPath, "sources://video"))
     return true;
@@ -145,18 +133,219 @@ bool CFileUtils::RemoteAccessAllowed(const std::string &strPath)
     return true;
   else
   {
-    std::string strPlaylistsPath = CSettings::Get().GetString("system.playlistspath");
+    std::string strPlaylistsPath = CServiceBroker::GetSettingsComponent()->GetSettings()->GetString(CSettings::SETTING_SYSTEM_PLAYLISTSPATH);
     URIUtils::RemoveSlashAtEnd(strPlaylistsPath);
-    if (StringUtils::StartsWithNoCase(realPath, strPlaylistsPath)) 
+    if (StringUtils::StartsWithNoCase(realPath, strPlaylistsPath))
       return true;
   }
   bool isSource;
-  for (unsigned int index = 0; index < SourcesSize; index++)
+  // Check manually added sources (held in sources.xml)
+  for (const std::string& sourceName : SourceNames)
   {
-    VECSOURCES* sources = CMediaSourceSettings::Get().GetSources(SourceNames[index]);
+    VECSOURCES* sources = CMediaSourceSettings::GetInstance().GetSources(sourceName);
     int sourceIndex = CUtil::GetMatchingSource(realPath, *sources, isSource);
-    if (sourceIndex >= 0 && sourceIndex < (int)sources->size() && sources->at(sourceIndex).m_iHasLock != 2 && sources->at(sourceIndex).m_allowSharing)
+    if (sourceIndex >= 0 && sourceIndex < static_cast<int>(sources->size()) &&
+        sources->at(sourceIndex).m_iHasLock != LOCK_STATE_LOCKED &&
+        sources->at(sourceIndex).m_allowSharing)
       return true;
   }
+  // Check auto-mounted sources
+  VECSOURCES sources;
+  CServiceBroker::GetMediaManager().GetRemovableDrives(
+      sources); // Sources returned allways have m_allowsharing = true
+  //! @todo Make sharing of auto-mounted sources user configurable
+  int sourceIndex = CUtil::GetMatchingSource(realPath, sources, isSource);
+  if (sourceIndex >= 0 && sourceIndex < static_cast<int>(sources.size()) &&
+      sources.at(sourceIndex).m_iHasLock != LOCK_STATE_LOCKED &&
+      sources.at(sourceIndex).m_allowSharing)
+    return true;
+
   return false;
+}
+
+CDateTime CFileUtils::GetModificationDate(const std::string& strFileNameAndPath,
+                                          const bool& bUseLatestDate)
+{
+  if (bUseLatestDate)
+    return GetModificationDate(1, strFileNameAndPath);
+  else
+    return GetModificationDate(0, strFileNameAndPath);
+}
+
+CDateTime CFileUtils::GetModificationDate(const int& code, const std::string& strFileNameAndPath)
+{
+  CDateTime dateAdded;
+  if (strFileNameAndPath.empty())
+  {
+    CLog::Log(LOGDEBUG, "%s empty strFileNameAndPath variable", __FUNCTION__);
+    return dateAdded;
+  }
+
+  try
+  {
+    std::string file = strFileNameAndPath;
+    if (URIUtils::IsStack(strFileNameAndPath))
+      file = CStackDirectory::GetFirstStackedFile(strFileNameAndPath);
+
+    if (URIUtils::IsInArchive(file))
+      file = CURL(file).GetHostName();
+
+    // Try to get ctime (creation on Windows, metadata change on Linux) and mtime (modification)
+    struct __stat64 buffer;
+    if (CFile::Stat(file, &buffer) == 0 && (buffer.st_mtime != 0 || buffer.st_ctime != 0))
+    {
+      time_t now = time(NULL);
+      time_t addedTime;
+      // Prefer the modification time if it's valid, fallback to ctime
+      if (code == 0)
+      {
+        if (buffer.st_mtime != 0 && static_cast<time_t>(buffer.st_mtime) <= now)
+          addedTime = static_cast<time_t>(buffer.st_mtime);
+        else
+          addedTime = static_cast<time_t>(buffer.st_ctime);
+      }
+      // Use the later of the ctime and mtime
+      else if (code == 1)
+      {
+        addedTime =
+            std::max(static_cast<time_t>(buffer.st_ctime), static_cast<time_t>(buffer.st_mtime));
+        // if the newer of the two dates is in the future, we try it with the older one
+        if (addedTime > now)
+          addedTime =
+              std::min(static_cast<time_t>(buffer.st_ctime), static_cast<time_t>(buffer.st_mtime));
+      }
+      // Perfer the earliest of ctime and mtime, fallback to other
+      else
+      {
+        addedTime =
+            std::min(static_cast<time_t>(buffer.st_ctime), static_cast<time_t>(buffer.st_mtime));
+        // if the older of the two dates is invalid, we try it with the newer one
+        if (addedTime == 0)
+          addedTime =
+              std::max(static_cast<time_t>(buffer.st_ctime), static_cast<time_t>(buffer.st_mtime));
+      }
+
+
+      // make sure the datetime does is not in the future
+      if (addedTime <= now)
+      {
+        struct tm* time;
+#ifdef HAVE_LOCALTIME_R
+        struct tm result = {};
+        time = localtime_r(&addedTime, &result);
+#else
+        time = localtime(&addedTime);
+#endif
+        if (time)
+          dateAdded = *time;
+      }
+    }
+  }
+  catch (...)
+  {
+    CLog::Log(LOGERROR, "%s unable to extract modification date for file (%s)", __FUNCTION__,
+              strFileNameAndPath.c_str());
+  }
+  return dateAdded;
+}
+
+bool CFileUtils::CheckFileAccessAllowed(const std::string &filePath)
+{
+  // DENY access to paths matching
+  const std::vector<std::string> blacklist = {
+    "passwords.xml",
+    "sources.xml",
+    "guisettings.xml",
+    "advancedsettings.xml",
+    "server.key",
+    "/.ssh/",
+  };
+  // ALLOW kodi paths
+  const std::vector<std::string> whitelist = {
+    CSpecialProtocol::TranslatePath("special://home"),
+    CSpecialProtocol::TranslatePath("special://xbmc"),
+    CSpecialProtocol::TranslatePath("special://musicartistsinfo")
+  };
+
+  // image urls come in the form of image://... sometimes with a / appended at the end
+  // and can be embedded in a music or video file image://music@...
+  // strip this off to get the real file path
+  bool isImage = false;
+  std::string decodePath = CURL::Decode(filePath);
+  size_t pos = decodePath.find("image://");
+  if (pos != std::string::npos)
+  {
+    isImage = true;
+    decodePath.erase(pos, 8);
+    URIUtils::RemoveSlashAtEnd(decodePath);
+    if (StringUtils::StartsWith(decodePath, "music@") || StringUtils::StartsWith(decodePath, "video@"))
+      decodePath.erase(pos, 6);
+  }
+
+  // check blacklist
+  for (const auto &b : blacklist)
+  {
+    if (decodePath.find(b) != std::string::npos)
+    {
+      CLog::Log(LOGERROR,"%s denied access to %s",  __FUNCTION__, decodePath.c_str());
+      return false;
+    }
+  }
+
+#if defined(TARGET_POSIX)
+  std::string whiteEntry;
+  char *fullpath = realpath(decodePath.c_str(), nullptr);
+
+  // if this is a locally existing file, check access permissions
+  if (fullpath)
+  {
+    const std::string realPath = fullpath;
+    free(fullpath);
+
+    // check whitelist
+    for (const auto &w : whitelist)
+    {
+      char *realtemp = realpath(w.c_str(), nullptr);
+      if (realtemp)
+      {
+        whiteEntry = realtemp;
+        free(realtemp);
+      }
+      if (StringUtils::StartsWith(realPath, whiteEntry))
+        return true;
+    }
+    // check sources with realPath
+    return CFileUtils::RemoteAccessAllowed(realPath);
+  }
+#elif defined(TARGET_WINDOWS)
+  CURL url(decodePath);
+  if (url.GetProtocol().empty())
+  {
+    std::wstring decodePathW;
+    g_charsetConverter.utf8ToW(decodePath, decodePathW, false);
+    CWIN32Util::AddExtraLongPathPrefix(decodePathW);
+    DWORD bufSize = GetFullPathNameW(decodePathW.c_str(), 0, nullptr, nullptr);
+    if (bufSize > 0)
+    {
+      std::wstring fullpathW;
+      fullpathW.resize(bufSize);
+      if (GetFullPathNameW(decodePathW.c_str(), bufSize, const_cast<wchar_t*>(fullpathW.c_str()), nullptr) <= bufSize - 1)
+      {
+        CWIN32Util::RemoveExtraLongPathPrefix(fullpathW);
+        std::string fullpath;
+        g_charsetConverter.wToUTF8(fullpathW, fullpath, false);
+        for (const std::string& whiteEntry : whitelist)
+        {
+          if (StringUtils::StartsWith(fullpath, whiteEntry))
+            return true;
+        }
+        return CFileUtils::RemoteAccessAllowed(fullpath);
+      }
+    }
+  }
+#endif
+  // if it isn't a local file, it must be a vfs entry
+  if (! isImage)
+    return CFileUtils::RemoteAccessAllowed(decodePath);
+  return true;
 }

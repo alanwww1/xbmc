@@ -1,26 +1,14 @@
 /*
- *      Copyright (C) 2005-2014 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "addons/AddonVersion.h"
 
-#include "gtest/gtest.h"
+#include <gtest/gtest.h>
 
 using namespace ADDON;
 
@@ -180,19 +168,6 @@ TEST_F(TestAddonVersion, Equals)
   EXPECT_EQ(v1_0_0_alpha10, AddonVersion("1.0.0~alpha10"));
 }
 
-TEST_F(TestAddonVersion, Equivalent)
-{
-  EXPECT_FALSE(v1_0 != v1_00);
-  EXPECT_FALSE(v1_0 < v1_00);
-  EXPECT_FALSE(v1_0 > v1_00);
-  EXPECT_TRUE(v1_0 == v1_00);
-
-  EXPECT_FALSE(v1_01 != v1_1);
-  EXPECT_FALSE(v1_01 < v1_1);
-  EXPECT_FALSE(v1_01 > v1_1);
-  EXPECT_TRUE(v1_01 == v1_1);
-}
-
 TEST_F(TestAddonVersion, LessThan)
 {
   EXPECT_LT(v1_0, v1_0_0);
@@ -251,4 +226,46 @@ TEST_F(TestAddonVersion, LessThan)
   EXPECT_LT(v1_0_0_alpha3, v1_0_0_alpha10);
   EXPECT_LT(v1_0_0_alpha10, v1_0_0);
   EXPECT_LT(v1_0_0_alpha10, v1_0_0_beta);
+  
+  // pep-0440/local-version-identifiers
+  // ref: https://www.python.org/dev/peps/pep-0440/#local-version-identifiers
+  // Python addons use this kind of versioning particularly for script.module
+  // addons. The "same" version number may exist in different branches or
+  // targetting different kodi versions while keeping consistency with the
+  // upstream module version. The addon version available in upper repos
+  // (let's say matrix) must have a higher version than the one stored in
+  // lower branches (e.g. leia) so that users receive the addon update
+  // when upgrading kodi.
+  // So, for instance, we use version x.x.x or version x.x.x+kodiversion.r to
+  // refer to the same upstream version x.x.x of the module.
+  // Eg: script.module.foo-1.0.0 or script.module.foo-1.0.0+leia.1 for upstream
+  // module foo (version 1.0.0) available for leia; and
+  // script.module.foo-1.0.0+matrix.1 for upstream module foo (1.0.0) for matrix.
+  // In summary, 1.0.0 or 1.0.0+leia.1 must be < than 1.0.0+matrix.1
+  // tests below assure this won't get broken inadvertently
+  EXPECT_LT(AddonVersion("1.0.0"), AddonVersion("1.0.0+matrix.1"));
+  EXPECT_LT(AddonVersion("1.0.0+leia.1"), AddonVersion("1.0.0+matrix.1"));
+  EXPECT_LT(AddonVersion("1.0.0+matrix.1"), AddonVersion("1.0.0+matrix.2"));
+  EXPECT_LT(AddonVersion("1.0.0+matrix.1"), AddonVersion("1.0.1+matrix.1"));
+  EXPECT_LT(AddonVersion("1.0.0+matrix.1"), AddonVersion("1.1.0+matrix.1"));
+  EXPECT_LT(AddonVersion("1.0.0+matrix.1"), AddonVersion("2.0.0+matrix.1"));
+  EXPECT_LT(AddonVersion("1.0.0+matrix.1"), AddonVersion("1.0.0.1"));
+  EXPECT_LT(AddonVersion("1.0.0+Leia.1"), AddonVersion("1.0.0+matrix.1"));
+  EXPECT_LT(AddonVersion("1.0.0+leia.1"), AddonVersion("1.0.0+Matrix.1"));
+}
+
+TEST_F(TestAddonVersion, Equivalent)
+{
+  EXPECT_FALSE(v1_0 != v1_00);
+  EXPECT_FALSE(v1_0 < v1_00);
+  EXPECT_FALSE(v1_0 > v1_00);
+  EXPECT_TRUE(v1_0 == v1_00);
+
+  EXPECT_FALSE(v1_01 != v1_1);
+  EXPECT_FALSE(v1_01 < v1_1);
+  EXPECT_FALSE(v1_01 > v1_1);
+  EXPECT_TRUE(v1_01 == v1_1);
+  
+  // pep-0440/local-version-identifiers
+  EXPECT_TRUE(AddonVersion("1.0.0+leia.1") == AddonVersion("1.0.0+Leia.1"));
 }

@@ -3,7 +3,7 @@ DEPS= ../../Makefile.include Makefile
 
 # lib name, version
 LIBNAME=libass
-VERSION=0.10.1
+VERSION=0.14.0
 SOURCE=$(LIBNAME)-$(VERSION)
 ARCHIVE=$(SOURCE).tar.gz
 
@@ -13,8 +13,6 @@ CONFIGURE=cp -f $(CONFIG_SUB) $(CONFIG_GUESS) .; \
 
 LIBDYLIB=$(PLATFORM)/$(LIBNAME)/.libs/$(LIBNAME).a
 
-CLEAN_FILES=$(ARCHIVE) $(PLATFORM)
-
 all: .installed-$(PLATFORM)
 
 $(TARBALLS_LOCATION)/$(ARCHIVE):
@@ -23,6 +21,7 @@ $(TARBALLS_LOCATION)/$(ARCHIVE):
 $(PLATFORM): $(TARBALLS_LOCATION)/$(ARCHIVE) $(DEPS)
 	rm -rf $(PLATFORM)/*; mkdir -p $(PLATFORM)
 	cd $(PLATFORM); $(ARCHIVE_TOOL) $(ARCHIVE_TOOL_FLAGS) $(TARBALLS_LOCATION)/$(ARCHIVE)
+	cd $(PLATFORM); $(AUTORECONF) -vif
 	cd $(PLATFORM); $(CONFIGURE)
 
 $(LIBDYLIB): $(PLATFORM)
@@ -30,12 +29,6 @@ $(LIBDYLIB): $(PLATFORM)
 
 .installed-$(PLATFORM): $(LIBDYLIB)
 	$(MAKE) -C $(PLATFORM) install
-ifeq ($(OS),android)
-	rm -f $(PREFIX)/lib/libass.la $(PREFIX)/lib/libass.so $(PREFIX)/lib/libass.so.4
-	mv -f $(PREFIX)/lib/libass.so.4.1.0 $(PREFIX)/lib/libass.so
-	$(RPL) -e "libass.so.4" "libass.so\x00\x00" $(PREFIX)/lib/libass.so
-	-$(READELF) --dynamic $(PREFIX)/lib/libass.so | grep ibrary
-endif
 	touch $@
 
 clean:

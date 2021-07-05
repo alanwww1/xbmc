@@ -1,40 +1,31 @@
-#pragma once
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
+
+#include "XBDateTime.h"
+#include "utils/EmbeddedArt.h"
+#include "utils/Fanart.h"
+#include "utils/ISortable.h"
+#include "utils/ScraperUrl.h"
+#include "utils/StreamDetails.h"
+#include "video/Bookmark.h"
 
 #include <string>
 #include <vector>
-#include "XBDateTime.h"
-#include "utils/ScraperUrl.h"
-#include "utils/Fanart.h"
-#include "utils/ISortable.h"
-#include "utils/StreamDetails.h"
-#include "video/Bookmark.h"
 
 class CArchive;
 class TiXmlNode;
 class TiXmlElement;
+class CVariant;
 
 struct SActorInfo
 {
-  SActorInfo() : order(-1) {};
   bool operator<(const SActorInfo &right) const
   {
     return order < right.order;
@@ -43,13 +34,25 @@ struct SActorInfo
   std::string strRole;
   CScraperUrl thumbUrl;
   std::string thumb;
-  int        order;
+  int        order = -1;
 };
+
+class CRating
+{
+public:
+  CRating() = default;
+  explicit CRating(float r): rating(r) {}
+  CRating(float r, int v): rating(r), votes(v) {}
+  float rating = 0.0f;
+  int votes = 0;
+};
+typedef std::map<std::string, CRating> RatingMap;
 
 class CVideoInfoTag : public IArchivable, public ISerializable, public ISortable
 {
 public:
   CVideoInfoTag() { Reset(); };
+  virtual ~CVideoInfoTag() = default;
   void Reset();
   /* \brief Load information to a videoinfotag from an XML element
    There are three types of tags supported:
@@ -68,9 +71,21 @@ public:
    */
   bool Load(const TiXmlElement *element, bool append = false, bool prioritise = false);
   bool Save(TiXmlNode *node, const std::string &tag, bool savePathInfo = true, const TiXmlElement *additionalNode = NULL);
-  virtual void Archive(CArchive& ar);
-  virtual void Serialize(CVariant& value) const;
-  virtual void ToSortable(SortItem& sortable, Field field) const;
+  void Merge(CVideoInfoTag& other);
+  void Archive(CArchive& ar) override;
+  void Serialize(CVariant& value) const override;
+  void ToSortable(SortItem& sortable, Field field) const override;
+  const CRating GetRating(std::string type = "") const;
+  const std::string& GetDefaultRating() const;
+  const std::string GetUniqueID(std::string type = "") const;
+  const std::map<std::string, std::string>& GetUniqueIDs() const;
+  const std::string& GetDefaultUniqueID() const;
+  bool HasUniqueID() const;
+  virtual bool HasYear() const;
+  virtual int GetYear() const;
+  bool HasPremiered() const;
+  const CDateTime& GetPremiered() const;
+  const CDateTime& GetFirstAired() const;
   const std::string GetCast(bool bIncludeRole = false) const;
   bool HasStreamDetails() const;
   bool IsEmpty() const;
@@ -82,16 +97,122 @@ public:
     return m_strFileNameAndPath;
   };
 
+  /*! \brief set the duration in seconds
+   \param duration the duration to set
+   */
+  void SetDuration(int duration);
+
   /*! \brief retrieve the duration in seconds.
    Prefers the duration from stream details if available.
    */
   unsigned int GetDuration() const;
+
+  /*! \brief retrieve the duration in seconds.
+   Ignores the duration from stream details even if available.
+   */
+  unsigned int GetStaticDuration() const;
 
   /*! \brief get the duration in seconds from a minute string
    \param runtime the runtime string from a scraper or similar
    \return the time in seconds, if decipherable.
    */
   static unsigned int GetDurationFromMinuteString(const std::string &runtime);
+
+  void SetBasePath(std::string basePath);
+  void SetDirector(std::vector<std::string> director);
+  void SetWritingCredits(std::vector<std::string> writingCredits);
+  void SetGenre(std::vector<std::string> genre);
+  void SetCountry(std::vector<std::string> country);
+  void SetTagLine(std::string tagLine);
+  void SetPlotOutline(std::string plotOutline);
+  void SetTrailer(std::string trailer);
+  void SetPlot(std::string plot);
+  std::string const &GetTitle();
+  void SetTitle(std::string title);
+  void SetSortTitle(std::string sortTitle);
+  void SetPictureURL(CScraperUrl &pictureURL);
+  void SetRating(float rating, int votes, const std::string& type = "", bool def = false);
+  void SetRating(CRating rating, const std::string& type = "", bool def = false);
+  void SetRating(float rating, const std::string& type = "", bool def = false);
+  void RemoveRating(const std::string& type);
+  void SetRatings(RatingMap ratings);
+  void SetVotes(int votes, const std::string& type = "");
+  void SetUniqueIDs(std::map<std::string, std::string> uniqueIDs);
+  void SetPremiered(const CDateTime& premiered);
+  void SetPremieredFromDBDate(const std::string& premieredString);
+  virtual void SetYear(int year);
+  void SetArtist(std::vector<std::string> artist);
+  void SetSet(std::string set);
+  void SetSetOverview(std::string setOverview);
+  void SetTags(std::vector<std::string> tags);
+  void SetFile(std::string file);
+  void SetPath(std::string path);
+  void SetMPAARating(std::string mpaaRating);
+  void SetFileNameAndPath(std::string fileNameAndPath);
+  void SetOriginalTitle(std::string originalTitle);
+  void SetEpisodeGuide(std::string episodeGuide);
+  void SetStatus(std::string status);
+  void SetProductionCode(std::string productionCode);
+  void SetShowTitle(std::string showTitle);
+  void SetStudio(std::vector<std::string> studio);
+  void SetAlbum(std::string album);
+  void SetShowLink(std::vector<std::string> showLink);
+  void SetUniqueID(const std::string& uniqueid, const std::string& type = "", bool def = false);
+  void RemoveUniqueID(const std::string& type);
+  void SetNamedSeasons(std::map<int, std::string> namedSeasons);
+  void SetUserrating(int userrating);
+
+  /*!
+   * @brief Get this videos's play count.
+   * @return the play count.
+   */
+  virtual int GetPlayCount() const;
+
+  /*!
+   * @brief Set this videos's play count.
+   * @param count play count.
+   * @return True if play count was set successfully, false otherwise.
+   */
+  virtual bool SetPlayCount(int count);
+
+  /*!
+   * @brief Increment this videos's play count.
+   * @return True if play count was increased successfully, false otherwise.
+   */
+  virtual bool IncrementPlayCount();
+
+  /*!
+  * @brief Reset playcount
+  */
+  virtual void ResetPlayCount();
+
+  /*!
+  * @brief Check if the playcount is set
+  * @return True if play count value is set
+  */
+  virtual bool IsPlayCountSet() const;
+
+  /*!
+   * @brief Get this videos's resume point.
+   * @return the resume point.
+   */
+  virtual CBookmark GetResumePoint() const;
+
+  /*!
+   * @brief Set this videos's resume point.
+   * @param resumePoint resume point.
+   * @return True if resume point was set successfully, false otherwise.
+   */
+  virtual bool SetResumePoint(const CBookmark &resumePoint);
+
+  /*!
+   * @brief Set this videos's resume point.
+   * @param timeInSeconds the time of the resume point
+   * @param totalTimeInSeconds the total time of the video
+   * @param playerState the player state
+   * @return True if resume point was set successfully, false otherwise.
+   */
+  virtual bool SetResumePoint(double timeInSeconds, double totalTimeInSeconds, const std::string &playerState);
 
   std::string m_basePath; // the base path of the video, for folder-based lookups
   int m_parentPathID;      // the parent path id where the base path of the video lies
@@ -106,21 +227,25 @@ public:
   CScraperUrl m_strPictureURL;
   std::string m_strTitle;
   std::string m_strSortTitle;
-  std::string m_strVotes;
   std::vector<std::string> m_artist;
   std::vector< SActorInfo > m_cast;
   typedef std::vector< SActorInfo >::const_iterator iCast;
-  std::string m_strSet;
-  int m_iSetId;
+  struct SetInfo //!< Struct holding information about a movie set
+  {
+    std::string title; //!< Title of the movie set
+    int id; //!< ID of movie set in database
+    std::string overview; //!< Overview/description of the movie set
+  };
+  SetInfo m_set; //!< Assigned movie set
   std::vector<std::string> m_tags;
   std::string m_strFile;
   std::string m_strPath;
-  std::string m_strIMDBNumber;
   std::string m_strMPAARating;
   std::string m_strFileNameAndPath;
   std::string m_strOriginalTitle;
   std::string m_strEpisodeGuide;
   CDateTime m_premiered;
+  bool m_bHasPremiered;
   std::string m_strStatus;
   std::string m_strProductionCode;
   CDateTime m_firstAired;
@@ -129,28 +254,34 @@ public:
   std::string m_strAlbum;
   CDateTime m_lastPlayed;
   std::vector<std::string> m_showLink;
-  int m_playCount;
+  std::map<int, std::string> m_namedSeasons;
   int m_iTop250;
-  int m_iYear;
+  int m_year;
   int m_iSeason;
   int m_iEpisode;
-  std::string m_strUniqueId;
+  int m_iIdUniqueID;
   int m_iDbId;
   int m_iFileId;
   int m_iSpecialSortSeason;
   int m_iSpecialSortEpisode;
   int m_iTrack;
-  float m_fRating;
-  float m_fEpBookmark;
+  RatingMap m_ratings;
+  int m_iIdRating;
+  int m_iUserRating;
+  CBookmark m_EpBookmark;
   int m_iBookmarkId;
   int m_iIdShow;
   int m_iIdSeason;
   CFanart m_fanart;
   CStreamDetails m_streamDetails;
-  CBookmark m_resumePoint;
   CDateTime m_dateAdded;
   MediaType m_type;
-  int m_duration; ///< duration in seconds
+  int m_relevance; // Used for actors' number of appearances
+  int m_parsedDetails;
+  std::vector<EmbeddedArtInfo> m_coverArt; ///< art information
+
+  // TODO: cannot be private, because of 'struct SDbTableOffsets'
+  unsigned int m_duration; ///< duration in seconds
 
 private:
   /* \brief Parse our native XML format for video info.
@@ -161,6 +292,16 @@ private:
    \sa Load
    */
   void ParseNative(const TiXmlElement* element, bool prioritise);
+
+  std::string m_strDefaultRating;
+  std::string m_strDefaultUniqueID;
+  std::map<std::string, std::string> m_uniqueIDs;
+  std::string Trim(std::string &&value);
+  std::vector<std::string> Trim(std::vector<std::string> &&items);
+
+  int m_playCount;
+  CBookmark m_resumePoint;
+  static const int PLAYCOUNT_NOT_SET = -1;
 };
 
 typedef std::vector<CVideoInfoTag> VECMOVIES;

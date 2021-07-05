@@ -1,38 +1,27 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "Win32Exception.h"
-#include <eh.h>
-#include <dbghelp.h>
+
 #include "Util.h"
 #include "WIN32Util.h"
 #include "utils/StringUtils.h"
-#include "utils/CharsetConverter.h"
 #include "utils/URIUtils.h"
 
-#define LOG if(logger) logger->Log
+#include "platform/win32/CharsetConverter.h"
+
+#include <VersionHelpers.h>
+#include <dbghelp.h>
 
 typedef BOOL (WINAPI *MINIDUMPWRITEDUMP)(HANDLE hProcess, DWORD dwPid, HANDLE hFile, MINIDUMP_TYPE DumpType,
-                                        CONST PMINIDUMP_EXCEPTION_INFORMATION ExceptionParam,
-                                        CONST PMINIDUMP_USER_STREAM_INFORMATION UserStreamParam,
-                                        CONST PMINIDUMP_CALLBACK_INFORMATION CallbackParam);
+                                        const PMINIDUMP_EXCEPTION_INFORMATION ExceptionParam,
+                                        const PMINIDUMP_USER_STREAM_INFORMATION UserStreamParam,
+                                        const PMINIDUMP_CALLBACK_INFORMATION CallbackParam);
 
 // StackWalk64()
 typedef BOOL (__stdcall *tSW)(
@@ -65,52 +54,10 @@ typedef DWORD (__stdcall *tSGO)( VOID );
 // SymSetOptions()
 typedef DWORD (__stdcall *tSSO)( IN DWORD SymOptions );
 
+// GetCurrentPackageFullName
+typedef LONG (__stdcall *GCPFN)(UINT32*, PWSTR);
+
 std::string win32_exception::mVersion;
-
-void win32_exception::install_handler()
-{
-  _set_se_translator(win32_exception::translate);
-}
-
-void win32_exception::translate(unsigned code, EXCEPTION_POINTERS* info)
-{
-  switch (code)
-  {
-    case EXCEPTION_ACCESS_VIOLATION:
-      throw access_violation(info);
-      break;
-    default:
-      throw win32_exception(info);
-  }
-}
-
-win32_exception::win32_exception(EXCEPTION_POINTERS* info, const char* classname) :
-  XbmcCommons::UncheckedException(classname ? classname : "win32_exception"),
-  mWhat("Win32 exception"), mWhere(info->ExceptionRecord->ExceptionAddress), mCode(info->ExceptionRecord->ExceptionCode), mExceptionPointers(info)
-{
-  // Windows guarantees that *(info->ExceptionRecord) is valid
-  switch (info->ExceptionRecord->ExceptionCode)
-  {
-  case EXCEPTION_ACCESS_VIOLATION:
-    mWhat = "Access violation";
-    break;
-  case EXCEPTION_FLT_DIVIDE_BY_ZERO:
-  case EXCEPTION_INT_DIVIDE_BY_ZERO:
-    mWhat = "Division by zero";
-    break;
-  }
-}
-
-void win32_exception::LogThrowMessage(const char *prefix)  const
-{
-  if( prefix )
-    LOG(LOGERROR, "Unhandled exception in %s : %s (code:0x%08x) at 0x%08x", prefix, (unsigned int) what(), code(), where());
-  else
-    LOG(LOGERROR, "Unhandled exception in %s (code:0x%08x) at 0x%08x", what(), code(), where());
-
-  write_stacktrace();
-  write_minidump();
-}
 
 bool win32_exception::write_minidump(EXCEPTION_POINTERS* pEp)
 {
@@ -118,37 +65,35 @@ bool win32_exception::write_minidump(EXCEPTION_POINTERS* pEp)
   bool returncode = false;
   std::string dumpFileName;
   std::wstring dumpFileNameW;
-  SYSTEMTIME stLocalTime;
-  GetLocalTime(&stLocalTime);
+  KODI::TIME::SystemTime stLocalTime;
+  KODI::TIME::GetLocalTime(&stLocalTime);
 
-  dumpFileName = StringUtils::Format("xbmc_crashlog-%s-%04d%02d%02d-%02d%02d%02d.dmp",
-                      mVersion.c_str(),
-                      stLocalTime.wYear, stLocalTime.wMonth, stLocalTime.wDay,
-                      stLocalTime.wHour, stLocalTime.wMinute, stLocalTime.wSecond);
+  dumpFileName = StringUtils::Format(
+      "kodi_crashlog-%s-%04d%02d%02d-%02d%02d%02d.dmp", mVersion.c_str(), stLocalTime.year,
+      stLocalTime.month, stLocalTime.day, stLocalTime.hour, stLocalTime.minute, stLocalTime.second);
 
   dumpFileName = CWIN32Util::SmbToUnc(URIUtils::AddFileToFolder(CWIN32Util::GetProfilePath(), CUtil::MakeLegalFileName(dumpFileName)));
 
-  g_charsetConverter.utf8ToW(dumpFileName, dumpFileNameW, false);
+  dumpFileNameW = KODI::PLATFORM::WINDOWS::ToW(dumpFileName);
   HANDLE hDumpFile = CreateFileW(dumpFileNameW.c_str(), GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+
+  HMODULE hDbgHelpDll = nullptr;
 
   if (hDumpFile == INVALID_HANDLE_VALUE)
   {
-    LOG(LOGERROR, "CreateFile '%s' failed with error id %d", dumpFileName.c_str(), GetLastError());
     goto cleanup;
   }
 
   // Load the DBGHELP DLL
-  HMODULE hDbgHelpDll = ::LoadLibrary("DBGHELP.DLL");
+  hDbgHelpDll = ::LoadLibrary(L"DBGHELP.DLL");
   if (!hDbgHelpDll)
   {
-    LOG(LOGERROR, "LoadLibrary 'DBGHELP.DLL' failed with error id %d", GetLastError());
     goto cleanup;
   }
 
   MINIDUMPWRITEDUMP pDump = (MINIDUMPWRITEDUMP)::GetProcAddress(hDbgHelpDll, "MiniDumpWriteDump");
   if (!pDump)
   {
-    LOG(LOGERROR, "Failed to locate MiniDumpWriteDump with error id %d", GetLastError());
     goto cleanup;
   }
 
@@ -164,7 +109,6 @@ bool win32_exception::write_minidump(EXCEPTION_POINTERS* pEp)
   BOOL bMiniDumpSuccessful = pDump(GetCurrentProcess(), GetCurrentProcessId(), hDumpFile, MiniDumpNormal, &mdei, 0, NULL);
   if( !bMiniDumpSuccessful )
   {
-    LOG(LOGERROR, "MiniDumpWriteDump failed with error id %d", GetLastError());
     goto cleanup;
   }
 
@@ -193,8 +137,8 @@ bool win32_exception::write_stacktrace(EXCEPTION_POINTERS* pEp)
   std::wstring dumpFileNameW;
   CHAR cTemp[STACKWALK_MAX_NAMELEN];
   DWORD dwBytes;
-  SYSTEMTIME stLocalTime;
-  GetLocalTime(&stLocalTime);
+  KODI::TIME::SystemTime stLocalTime;
+  KODI::TIME::GetLocalTime(&stLocalTime);
   bool returncode = false;
   STACKFRAME64 frame = { 0 };
   HANDLE hCurProc = GetCurrentProcess();
@@ -202,10 +146,9 @@ bool win32_exception::write_stacktrace(EXCEPTION_POINTERS* pEp)
   HANDLE hDumpFile = INVALID_HANDLE_VALUE;
   tSC pSC = NULL;
 
-  HMODULE hDbgHelpDll = ::LoadLibrary("DBGHELP.DLL");
+  HMODULE hDbgHelpDll = ::LoadLibrary(L"DBGHELP.DLL");
   if (!hDbgHelpDll)
   {
-    LOG(LOGERROR, "LoadLibrary 'DBGHELP.DLL' failed with error id %d", GetLastError());
     goto cleanup;
   }
 
@@ -224,28 +167,33 @@ bool win32_exception::write_stacktrace(EXCEPTION_POINTERS* pEp)
      pSFTA == NULL || pSGMB == NULL)
     goto cleanup;
 
-  dumpFileName = StringUtils::Format("xbmc_stacktrace-%s-%04d%02d%02d-%02d%02d%02d.txt",
-                                      mVersion.c_str(),
-                                      stLocalTime.wYear, stLocalTime.wMonth, stLocalTime.wDay,
-                                      stLocalTime.wHour, stLocalTime.wMinute, stLocalTime.wSecond);
+  dumpFileName = StringUtils::Format(
+      "kodi_stacktrace-%s-%04d%02d%02d-%02d%02d%02d.txt", mVersion.c_str(), stLocalTime.year,
+      stLocalTime.month, stLocalTime.day, stLocalTime.hour, stLocalTime.minute, stLocalTime.second);
 
   dumpFileName = CWIN32Util::SmbToUnc(URIUtils::AddFileToFolder(CWIN32Util::GetProfilePath(), CUtil::MakeLegalFileName(dumpFileName)));
 
-  g_charsetConverter.utf8ToW(dumpFileName, dumpFileNameW, false);
+  dumpFileNameW = KODI::PLATFORM::WINDOWS::ToW(dumpFileName);
   hDumpFile = CreateFileW(dumpFileNameW.c_str(), GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
 
   if (hDumpFile == INVALID_HANDLE_VALUE)
   {
-    LOG(LOGERROR, "CreateFile '%s' failed with error id %d", dumpFileName.c_str(), GetLastError());
     goto cleanup;
   }
 
-  frame.AddrPC.Offset         = pEp->ContextRecord->Eip;      // Current location in program
-  frame.AddrPC.Mode           = AddrModeFlat;                 // Address mode for this pointer: flat 32 bit addressing
-  frame.AddrStack.Offset      = pEp->ContextRecord->Esp;      // Stack pointers current value
-  frame.AddrStack.Mode        = AddrModeFlat;                 // Address mode for this pointer: flat 32 bit addressing
-  frame.AddrFrame.Offset      = pEp->ContextRecord->Ebp;      // Value of register used to access local function variables.
-  frame.AddrFrame.Mode        = AddrModeFlat;                 // Address mode for this pointer: flat 32 bit addressing
+  frame.AddrPC.Mode = AddrModeFlat; // Address mode for this pointer: flat 32 bit addressing
+  frame.AddrStack.Mode = AddrModeFlat; // Address mode for this pointer: flat 32 bit addressing
+  frame.AddrFrame.Mode = AddrModeFlat; // Address mode for this pointer: flat 32 bit addressing
+
+#if defined(_X86_)
+  frame.AddrPC.Offset = pEp->ContextRecord->Eip; // Current location in program
+  frame.AddrStack.Offset = pEp->ContextRecord->Esp; // Stack pointers current value
+  frame.AddrFrame.Offset = pEp->ContextRecord->Ebp; // Value of register used to access local function variables.
+#else
+  frame.AddrPC.Offset = pEp->ContextRecord->Rip; // Current location in program
+  frame.AddrStack.Offset = pEp->ContextRecord->Rsp; // Stack pointers current value
+  frame.AddrFrame.Offset = pEp->ContextRecord->Rbp; // Value of register used to access local function variables.
+#endif
 
   if(pSI(hCurProc, NULL, TRUE) == FALSE)
     goto cleanup;
@@ -314,45 +262,26 @@ cleanup:
   return returncode;
 }
 
-access_violation::access_violation(EXCEPTION_POINTERS* info) :
-  win32_exception(info,"access_violation"), mAccessType(Invalid), mBadAddress(0)
+bool win32_exception::ShouldHook()
 {
-  switch(info->ExceptionRecord->ExceptionInformation[0])
+  if (!IsWindows8OrGreater())
+    return true;
+
+  bool result = true;
+
+  auto module = ::LoadLibrary(L"kernel32.dll");
+  if (module)
   {
-  case 0:
-    mAccessType = Read;
-    break;
-  case 1:
-    mAccessType = Write;
-    break;
-  case 8:
-    mAccessType = DEP;
-    break;
+    auto func = reinterpret_cast<GCPFN>(::GetProcAddress(module, "GetCurrentPackageFullName"));
+    if (func)
+    {
+      UINT32 length = 0;
+      auto r = func(&length, nullptr);
+      result = r == APPMODEL_ERROR_NO_PACKAGE;
+    }
+
+    ::FreeLibrary(module);
   }
-  mBadAddress = reinterpret_cast<win32_exception ::Address>(info->ExceptionRecord->ExceptionInformation[1]);
-}
 
-void access_violation::LogThrowMessage(const char *prefix) const
-{
-  if( prefix )
-    if( mAccessType == Write)
-      LOG(LOGERROR, "Unhandled exception in %s : %s at 0x%08x: Writing location 0x%08x", prefix, what(), where(), address());
-    else if( mAccessType == Read)
-      LOG(LOGERROR, "Unhandled exception in %s : %s at 0x%08x: Reading location 0x%08x", prefix, what(), where(), address());
-    else if( mAccessType == DEP)
-      LOG(LOGERROR, "Unhandled exception in %s : %s at 0x%08x: DEP violation, location 0x%08x", prefix, what(), where(), address());
-    else
-      LOG(LOGERROR, "Unhandled exception in %s : %s at 0x%08x: unknown access type, location 0x%08x", prefix, what(), where(), address());
-  else
-    if( mAccessType == Write)
-      LOG(LOGERROR, "Unhandled exception in %s at 0x%08x: Writing location 0x%08x", what(), where(), address());
-    else if( mAccessType == Read)
-      LOG(LOGERROR, "Unhandled exception in %s at 0x%08x: Reading location 0x%08x", what(), where(), address());
-    else if( mAccessType == DEP)
-      LOG(LOGERROR, "Unhandled exception in %s at 0x%08x: DEP violation, location 0x%08x", what(), where(), address());
-    else
-      LOG(LOGERROR, "Unhandled exception in %s at 0x%08x: unknown access type, location 0x%08x", what(), where(), address());
-
-  write_stacktrace();
-  write_minidump();
+  return result;
 }

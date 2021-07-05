@@ -1,17 +1,14 @@
 include ../../Makefile.include
-DEPS= ../../Makefile.include Makefile
+DEPS= ../../Makefile.include Makefile armAssembler.patch
 
 # lib name, version
 LIBNAME=libffi
-VERSION=3.0.11
+VERSION=3.2.1
 SOURCE=$(LIBNAME)-$(VERSION)
 ARCHIVE=$(SOURCE).tar.gz
 
 # configuration settings
-CONFIGURE= ./configure --prefix=$(PREFIX) --disable-shared --disable-builddir 
-ifeq ($(OS), ios)
-CONFIGURE+=CFLAGS=-no-integrated-as
-endif
+CONFIGURE= ./configure --prefix=$(PREFIX) --disable-shared --disable-builddir
 
 
 LIBDYLIB=$(PLATFORM)/.libs/$(LIBNAME).a
@@ -24,7 +21,7 @@ $(TARBALLS_LOCATION)/$(ARCHIVE):
 $(PLATFORM): $(TARBALLS_LOCATION)/$(ARCHIVE) $(DEPS)
 	rm -rf $(PLATFORM); mkdir -p $(PLATFORM)
 	cd $(PLATFORM); $(ARCHIVE_TOOL) $(ARCHIVE_TOOL_FLAGS) $(TARBALLS_LOCATION)/$(ARCHIVE)
-	cd $(PLATFORM); patch -p0 < ../01_ios_arm_align_fix.patch
+	cd $(PLATFORM); patch -p1 -i ../armAssembler.patch
 	cd $(PLATFORM); $(CONFIGURE)
 
 $(LIBDYLIB): $(PLATFORM)

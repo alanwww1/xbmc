@@ -1,41 +1,33 @@
-/*!
-\file GUIFont.h
-\brief
-*/
-
-#ifndef CGUILIB_GUIFONTTTF_H
-#define CGUILIB_GUIFONTTTF_H
-#pragma once
-
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
 
 #include <string>
 #include <stdint.h>
 #include <vector>
 
 #include "utils/auto_buffer.h"
-#include "Geometry.h"
+#include "utils/Color.h"
+#include "utils/Geometry.h"
 
-// forward definition
-class CBaseTexture;
+#ifdef HAS_DX
+#include <DirectXMath.h>
+#include <DirectXPackedVector.h>
+
+using namespace DirectX;
+using namespace DirectX::PackedVector;
+#endif
+
+constexpr size_t LOOKUPTABLE_SIZE = 256 * 8;
+
+class CTexture;
+class CRenderSystemBase;
 
 struct FT_FaceRec_;
 struct FT_LibraryRec_;
@@ -50,9 +42,7 @@ typedef struct FT_BitmapGlyphRec_ *FT_BitmapGlyph;
 typedef struct FT_StrokerRec_ *FT_Stroker;
 
 typedef uint32_t character_t;
-typedef uint32_t color_t;
 typedef std::vector<character_t> vecText;
-typedef std::vector<color_t> vecColors;
 
 /*!
  \ingroup textures
@@ -63,7 +53,7 @@ struct SVertex
 {
   float x, y, z;
 #ifdef HAS_DX
-  unsigned char b, g, r, a;
+  XMFLOAT4 col;
 #else
   unsigned char r, g, b, a;
 #endif
@@ -74,14 +64,14 @@ struct SVertex
 #include "GUIFontCache.h"
 
 
-class CGUIFontTTFBase
+class CGUIFontTTF
 {
   friend class CGUIFont;
 
 public:
+  virtual ~CGUIFontTTF();
 
-  CGUIFontTTFBase(const std::string& strFileName);
-  virtual ~CGUIFontTTFBase(void);
+  static CGUIFontTTF* CreateGUIFontTTF(const std::string& fileName);
 
   void Clear();
 
@@ -96,6 +86,8 @@ public:
   const std::string& GetFileName() const { return m_strFileName; };
 
 protected:
+  explicit CGUIFontTTF(const std::string& strFileName);
+
   struct Character
   {
     short offsetX, offsetY;
@@ -113,7 +105,7 @@ protected:
   float GetLineHeight(float lineSpacing) const;
   float GetFontHeight() const { return m_height; }
 
-  void DrawTextInternal(float x, float y, const vecColors &colors, const vecText &text,
+  void DrawTextInternal(float x, float y, const std::vector<UTILS::Color> &colors, const vecText &text,
                             uint32_t alignment, float maxPixelWidth, bool scrolling);
 
   float m_height;
@@ -122,21 +114,21 @@ protected:
   // Stuff for pre-rendering for speed
   inline Character *GetCharacter(character_t letter);
   bool CacheCharacter(wchar_t letter, uint32_t style, Character *ch);
-  void RenderCharacter(float posX, float posY, const Character *ch, color_t color, bool roundX, std::vector<SVertex> &vertices);
+  void RenderCharacter(float posX, float posY, const Character *ch, UTILS::Color color, bool roundX, std::vector<SVertex> &vertices);
   void ClearCharacterCache();
 
-  virtual CBaseTexture* ReallocTexture(unsigned int& newHeight) = 0;
+  virtual CTexture* ReallocTexture(unsigned int& newHeight) = 0;
   virtual bool CopyCharToTexture(FT_BitmapGlyph bitGlyph, unsigned int x1, unsigned int y1, unsigned int x2, unsigned int y2) = 0;
   virtual void DeleteHardwareTexture() = 0;
 
   // modifying glyphs
-  void EmboldenGlyph(FT_GlyphSlot slot);
+  void SetGlyphStrength(FT_GlyphSlot slot, int glyphStrength);
   static void ObliqueGlyph(FT_GlyphSlot slot);
 
-  CBaseTexture* m_texture;        // texture that holds our rendered characters (8bit alpha only)
+  CTexture* m_texture; // texture that holds our rendered characters (8bit alpha only)
 
   unsigned int m_textureWidth;       // width of our texture
-  unsigned int m_textureHeight;      // heigth of our texture
+  unsigned int m_textureHeight;      // height of our texture
   int m_posX;                        // current position in the texture
   int m_posY;
 
@@ -146,10 +138,10 @@ protected:
   unsigned int GetTextureLineHeight() const;
   static const unsigned int spacing_between_characters_in_texture;
 
-  color_t m_color;
+  UTILS::Color m_color;
 
   Character *m_char;                 // our characters
-  Character *m_charquick[256*4];     // ascii chars (4 styles) here
+  Character *m_charquick[LOOKUPTABLE_SIZE];     // ascii chars (7 styles) here
   int m_maxChars;                    // size of character array (can be incremented)
   int m_numChars;                    // the current number of cached characters
 
@@ -190,20 +182,12 @@ protected:
   CGUIFontCache<CGUIFontCacheStaticPosition, CGUIFontCacheStaticValue> m_staticCache;
   CGUIFontCache<CGUIFontCacheDynamicPosition, CGUIFontCacheDynamicValue> m_dynamicCache;
 
+  CRenderSystemBase *m_renderSystem = nullptr;
+
 private:
   virtual bool FirstBegin() = 0;
   virtual void LastEnd() = 0;
-  CGUIFontTTFBase(const CGUIFontTTFBase&);
-  CGUIFontTTFBase& operator=(const CGUIFontTTFBase&);
+  CGUIFontTTF(const CGUIFontTTF&) = delete;
+  CGUIFontTTF& operator=(const CGUIFontTTF&) = delete;
   int m_referenceCount;
 };
-
-#if defined(HAS_GL) || defined(HAS_GLES)
-#include "GUIFontTTFGL.h"
-#define CGUIFontTTF CGUIFontTTFGL
-#elif defined(HAS_DX)
-#include "GUIFontTTFDX.h"
-#define CGUIFontTTF CGUIFontTTFDX
-#endif
-
-#endif

@@ -1,60 +1,45 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "system.h"
-#include "Application.h"
-#include "ApplicationMessenger.h"
 #include "GUIWindowLoginScreen.h"
-#include "profiles/Profile.h"
-#include "profiles/ProfilesManager.h"
-#include "profiles/dialogs/GUIDialogProfileSettings.h"
-#include "profiles/windows/GUIWindowSettingsProfile.h"
-#include "dialogs/GUIDialogContextMenu.h"
-#include "GUIPassword.h"
-#ifdef HAS_JSONRPC
-#include "interfaces/json-rpc/JSONRPC.h"
-#endif
-#include "interfaces/Builtins.h"
-#include "utils/Weather.h"
-#include "utils/StringUtils.h"
-#include "network/Network.h"
-#include "addons/Skin.h"
-#include "guilib/GUIMessage.h"
-#include "GUIUserMessages.h"
-#include "guilib/GUIWindowManager.h"
-#include "guilib/StereoscopicsManager.h"
-#include "dialogs/GUIDialogOK.h"
-#include "settings/Settings.h"
+
 #include "FileItem.h"
-#include "guilib/Key.h"
+#include "GUIPassword.h"
+#include "ServiceBroker.h"
+#include "addons/Skin.h"
+#include "dialogs/GUIDialogContextMenu.h"
+#include "guilib/GUIComponent.h"
+#include "guilib/GUIMessage.h"
+#include "guilib/GUIWindowManager.h"
 #include "guilib/LocalizeStrings.h"
-#include "addons/AddonManager.h"
-#include "view/ViewState.h"
+#include "input/Key.h"
+#include "interfaces/builtins/Builtins.h"
+#include "messaging/ApplicationMessenger.h"
+#include "messaging/helpers/DialogOKHelper.h"
+#include "profiles/Profile.h"
+#include "profiles/ProfileManager.h"
+#include "profiles/dialogs/GUIDialogProfileSettings.h"
 #include "pvr/PVRManager.h"
+#include "pvr/guilib/PVRGUIActions.h"
+#include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
+#include "utils/StringUtils.h"
+#include "utils/Variant.h"
+#include "view/ViewState.h"
+
+using namespace KODI::MESSAGING;
 
 #define CONTROL_BIG_LIST               52
 #define CONTROL_LABEL_HEADER            2
 #define CONTROL_LABEL_SELECTED_PROFILE  3
 
 CGUIWindowLoginScreen::CGUIWindowLoginScreen(void)
-: CGUIWindow(WINDOW_LOGIN_SCREEN, "LoginScreen.xml")
+  : CGUIWindow(WINDOW_LOGIN_SCREEN, "LoginScreen.xml")
 {
   watch.StartZero();
   m_vecItems = new CFileItemList;
@@ -107,12 +92,12 @@ bool CGUIWindowLoginScreen::OnMessage(CGUIMessage& message)
           if (bOkay)
           {
             if (iItem >= 0)
-              LoadProfile((unsigned int)iItem);
+              CApplicationMessenger::GetInstance().PostMsg(TMSG_LOADPROFILE, iItem);
           }
           else
           {
             if (!bCanceled && iItem != 0)
-              CGUIDialogOK::ShowAndGetInput(20068,20117,20022,20022);
+              HELPERS::ShowOKDialogText(CVariant{20068}, CVariant{20117});
           }
         }
       }
@@ -143,8 +128,8 @@ bool CGUIWindowLoginScreen::OnAction(const CAction &action)
     std::string actionName = action.GetName();
     StringUtils::ToLower(actionName);
     if ((actionName.find("shutdown") != std::string::npos) &&
-        PVR::g_PVRManager.CanSystemPowerdown())
-      CBuiltins::Execute(action.GetName());
+        CServiceBroker::GetPVRManager().GUIActions()->CanSystemPowerdown())
+      CBuiltins::GetInstance().Execute(action.GetName());
     return true;
   }
   return CGUIWindow::OnAction(action);
@@ -158,17 +143,25 @@ bool CGUIWindowLoginScreen::OnBack(int actionID)
 
 void CGUIWindowLoginScreen::FrameMove()
 {
-  if (GetFocusedControlID() == CONTROL_BIG_LIST && g_windowManager.GetTopMostModalDialogID() == WINDOW_INVALID)
+  if (GetFocusedControlID() == CONTROL_BIG_LIST && !CServiceBroker::GetGUI()->GetWindowManager().HasModalDialog(true))
+  {
     if (m_viewControl.HasControl(CONTROL_BIG_LIST))
       m_iSelectedItem = m_viewControl.GetSelectedItem();
-  std::string strLabel = StringUtils::Format(g_localizeStrings.Get(20114).c_str(), m_iSelectedItem+1, CProfilesManager::Get().GetNumberOfProfiles());
+  }
+
+  const std::shared_ptr<CProfileManager> profileManager = CServiceBroker::GetSettingsComponent()->GetProfileManager();
+
+  std::string strLabel = StringUtils::Format(g_localizeStrings.Get(20114).c_str(), m_iSelectedItem+1, profileManager->GetNumberOfProfiles());
   SET_CONTROL_LABEL(CONTROL_LABEL_SELECTED_PROFILE,strLabel);
   CGUIWindow::FrameMove();
 }
 
 void CGUIWindowLoginScreen::OnInitWindow()
 {
-  m_iSelectedItem = (int)CProfilesManager::Get().GetLastUsedProfileIndex();
+  const std::shared_ptr<CProfileManager> profileManager = CServiceBroker::GetSettingsComponent()->GetProfileManager();
+
+  m_iSelectedItem = static_cast<int>(profileManager->GetLastUsedProfileIndex());
+
   // Update list/thumb control
   m_viewControl.SetCurrentView(DEFAULT_VIEW_LIST);
   Update();
@@ -196,20 +189,27 @@ void CGUIWindowLoginScreen::OnWindowUnload()
 void CGUIWindowLoginScreen::Update()
 {
   m_vecItems->Clear();
-  for (unsigned int i=0;i<CProfilesManager::Get().GetNumberOfProfiles(); ++i)
+
+  const std::shared_ptr<CProfileManager> profileManager = CServiceBroker::GetSettingsComponent()->GetProfileManager();
+
+  for (unsigned int i = 0; i < profileManager->GetNumberOfProfiles(); ++i)
   {
-    const CProfile *profile = CProfilesManager::Get().GetProfile(i);
+    const CProfile *profile = profileManager->GetProfile(i);
+
     CFileItemPtr item(new CFileItem(profile->getName()));
+
     std::string strLabel;
     if (profile->getDate().empty())
       strLabel = g_localizeStrings.Get(20113);
     else
       strLabel = StringUtils::Format(g_localizeStrings.Get(20112).c_str(), profile->getDate().c_str());
+
     item->SetLabel2(strLabel);
     item->SetArt("thumb", profile->getThumb());
-    if (profile->getThumb().empty() || profile->getThumb() == "-")
-      item->SetArt("thumb", "unknown-user.png");
-    item->SetLabelPreformated(true);
+    if (profile->getThumb().empty())
+      item->SetArt("thumb", "DefaultUser.png");
+    item->SetLabelPreformatted(true);
+
     m_vecItems->Add(item);
   }
   m_viewControl.SetItems(*m_vecItems);
@@ -218,49 +218,43 @@ void CGUIWindowLoginScreen::Update()
 
 bool CGUIWindowLoginScreen::OnPopupMenu(int iItem)
 {
-  if ( iItem < 0 || iItem >= m_vecItems->Size() ) return false;
+  if (iItem < 0 || iItem >= m_vecItems->Size())
+    return false;
 
-  bool bSelect = m_vecItems->Get(iItem)->IsSelected();
+  const std::shared_ptr<CProfileManager> profileManager = CServiceBroker::GetSettingsComponent()->GetProfileManager();
+
+  CFileItemPtr pItem = m_vecItems->Get(iItem);
+  bool bSelect = pItem->IsSelected();
+
   // mark the item
-  m_vecItems->Get(iItem)->Select(true);
+  pItem->Select(true);
 
   CContextButtons choices;
   choices.Add(1, 20067);
-/*  if (m_viewControl.GetSelectedItem() != 0) // no deleting the default profile
-    choices.Add(2, 117); */
+
   if (iItem == 0 && g_passwordManager.iMasterLockRetriesLeft == 0)
-    choices.Add(3, 12334);
+    choices.Add(2, 12334);
 
   int choice = CGUIDialogContextMenu::ShowAndGetChoice(choices);
-  if (choice == 3)
+  if (choice == 2)
   {
-    if (g_passwordManager.CheckLock(CProfilesManager::Get().GetMasterProfile().getLockMode(),CProfilesManager::Get().GetMasterProfile().getLockCode(),20075))
-      g_passwordManager.iMasterLockRetriesLeft = CSettings::Get().GetInt("masterlock.maxretries");
+    if (g_passwordManager.CheckLock(profileManager->GetMasterProfile().getLockMode(), profileManager->GetMasterProfile().getLockCode(), 20075))
+      g_passwordManager.iMasterLockRetriesLeft = CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_MASTERLOCK_MAXRETRIES);
     else // be inconvenient
-      CApplicationMessenger::Get().Shutdown();
+      CApplicationMessenger::GetInstance().PostMsg(TMSG_SHUTDOWN);
 
     return true;
   }
-  
-  if (!g_passwordManager.IsMasterLockUnlocked(true))
-    return false;
 
-  if (choice == 1)
+  // Edit the profile after checking if the correct master lock password was given.
+  if (choice == 1 && g_passwordManager.IsMasterLockUnlocked(true))
     CGUIDialogProfileSettings::ShowForProfile(m_viewControl.GetSelectedItem());
-  if (choice == 2)
-  {
-    int iDelete = m_viewControl.GetSelectedItem();
-    m_viewControl.Clear();
-    if (iDelete >= 0)
-      CProfilesManager::Get().DeleteProfile((size_t)iDelete);
-    Update();
-    m_viewControl.SetSelectedItem(0);
-  }
+
   //NOTE: this can potentially (de)select the wrong item if the filelisting has changed because of an action above.
-  if (iItem < (int)CProfilesManager::Get().GetNumberOfProfiles())
+  if (iItem < static_cast<int>(profileManager->GetNumberOfProfiles()))
     m_vecItems->Get(iItem)->Select(bSelect);
 
-  return (choice > 0);
+  return false;
 }
 
 CFileItemPtr CGUIWindowLoginScreen::GetCurrentListItem(int offset)
@@ -271,57 +265,4 @@ CFileItemPtr CGUIWindowLoginScreen::GetCurrentListItem(int offset)
   item = (item + offset) % m_vecItems->Size();
   if (item < 0) item += m_vecItems->Size();
   return m_vecItems->Get(item);
-}
-
-void CGUIWindowLoginScreen::LoadProfile(unsigned int profile)
-{
-  // stop service addons and give it some time before we start it again
-  ADDON::CAddonMgr::Get().StopServices(true);
-
-  // stop PVR related services
-  g_application.StopPVRManager();
-
-  if (profile != 0 || !CProfilesManager::Get().IsMasterProfile())
-  {
-    g_application.getNetwork().NetworkMessage(CNetwork::SERVICES_DOWN,1);
-    CProfilesManager::Get().LoadProfile(profile);
-  }
-  else
-  {
-    CGUIWindow* pWindow = g_windowManager.GetWindow(WINDOW_HOME);
-    if (pWindow)
-      pWindow->ResetControlStates();
-  }
-  g_application.getNetwork().NetworkMessage(CNetwork::SERVICES_UP,1);
-
-  CProfilesManager::Get().UpdateCurrentProfileDate();
-  CProfilesManager::Get().Save();
-
-  if (CProfilesManager::Get().GetLastUsedProfileIndex() != profile)
-  {
-    g_playlistPlayer.ClearPlaylist(PLAYLIST_VIDEO);
-    g_playlistPlayer.ClearPlaylist(PLAYLIST_MUSIC);
-    g_playlistPlayer.SetCurrentPlaylist(PLAYLIST_NONE);
-  }
-
-  // reload the add-ons, or we will first load all add-ons from the master account without checking disabled status
-  ADDON::CAddonMgr::Get().ReInit();
-
-  g_weatherManager.Refresh();
-  g_application.SetLoggingIn(true);
-
-#ifdef HAS_JSONRPC
-  JSONRPC::CJSONRPC::Initialize();
-#endif
-
-  // start services which should run on login 
-  ADDON::CAddonMgr::Get().StartServices(false);
-
-  // start PVR related services
-  g_application.StartPVRManager();
-
-  g_windowManager.ChangeActiveWindow(g_SkinInfo->GetFirstWindow());
-
-  g_application.UpdateLibraries();
-  CStereoscopicsManager::Get().Initialize();
 }

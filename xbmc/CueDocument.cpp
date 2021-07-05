@@ -1,21 +1,9 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -52,21 +40,23 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////
 
-#include <cstdlib>
-
 #include "CueDocument.h"
-#include "utils/log.h"
-#include "utils/URIUtils.h"
-#include "utils/StringUtils.h"
-#include "utils/CharsetConverter.h"
-#include "filesystem/File.h"
-#include "filesystem/Directory.h"
-#include "FileItem.h"
-#include "settings/AdvancedSettings.h"
 
+#include "FileItem.h"
+#include "ServiceBroker.h"
+#include "Util.h"
+#include "filesystem/Directory.h"
+#include "filesystem/File.h"
+#include "settings/AdvancedSettings.h"
+#include "settings/SettingsComponent.h"
+#include "utils/CharsetConverter.h"
+#include "utils/StringUtils.h"
+#include "utils/URIUtils.h"
+#include "utils/log.h"
+
+#include <cstdlib>
 #include <set>
 
-using namespace std;
 using namespace XFILE;
 
 // Stuff for read CUE data from different sources.
@@ -75,7 +65,7 @@ class CueReader
 public:
   virtual bool ready() const = 0;
   virtual bool ReadLine(std::string &line) = 0;
-  virtual ~CueReader() {}
+  virtual ~CueReader() = default;
 private:
   std::string m_sourcePath;
 };
@@ -84,11 +74,11 @@ class FileReader
   : public CueReader
 {
 public:
-  FileReader(const std::string &strFile)
+  explicit FileReader(const std::string &strFile) : m_szBuffer{}
   {
     m_opened = m_file.Open(strFile);
   }
-  virtual bool ReadLine(std::string &line)
+  bool ReadLine(std::string &line) override
   {
     // Read the next line.
     while (m_file.ReadString(m_szBuffer, 1023)) // Bigger than MAX_PATH_SIZE, for usage with relax!
@@ -102,11 +92,11 @@ public:
     }
     return false;
   }
-  virtual bool ready() const
+  bool ready() const override
   {
     return m_opened;
   }
-  virtual ~FileReader()
+  ~FileReader() override
   {
     if (m_opened)
       m_file.Close();
@@ -122,16 +112,15 @@ class BufferReader
   : public CueReader
 {
 public:
-  BufferReader(const std::string &strContent)
+  explicit BufferReader(const std::string &strContent)
     : m_data(strContent)
     , m_pos(0)
   {
   }
-  virtual bool ReadLine(std::string &line)
+  bool ReadLine(std::string &line) override
   {
     // Read the next line.
     line.clear();
-    bool stop = false;
     while (m_pos < m_data.size())
     {
       // Remove the white space at the beginning of the line.
@@ -146,9 +135,11 @@ public:
         line.push_back(ch);
       }
     }
-    return false;
+
+    StringUtils::Trim(line);
+    return !line.empty();
   }
-  virtual bool ready() const
+  bool ready() const override
   {
     return m_data.size() > 0;
   }
@@ -157,18 +148,7 @@ private:
   size_t m_pos;
 };
 
-CCueDocument::CCueDocument(void)
-{
-  m_iYear = 0;
-  m_replayGainAlbumPeak = 0.0f;
-  m_replayGainAlbumGain = 0.0f;
-  m_iTotalTracks = 0;
-  m_iTrack = 0;
-  m_iDiscNumber = 0;
-}
-
-CCueDocument::~CCueDocument(void)
-{}
+CCueDocument::~CCueDocument() = default;
 
 ////////////////////////////////////////////////////////////////////////////////////
 // Function: ParseFile()
@@ -192,58 +172,69 @@ bool CCueDocument::ParseTag(const std::string &strContent)
 
 //////////////////////////////////////////////////////////////////////////////////
 // Function:GetSongs()
-// Returns the track information from the next item in the cuelist
+// Store track information into songs list.
 //////////////////////////////////////////////////////////////////////////////////
 void CCueDocument::GetSongs(VECSONGS &songs)
 {
-  for (int i = 0; i < m_iTotalTracks; i++)
+  const std::shared_ptr<CAdvancedSettings> advancedSettings = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings();
+
+  for (const auto& track : m_tracks)
   {
-    CSong song;
-    if ((m_Track[i].strArtist.length() == 0) && (m_strArtist.length() > 0))
-      song.artist = StringUtils::Split(m_strArtist, g_advancedSettings.m_musicItemSeparator);
+    CSong aSong;
+    //Pass artist to MusicInfoTag object by setting artist description string only.
+    //Artist credits not used during loading from cue sheet.
+    if (track.strArtist.empty() && !m_strArtist.empty())
+      aSong.strArtistDesc = m_strArtist;
     else
-      song.artist = StringUtils::Split(m_Track[i].strArtist, g_advancedSettings.m_musicItemSeparator);
-    song.albumArtist = StringUtils::Split(m_strArtist, g_advancedSettings.m_musicItemSeparator);
-    song.strAlbum = m_strAlbum;
-    song.genre = StringUtils::Split(m_strGenre, g_advancedSettings.m_musicItemSeparator);
-    song.iYear = m_iYear;
-    song.iTrack = m_Track[i].iTrackNumber;
-    if ( m_iDiscNumber > 0 )
-      song.iTrack |= (m_iDiscNumber << 16); // see CMusicInfoTag::GetDiscNumber()
-    if (m_Track[i].strTitle.length() == 0) // No track information for this track!
-      song.strTitle = StringUtils::Format("Track %2d", i + 1);
+      aSong.strArtistDesc = track.strArtist;
+    //Pass album artist to MusicInfoTag object by setting album artist vector.
+    aSong.SetAlbumArtist(StringUtils::Split(m_strArtist, advancedSettings->m_musicItemSeparator));
+    aSong.strAlbum = m_strAlbum;
+    aSong.genre = StringUtils::Split(m_strGenre, advancedSettings->m_musicItemSeparator);
+    aSong.strReleaseDate = StringUtils::Format("%04i", m_iYear);
+    aSong.iTrack = track.iTrackNumber;
+    if (m_iDiscNumber > 0)
+      aSong.iTrack |= (m_iDiscNumber << 16); // see CMusicInfoTag::GetDiscNumber()
+    if (track.strTitle.length() == 0) // No track information for this track!
+      aSong.strTitle = StringUtils::Format("Track {:2d}", track.iTrackNumber);
     else
-      song.strTitle = m_Track[i].strTitle;
-    song.strFileName =  m_Track[i].strFile;
-    song.iStartOffset = m_Track[i].iStartTime;
-    song.iEndOffset = m_Track[i].iEndTime;
-    if (song.iEndOffset)
-      song.iDuration = (song.iEndOffset - song.iStartOffset + 37) / 75;
+      aSong.strTitle = track.strTitle;
+    aSong.strFileName = track.strFile;
+    aSong.iStartOffset = track.iStartTime;
+    aSong.iEndOffset = track.iEndTime;
+    if (aSong.iEndOffset)
+      // Convert offset in frames (75 per second) to duration in whole seconds with rounding
+      aSong.iDuration = CUtil::ConvertMilliSecsToSecsIntRounded(aSong.iEndOffset - aSong.iStartOffset);
     else
-      song.iDuration = 0;
-    // TODO: replayGain goes here
-    songs.push_back(song);
+      aSong.iDuration = 0;
+
+    if (m_albumReplayGain.Valid())
+      aSong.replayGain.Set(ReplayGain::ALBUM, m_albumReplayGain);
+
+    if (track.replayGain.Valid())
+      aSong.replayGain.Set(ReplayGain::TRACK, track.replayGain);
+
+    songs.push_back(aSong);
   }
 }
 
 void CCueDocument::UpdateMediaFile(const std::string& oldMediaFile, const std::string& mediaFile)
 {
-  for (int i = 0; i < m_iTotalTracks; i++)
+  for (Tracks::iterator it = m_tracks.begin(); it != m_tracks.end(); ++it)
   {
-    if (m_Track[i].strFile == oldMediaFile)
-    {
-      m_Track[i].strFile = mediaFile;
-    }
+    if (it->strFile == oldMediaFile)
+      it->strFile = mediaFile;
   }
 }
 
-void CCueDocument::GetMediaFiles(vector<std::string>& mediaFiles)
+void CCueDocument::GetMediaFiles(std::vector<std::string>& mediaFiles)
 {
-  set<std::string> uniqueFiles;
-  for (int i = 0; i < m_iTotalTracks; i++)
-    uniqueFiles.insert(m_Track[i].strFile);
+  typedef std::set<std::string> TSet;
+  TSet uniqueFiles;
+  for (Tracks::const_iterator it = m_tracks.begin(); it != m_tracks.end(); ++it)
+    uniqueFiles.insert(it->strFile);
 
-  for (set<std::string>::iterator it = uniqueFiles.begin(); it != uniqueFiles.end(); it++)
+  for (TSet::const_iterator it = uniqueFiles.begin(); it != uniqueFiles.end(); ++it)
     mediaFiles.push_back(*it);
 }
 
@@ -252,28 +243,49 @@ std::string CCueDocument::GetMediaTitle()
   return m_strAlbum;
 }
 
+bool CCueDocument::IsLoaded() const
+{
+  return !m_tracks.empty();
+}
+
+bool CCueDocument::IsOneFilePerTrack() const
+{
+  return m_bOneFilePerTrack;
+}
+
 // Private Functions start here
 
+void CCueDocument::Clear()
+{
+  m_strArtist.clear();
+  m_strAlbum.clear();
+  m_strGenre.clear();
+  m_iYear = 0;
+  m_iTrack = 0;
+  m_iDiscNumber = 0;
+  m_albumReplayGain = ReplayGain::Info();
+  m_tracks.clear();
+}
 ////////////////////////////////////////////////////////////////////////////////////
 // Function: Parse()
 // Constructs the track database information from CUE source
 ////////////////////////////////////////////////////////////////////////////////////
 bool CCueDocument::Parse(CueReader& reader, const std::string& strFile)
 {
+  Clear();
   if (!reader.ready())
     return false;
 
   std::string strLine;
-  m_iTotalTracks = -1;
   std::string strCurrentFile = "";
   bool bCurrentFileChanged = false;
   int time;
+  int totalTracks = -1;
+  int numberFiles = -1;
 
   // Run through the .CUE file and extract the tracks...
-  while (true)
+  while (reader.ReadLine(strLine))
   {
-    if (!reader.ReadLine(strLine))
-      break;
     if (StringUtils::StartsWithNoCase(strLine, "INDEX 01"))
     {
       if (bCurrentFileChanged)
@@ -289,40 +301,39 @@ bool CCueDocument::Parse(CueReader& reader, const std::string& strFile)
         CLog::Log(LOGERROR, "Mangled Time in INDEX 0x tag in CUE file!");
         return false;
       }
-      if (m_iTotalTracks > 0)  // Set the end time of the last track
-        m_Track[m_iTotalTracks - 1].iEndTime = time;
+      if (totalTracks > 0 && m_tracks[totalTracks - 1].strFile == strCurrentFile) // Set the end time of the last track
+        m_tracks[totalTracks - 1].iEndTime = time;
 
-      if (m_iTotalTracks >= 0)
-        m_Track[m_iTotalTracks].iStartTime = time; // start time of the next track
+      if (totalTracks >= 0) // start time of the next track
+        m_tracks[totalTracks].iStartTime = time;
     }
     else if (StringUtils::StartsWithNoCase(strLine, "TITLE"))
     {
-      if (m_iTotalTracks == -1) // No tracks yet
+      if (totalTracks == -1) // No tracks yet
         m_strAlbum = ExtractInfo(strLine.substr(5));
       else
-        m_Track[m_iTotalTracks].strTitle = ExtractInfo(strLine.substr(5));
+        m_tracks[totalTracks].strTitle = ExtractInfo(strLine.substr(5));
     }
     else if (StringUtils::StartsWithNoCase(strLine, "PERFORMER"))
     {
-      if (m_iTotalTracks == -1) // No tracks yet
+      if (totalTracks == -1) // No tracks yet
         m_strArtist = ExtractInfo(strLine.substr(9));
       else // New Artist for this track
-        m_Track[m_iTotalTracks].strArtist = ExtractInfo(strLine.substr(9));
+        m_tracks[totalTracks].strArtist = ExtractInfo(strLine.substr(9));
     }
     else if (StringUtils::StartsWithNoCase(strLine, "TRACK"))
     {
       int iTrackNumber = ExtractNumericInfo(strLine.substr(5));
 
-      m_iTotalTracks++;
+      totalTracks++;
 
       CCueTrack track;
-      m_Track.push_back(track);
-      m_Track[m_iTotalTracks].strFile = strCurrentFile;
-
+      m_tracks.push_back(track);
+      m_tracks[totalTracks].strFile = strCurrentFile;
       if (iTrackNumber > 0)
-        m_Track[m_iTotalTracks].iTrackNumber = iTrackNumber;
+        m_tracks[totalTracks].iTrackNumber = iTrackNumber;
       else
-        m_Track[m_iTotalTracks].iTrackNumber = m_iTotalTracks + 1;
+        m_tracks[totalTracks].iTrackNumber = totalTracks + 1;
 
       bCurrentFileChanged = false;
     }
@@ -334,6 +345,7 @@ bool CCueDocument::Parse(CueReader& reader, const std::string& strFile)
     }
     else if (StringUtils::StartsWithNoCase(strLine, "FILE"))
     {
+      numberFiles++;
       // already a file name? then the time computation will be changed
       if (!strCurrentFile.empty())
         bCurrentFileChanged = true;
@@ -355,26 +367,26 @@ bool CCueDocument::Parse(CueReader& reader, const std::string& strFile)
       m_strGenre = ExtractInfo(strLine.substr(9));
     }
     else if (StringUtils::StartsWithNoCase(strLine, "REM REPLAYGAIN_ALBUM_GAIN"))
-      m_replayGainAlbumGain = (float)atof(strLine.substr(26).c_str());
+      m_albumReplayGain.SetGain(strLine.substr(26));
     else if (StringUtils::StartsWithNoCase(strLine, "REM REPLAYGAIN_ALBUM_PEAK"))
-      m_replayGainAlbumPeak = (float)atof(strLine.substr(26).c_str());
-    else if (StringUtils::StartsWithNoCase(strLine, "REM REPLAYGAIN_TRACK_GAIN") && m_iTotalTracks >= 0)
-      m_Track[m_iTotalTracks].replayGainTrackGain = (float)atof(strLine.substr(26).c_str());
-    else if (StringUtils::StartsWithNoCase(strLine, "REM REPLAYGAIN_TRACK_PEAK") && m_iTotalTracks >= 0)
-      m_Track[m_iTotalTracks].replayGainTrackPeak = (float)atof(strLine.substr(26).c_str());
+      m_albumReplayGain.SetPeak(strLine.substr(26));
+    else if (StringUtils::StartsWithNoCase(strLine, "REM REPLAYGAIN_TRACK_GAIN") && totalTracks >= 0)
+      m_tracks[totalTracks].replayGain.SetGain(strLine.substr(26));
+    else if (StringUtils::StartsWithNoCase(strLine, "REM REPLAYGAIN_TRACK_PEAK") && totalTracks >= 0)
+      m_tracks[totalTracks].replayGain.SetPeak(strLine.substr(26));
   }
 
   // reset track counter to 0, and fill in the last tracks end time
   m_iTrack = 0;
-  if (m_iTotalTracks >= 0)
-    m_Track[m_iTotalTracks].iEndTime = 0;
+  if (totalTracks >= 0)
+    m_tracks[totalTracks].iEndTime = 0;
   else
     CLog::Log(LOGERROR, "No INDEX 01 tags in CUE file!");
-  if (m_iTotalTracks >= 0)
-  {
-    m_iTotalTracks++;
-  }
-  return (m_iTotalTracks > 0);
+
+  if ( totalTracks == numberFiles )
+    m_bOneFilePerTrack = true;
+
+  return (totalTracks >= 0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -420,7 +432,7 @@ int CCueDocument::ExtractTimeFromIndex(const std::string &index)
   }
   StringUtils::TrimLeft(numberTime);
   // split the resulting string
-  vector<string> time = StringUtils::Split(numberTime, ":");
+  std::vector<std::string> time = StringUtils::Split(numberTime, ":");
   if (time.size() != 3)
     return -1;
 
@@ -428,7 +440,7 @@ int CCueDocument::ExtractTimeFromIndex(const std::string &index)
   int secs = atoi(time[1].c_str());
   int frames = atoi(time[2].c_str());
 
-  return (mins*60 + secs)*75 + frames;
+  return CUtil::ConvertSecsToMilliSecs(mins*60 + secs) + frames * 1000 / 75;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -460,7 +472,7 @@ bool CCueDocument::ResolvePath(std::string &strPath, const std::string &strBase)
   if (!CFile::Exists(strPath))
   {
     CFileItemList items;
-    CDirectory::GetDirectory(strDirectory,items);
+    CDirectory::GetDirectory(strDirectory, items, "", DIR_FLAG_DEFAULTS);
     for (int i=0;i<items.Size();++i)
     {
       if (items[i]->IsPath(strPath))

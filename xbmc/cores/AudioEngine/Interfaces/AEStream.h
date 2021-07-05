@@ -1,35 +1,49 @@
-#pragma once
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
 
 #include "cores/AudioEngine/Utils/AEAudioFormat.h"
-#include "cores/IAudioCallback.h"
 #include <stdint.h>
 
+extern "C" {
+#include <libavcodec/avcodec.h>
+}
+
+class IAudioCallback;
+
 /**
- * Bit options to pass to IAE::GetStream
+ * Callback interface for VideoPlayer clock needed by AE for sync
  */
-enum AEStreamOptions {
-  AESTREAM_FORCE_RESAMPLE = 0x01, /* force resample even if rates match */
-  AESTREAM_PAUSED         = 0x02, /* create the stream paused */
-  AESTREAM_AUTOSTART      = 0x04  /* autostart the stream when enough data is buffered */
+class IAEClockCallback
+{
+public:
+  virtual ~IAEClockCallback() = default;
+  virtual double GetClock() = 0;
+  virtual double GetClockSpeed() { return 1.0; };
+};
+
+class CAESyncInfo
+{
+public:
+  double delay;
+  double error;
+  double rr;
+  unsigned int errortime;
+  enum AESyncState
+  {
+    SYNC_OFF,
+    SYNC_INSYNC,
+    SYNC_START,
+    SYNC_MUTE,
+    SYNC_ADJUST
+  };
+  AESyncState state;
 };
 
 /**
@@ -39,8 +53,16 @@ class IAEStream
 {
 protected:
   friend class IAE;
-  IAEStream() {}
-  virtual ~IAEStream() {}
+  IAEStream() = default;
+  virtual ~IAEStream() = default;
+
+public:
+  struct ExtData
+  {
+    double pts = 0;
+    bool hasDownmix = false;
+    double centerMixLevel = 1;
+  };
 
 public:
   /**
@@ -57,7 +79,7 @@ public:
    * @param pts timestamp
    * @return The number of frames consumed
    */
-  virtual unsigned int AddData(uint8_t* const *data, unsigned int offset, unsigned int frames, double pts = 0.0) = 0;
+  virtual unsigned int AddData(const uint8_t* const *data, unsigned int offset, unsigned int frames, ExtData *extData) = 0;
 
   /**
    * Returns the time in seconds that it will take
@@ -67,10 +89,10 @@ public:
   virtual double GetDelay() = 0;
 
   /**
-   * Returns playing PTS
-   * @return millis
+   * Returns info about audio to clock synchronization
+   * @return CAESyncInfo
    */
-  virtual int64_t GetPlayingPTS() = 0;
+  virtual CAESyncInfo GetSyncInfo() = 0;
 
   /**
    * Returns if the stream is buffering
@@ -79,8 +101,8 @@ public:
   virtual bool IsBuffering() = 0;
 
   /**
-   * Returns the time in seconds that it will take
-   * to underrun the cache if no sample is added.
+   * Returns the time in seconds of the stream's
+   * cached audio samples. Engine buffers excluded.
    * @return seconds
    */
   virtual double GetCacheTime() = 0;
@@ -90,6 +112,12 @@ public:
    * @return seconds
    */
   virtual double GetCacheTotal() = 0;
+
+  /**
+   * Returns the total time in seconds of maximum delay
+   * @return seconds
+   */
+  virtual double GetMaxDelay() = 0;
 
   /**
    * Pauses the stream playback
@@ -116,7 +144,7 @@ public:
    * Returns true if the is stream has finished draining
    */
   virtual bool IsDrained() = 0;
-  
+
   /**
    * Flush all buffers dropping the audio data
    */
@@ -159,34 +187,36 @@ public:
   virtual void SetAmplification(float amplify) = 0;
 
   /**
+   * Sets the stream ffmpeg informations if present.
+   + @param profile
+   * @param matrix_encoding
+   * @param audio_service_type
+   */
+  virtual void SetFFmpegInfo(int profile, enum AVMatrixEncoding matrix_encoding, enum AVAudioServiceType audio_service_type) = 0;
+
+  /**
    * Returns the size of one audio frame in bytes (channelCount * resolution)
    * @return The size in bytes of one frame
   */
-  virtual const unsigned int GetFrameSize() const = 0;
+  virtual unsigned int GetFrameSize() const = 0;
 
   /**
    * Returns the number of channels the stream is configured to accept
    * @return The channel count
    */
-  virtual const unsigned int GetChannelCount() const = 0;
+  virtual unsigned int GetChannelCount() const = 0;
 
   /**
    * Returns the stream's sample rate, if the stream is using a dynamic sample rate, this value will NOT reflect any changes made by calls to SetResampleRatio()
    * @return The stream's sample rate (eg, 48000)
    */
-  virtual const unsigned int GetSampleRate() const = 0;
-
-  /**
-   * Returns the stream's encoded sample rate if the stream is RAW
-   * @return The stream's encoded sample rate
-   */
-  virtual const unsigned int GetEncodedSampleRate() const = 0;
+  virtual unsigned int GetSampleRate() const = 0;
 
   /**
    * Return the data format the stream has been configured with
    * @return The stream's data format (eg, AE_FMT_S16LE)
    */
-  virtual const enum AEDataFormat GetDataFormat() const = 0;
+  virtual enum AEDataFormat GetDataFormat() const = 0;
 
   /**
    * Return the resample ratio
@@ -200,7 +230,12 @@ public:
    * @note This function may return false if the stream is not resampling, if you wish to use this be sure to set the AESTREAM_FORCE_RESAMPLE option
    * @param ratio the new sample rate ratio, calculated by ((double)desiredRate / (double)GetSampleRate())
    */
-  virtual bool SetResampleRatio(double ratio) = 0;
+  virtual void SetResampleRatio(double ratio) = 0;
+
+  /**
+   * Sets the resamplling on/ff
+   */
+  virtual void SetResampleMode(int mode) = 0;
 
   /**
    * Registers the audio callback to call with each block of data, this is used by Audio Visualizations
@@ -219,7 +254,7 @@ public:
     * @param from The volume level to fade from (0.0f-1.0f) - See notes
     * @param target The volume level to fade to (0.0f-1.0f)
     * @param time The amount of time in milliseconds for the fade to occur
-    * @note The from parameter does not set the streams volume, it is only used to calculate the fade time properly 
+    * @note The from parameter does not set the streams volume, it is only used to calculate the fade time properly
     */
   virtual void FadeVolume(float from, float target, unsigned int time) {} /* FIXME: once all the engines have these new methods */
 
@@ -233,10 +268,5 @@ public:
    * Slave a stream to resume when this stream has drained
    */
   virtual void RegisterSlave(IAEStream *stream) = 0;
-
-  /**
-   * Sginal a clock change
-   */
-  virtual void Discontinuity() = 0;
 };
 

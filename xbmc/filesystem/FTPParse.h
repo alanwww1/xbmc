@@ -1,33 +1,22 @@
-#pragma once
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include <string>
+#pragma once
+
 #include <ctime>
 #include <stdint.h>
+#include <string>
 
 class CFTPParse
 {
 public:
   CFTPParse();
-  int FTPParse(std::string str);
+  int FTPParse(const std::string& str);
   std::string getName();
   int getFlagtrycwd();
   int getFlagtryretr();
@@ -39,6 +28,6 @@ private:
   int m_flagtryretr;        // 0 if retr is definitely pointless, 1 otherwise
   uint64_t m_size;              // number of octets
   time_t m_time;            // modification time
-  void setTime(std::string str); // Method used to set m_time from a string
+  void setTime(const std::string& str); // Method used to set m_time from a string
   int getDayOfWeek(int month, int date, int year); // Method to get day of week
 };

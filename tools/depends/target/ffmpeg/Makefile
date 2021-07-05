@@ -8,10 +8,11 @@ APPLY_PATCHES=no
 
 # configuration settings
 ffmpg_config = --prefix=$(PREFIX) --extra-version="kodi-$(VERSION)"
-ffmpg_config += --cc=$(CC) --cxx=$(CXX) --ar=$(AR) --ranlib=$(RANLIB)
+ffmpg_config += --cc="$(CC)" --cxx="$(CXX)" --ar=$(AR) --ranlib=$(RANLIB) --strip=$(STRIP)
 ffmpg_config += --disable-devices --disable-doc
-ffmpg_config += --disable-ffplay --disable-ffmpeg --disable-sdl
-ffmpg_config += --disable-ffprobe --disable-ffserver
+ffmpg_config += --disable-ffplay --disable-ffmpeg
+ffmpg_config += --disable-ffprobe
+ffmpg_config += --disable-sdl2
 ffmpg_config += --enable-gpl --enable-runtime-cpudetect
 ffmpg_config += --enable-postproc --enable-pthreads
 ffmpg_config += --enable-muxer=spdif --enable-muxer=adts
@@ -19,50 +20,59 @@ ffmpg_config += --enable-muxer=asf --enable-muxer=ipod
 ffmpg_config += --enable-encoder=ac3 --enable-encoder=aac
 ffmpg_config += --enable-encoder=wmav2 --enable-protocol=http
 ffmpg_config += --enable-gnutls
+ffmpg_config += --enable-encoder=png --enable-encoder=mjpeg
+ffmpg_config += --enable-libdav1d
+ffmpg_config += $(FFMPEG_CONFIGURE_OPTIONS)
 
 ifeq ($(CROSS_COMPILING), yes)
   ffmpg_config += --arch=$(CPU) --enable-cross-compile
 endif
 ifeq ($(OS), linux)
-  ffmpg_config += --target-os=$(OS) --cpu=$(CPU)
-  ffmpg_config += --enable-vdpau --enable-vaapi
-  ffmpg_config += --enable-libvorbis --enable-muxer=ogg --enable-encoder=libvorbis
+  ffmpg_config += --target-os=$(OS)
+  ffmpg_config += --enable-pic
 endif
 ifeq ($(OS), android)
-  ifeq ($(findstring arm, $(CPU)), arm)
-    ffmpg_config += --cpu=cortex-a9
+  ifeq ($(findstring arm64, $(CPU)), arm64)
+    ffmpg_config += --arch=aarch64 --cpu=cortex-a53
   else
-    ffmpg_config += --cpu=i686 --disable-mmx
+    ifeq ($(findstring arm, $(CPU)), arm)
+      ffmpg_config += --cpu=cortex-a9
+    else
+      ifeq ($(CPU), x86_64)
+        ffmpg_config += --cpu=x86_64 --enable-pic
+      else
+        ffmpg_config += --cpu=i686 --disable-mmx
+      endif
+      ffmpg_config += --extra-cflags='-no-integrated-as -mno-stackrealign'
+    endif
   endif
-  ffmpg_config += --target-os=linux
+  ffmpg_config += --target-os=linux --extra-libs=-liconv --disable-linux-perf
 endif
-ifeq ($(OS), ios)
-  ffmpg_config += --cpu=cortex-a8 --yasmexe=$(NATIVEPREFIX)/bin/yasm
-  ffmpg_config += --disable-decoder=mpeg_xvmc --enable-vda --disable-crystalhd
+ifeq ($(OS), darwin_embedded)
+  ffmpg_config += --as="$(NATIVEPREFIX)/bin/gas-preprocessor.pl -arch aarch64 -- $(CC)"
+  ffmpg_config += --yasmexe=$(NATIVEPREFIX)/bin/yasm
+  ffmpg_config += --disable-decoder=mpeg_xvmc --disable-crystalhd --enable-videotoolbox
   ffmpg_config += --target-os=darwin
 endif
 ifeq ($(OS), osx)
-  ffmpg_config += --disable-outdev=sdl
-  ffmpg_config += --disable-decoder=mpeg_xvmc --enable-vda --disable-crystalhd
+  ffmpg_config += --disable-decoder=mpeg_xvmc --disable-crystalhd --enable-videotoolbox
   ffmpg_config += --target-os=darwin
+  ffmpg_config += --disable-securetransport
 endif
 ifeq ($(findstring arm, $(CPU)), arm)
   ffmpg_config += --enable-pic --disable-armv5te --disable-armv6t2
 endif
 ifeq ($(findstring mips, $(CPU)), mips)
-  ffmpg_config += --disable-mips32r2 --disable-mipsdspr1 --disable-mipsdspr2
+  ffmpg_config += --disable-mips32r2 --disable-mipsdsp --disable-mipsdspr2
 endif
 ifeq ($(Configuration), Release)
   ffmpg_config += --disable-debug
 endif
 
-
-CLEAN_FILES=$(ARCHIVE) $(PLATFORM)
-
 all: .installed-$(PLATFORM)
 
 $(TARBALLS_LOCATION)/$(ARCHIVE):
-	cd $(TARBALLS_LOCATION); $(RETRIEVE_TOOL) -Ls --create-dirs -f -o $(TARBALLS_LOCATION)/$(ARCHIVE) $(BASE_URL)/$(VERSION).tar.gz
+	cd $(TARBALLS_LOCATION); $(RETRIEVE_TOOL) -Ls --create-dirs -f -o $(TARBALLS_LOCATION)/$(ARCHIVE) $(BASE_URL)/archive/$(VERSION).tar.gz
 
 $(PLATFORM): $(TARBALLS_LOCATION)/$(ARCHIVE) $(DEPS)
 	rm -rf $(PLATFORM); mkdir -p $(PLATFORM)
@@ -72,10 +82,11 @@ $(PLATFORM): $(TARBALLS_LOCATION)/$(ARCHIVE) $(DEPS)
 	CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)" \
 	./configure $(ffmpg_config)
 
-build: $(PLATFORM)
+.build-$(PLATFORM): $(PLATFORM)
 	$(MAKE) -C $(PLATFORM)
+	touch $@
 
-.installed-$(PLATFORM): build
+.installed-$(PLATFORM): .build-$(PLATFORM)
 	$(MAKE) -C $(PLATFORM) install
 	touch $@
 
@@ -85,4 +96,3 @@ clean:
 
 distclean::
 	rm -rf $(PLATFORM) .installed-$(PLATFORM)
-

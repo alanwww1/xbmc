@@ -1,34 +1,23 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-/* TODO: gtest/gtest.h needs to come in before utils/RegExp.h.
+/** @todo gtest/gtest.h needs to come in before utils/RegExp.h.
  * Investigate why.
  */
-#include "gtest/gtest.h"
-
-#include "utils/RegExp.h"
-#include "utils/log.h"
+#include "CompileInfo.h"
+#include "ServiceBroker.h"
 #include "filesystem/File.h"
 #include "filesystem/SpecialProtocol.h"
+#include "utils/RegExp.h"
 #include "utils/StringUtils.h"
-#include "CompileInfo.h"
+#include "utils/log.h"
+
+#include <gtest/gtest.h>
 
 TEST(TestRegExp, RegFind)
 {
@@ -137,11 +126,8 @@ TEST(TestRegExp, operatorEqual)
 class TestRegExpLog : public testing::Test
 {
 protected:
-  TestRegExpLog(){}
-  ~TestRegExpLog()
-  {
-    CLog::Close();
-  }
+  TestRegExpLog() = default;
+  ~TestRegExpLog() override { CServiceBroker::GetLogging().Uninitialize(); }
 };
 
 TEST_F(TestRegExpLog, DumpOvector)
@@ -149,19 +135,20 @@ TEST_F(TestRegExpLog, DumpOvector)
   CRegExp regex;
   std::string logfile, logstring;
   char buf[100];
-  unsigned int bytesread;
+  ssize_t bytesread;
   XFILE::CFile file;
 
   std::string appName = CCompileInfo::GetAppName();
   StringUtils::ToLower(appName);
   logfile = CSpecialProtocol::TranslatePath("special://temp/") + appName + ".log";
-  EXPECT_TRUE(CLog::Init(CSpecialProtocol::TranslatePath("special://temp/").c_str()));
+  CServiceBroker::GetLogging().Initialize(
+      CSpecialProtocol::TranslatePath("special://temp/").c_str());
   EXPECT_TRUE(XFILE::CFile::Exists(logfile));
 
   EXPECT_TRUE(regex.RegComp("^(?<first>Test)\\s*(?<second>.*)\\."));
   EXPECT_EQ(0, regex.RegFind("Test string."));
   regex.DumpOvector(LOGDEBUG);
-  CLog::Close();
+  CServiceBroker::GetLogging().Uninitialize();
 
   EXPECT_TRUE(file.Open(logfile));
   while ((bytesread = file.Read(buf, sizeof(buf) - 1)) > 0)
@@ -174,7 +161,7 @@ TEST_F(TestRegExpLog, DumpOvector)
 
   EXPECT_STREQ("\xEF\xBB\xBF", logstring.substr(0, 3).c_str());
 
-  EXPECT_TRUE(regex.RegComp(".*DEBUG: regexp ovector=\\{\\[0,12\\],\\[0,4\\],"
+  EXPECT_TRUE(regex.RegComp(".*DEBUG <general>: regexp ovector=\\{\\[0,12\\],\\[0,4\\],"
                             "\\[5,11\\]\\}.*"));
   EXPECT_GE(regex.RegFind(logstring), 0);
 

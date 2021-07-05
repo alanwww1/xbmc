@@ -1,43 +1,26 @@
 /*
- *      Copyright (C) 2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2013-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#if (defined HAVE_CONFIG_H) && (!defined TARGET_WINDOWS)
-  #include "config.h"
-#endif
-
 // python.h should always be included first before any other includes
+#include "AddonPythonInvoker.h"
+
+#include <utility>
+
 #include <Python.h>
 #include <osdefs.h>
 
-#include "system.h"
-#include "AddonPythonInvoker.h"
-#include "addons/AddonVersion.h"
-
 #define MODULE "xbmc"
 
-#define RUNSCRIPT_PRAMBLE \
+#define RUNSCRIPT_PREAMBLE \
         "" \
         "import " MODULE "\n" \
-        "xbmc.abortRequested = False\n" \
         "class xbmcout:\n" \
-        "  def __init__(self, loglevel=" MODULE ".LOGNOTICE):\n" \
+        "  def __init__(self, loglevel=" MODULE ".LOGDEBUG):\n" \
         "    self.ll=loglevel\n" \
         "  def write(self, data):\n" \
         "    " MODULE ".log(data,self.ll)\n" \
@@ -52,42 +35,42 @@
 
 #define RUNSCRIPT_SETUPTOOLS_HACK \
   "" \
-  "import imp,sys\n" \
+  "import types,sys\n" \
   "pkg_resources_code = \\\n" \
   "\"\"\"\n" \
   "def resource_filename(__name__,__path__):\n" \
   "  return __path__\n" \
   "\"\"\"\n" \
-  "pkg_resources = imp.new_module('pkg_resources')\n" \
-  "exec pkg_resources_code in pkg_resources.__dict__\n" \
+  "pkg_resources = types.ModuleType('pkg_resources')\n" \
+  "exec(pkg_resources_code, pkg_resources.__dict__)\n" \
   "sys.modules['pkg_resources'] = pkg_resources\n" \
   ""
 
 #define RUNSCRIPT_POSTSCRIPT \
-        "print '-->Python Interpreter Initialized<--'\n" \
+        "print('-->Python Interpreter Initialized<--')\n" \
         ""
 
 #if defined(TARGET_ANDROID)
 
 #define RUNSCRIPT_COMPLIANT \
-  RUNSCRIPT_PRAMBLE RUNSCRIPT_SETUPTOOLS_HACK RUNSCRIPT_POSTSCRIPT
+  RUNSCRIPT_PREAMBLE RUNSCRIPT_SETUPTOOLS_HACK RUNSCRIPT_POSTSCRIPT
 
 #else
 
 #define RUNSCRIPT_COMPLIANT \
-  RUNSCRIPT_PRAMBLE RUNSCRIPT_POSTSCRIPT
+  RUNSCRIPT_PREAMBLE RUNSCRIPT_POSTSCRIPT
 
 #endif
 
 namespace PythonBindings {
-  void initModule_xbmcgui(void);
-  void initModule_xbmc(void);
-  void initModule_xbmcplugin(void);
-  void initModule_xbmcaddon(void);
-  void initModule_xbmcvfs(void);
+PyObject* PyInit_Module_xbmcdrm(void);
+PyObject* PyInit_Module_xbmcgui(void);
+PyObject* PyInit_Module_xbmc(void);
+PyObject* PyInit_Module_xbmcplugin(void);
+PyObject* PyInit_Module_xbmcaddon(void);
+PyObject* PyInit_Module_xbmcvfs(void);
 }
 
-using namespace std;
 using namespace PythonBindings;
 
 typedef struct
@@ -98,29 +81,34 @@ typedef struct
 
 static PythonModule PythonModules[] =
   {
-    { "xbmcgui",    initModule_xbmcgui    },
-    { "xbmc",       initModule_xbmc       },
-    { "xbmcplugin", initModule_xbmcplugin },
-    { "xbmcaddon",  initModule_xbmcaddon  },
-    { "xbmcvfs",    initModule_xbmcvfs    }
+    { "xbmcdrm",    PyInit_Module_xbmcdrm    },
+    { "xbmcgui",    PyInit_Module_xbmcgui    },
+    { "xbmc",       PyInit_Module_xbmc       },
+    { "xbmcplugin", PyInit_Module_xbmcplugin },
+    { "xbmcaddon",  PyInit_Module_xbmcaddon  },
+    { "xbmcvfs",    PyInit_Module_xbmcvfs    }
   };
-
-#define PythonModulesSize sizeof(PythonModules) / sizeof(PythonModule)
 
 CAddonPythonInvoker::CAddonPythonInvoker(ILanguageInvocationHandler *invocationHandler)
   : CPythonInvoker(invocationHandler)
-{ }
+{
+  PyImport_AppendInittab("xbmcdrm", PyInit_Module_xbmcdrm);
+  PyImport_AppendInittab("xbmcgui", PyInit_Module_xbmcgui);
+  PyImport_AppendInittab("xbmc", PyInit_Module_xbmc);
+  PyImport_AppendInittab("xbmcplugin", PyInit_Module_xbmcplugin);
+  PyImport_AppendInittab("xbmcaddon", PyInit_Module_xbmcaddon);
+  PyImport_AppendInittab("xbmcvfs", PyInit_Module_xbmcvfs);
+}
 
-CAddonPythonInvoker::~CAddonPythonInvoker()
-{ }
+CAddonPythonInvoker::~CAddonPythonInvoker() = default;
 
 std::map<std::string, CPythonInvoker::PythonModuleInitialization> CAddonPythonInvoker::getModules() const
 {
   static std::map<std::string, PythonModuleInitialization> modules;
   if (modules.empty())
   {
-    for (size_t i = 0; i < PythonModulesSize; i++)
-      modules.insert(make_pair(PythonModules[i].name, PythonModules[i].initialization));
+    for (const PythonModule& pythonModule : PythonModules)
+      modules.insert(std::make_pair(pythonModule.name, pythonModule.initialization));
   }
 
   return modules;

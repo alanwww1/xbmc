@@ -1,42 +1,31 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "GUIWindowPointer.h"
-#include "input/MouseStat.h"
-#include "windowing/WindowingFactory.h"
-#include <climits>
+
+#include "ServiceBroker.h"
+#include "input/InputManager.h"
+#include "input/mouse/MouseStat.h"
+#include "windowing/WinSystem.h"
+
 #define ID_POINTER 10
 
 CGUIWindowPointer::CGUIWindowPointer(void)
-    : CGUIDialog(WINDOW_DIALOG_POINTER, "Pointer.xml")
+  : CGUIDialog(WINDOW_DIALOG_POINTER, "Pointer.xml", DialogModalityType::MODELESS)
 {
   m_pointer = 0;
   m_loadType = LOAD_ON_GUI_INIT;
   m_needsScaling = false;
   m_active = false;
-  m_renderOrder = INT_MAX - 1;
+  m_renderOrder = RENDER_ORDER_WINDOW_POINTER;
 }
 
-CGUIWindowPointer::~CGUIWindowPointer(void)
-{
-}
+CGUIWindowPointer::~CGUIWindowPointer(void) = default;
 
 void CGUIWindowPointer::SetPointer(int pointer)
 {
@@ -56,10 +45,10 @@ void CGUIWindowPointer::SetPointer(int pointer)
 
 void CGUIWindowPointer::UpdateVisibility()
 {
-  if(g_Windowing.HasCursor())
+  if(CServiceBroker::GetWinSystem()->HasCursor())
   {
-    if (g_Mouse.IsActive())
-      Show();
+    if (CServiceBroker::GetInputManager().IsMouseActive())
+      Open();
     else
       Close();
   }
@@ -75,18 +64,19 @@ void CGUIWindowPointer::OnWindowLoaded()
   CGUIWindow::OnWindowLoaded();
   DynamicResourceAlloc(false);
   m_pointer = 0;
-  m_renderOrder = INT_MAX - 1;
+  m_renderOrder = RENDER_ORDER_WINDOW_POINTER;
 }
 
 void CGUIWindowPointer::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions)
 {
-  bool active = g_Mouse.IsActive();
+  bool active = CServiceBroker::GetInputManager().IsMouseActive();
   if (active != m_active)
   {
     MarkDirtyRegion();
     m_active = active;
   }
-  SetPosition((float)g_Mouse.GetX(), (float)g_Mouse.GetY());
-  SetPointer(g_Mouse.GetState());
+  MousePosition pos = CServiceBroker::GetInputManager().GetMousePosition();
+  SetPosition((float)pos.x, (float)pos.y);
+  SetPointer(CServiceBroker::GetInputManager().GetMouseState());
   return CGUIWindow::Process(currentTime, dirtyregions);
 }

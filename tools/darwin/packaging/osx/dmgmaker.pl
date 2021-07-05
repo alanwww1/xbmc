@@ -35,11 +35,11 @@ sub make_dmg {
     `hdiutil create -fs HFS+ -volname "$pkgname" -format UDRW -srcfolder "$mpkg" "$volname.dmg"`;
     $dev_handle = `hdiutil attach -readwrite -noverify -noautoopen "$volname.dmg" | grep Apple_HFS`;
     chomp $dev_handle;
-    $dev_handle = $1 if $dev_handle =~ /^\/dev\/(disk.)/;
+    $dev_handle = $1 if $dev_handle =~ /^\/dev\/(disk\d+)/;
     die("Could not obtain device handle\n") if !$dev_handle;
     print "Got device handle \"$dev_handle\"\n";
     #clear the volume - we will copy stuff on it with ditto later
-    #this removes crap which might have come in via the srcfolder 
+    #this removes crap which might have come in via the srcfolder
     #parameter of hdiutil above
     `rm -r /Volumes/$pkgname/*`;
     print "Ignore \"No space left on device\" warnings from ditto, they are an autosize artifact\n";

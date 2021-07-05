@@ -1,28 +1,17 @@
-#pragma once
 /*
- *      Copyright (C) 2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2013-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
 
 #include "input/touch/ITouchInputHandling.h"
 #include "input/touch/TouchTypes.h"
 
-#define TOUCH_MAX_POINTERS  2
+#include <array>
 
 /*!
  * \ingroup touch_generic
@@ -31,13 +20,12 @@
 class IGenericTouchGestureDetector : public ITouchInputHandling
 {
 public:
-  IGenericTouchGestureDetector(ITouchActionHandler *handler, float dpi)
-    : m_done(false),
-      m_dpi(dpi)
+  IGenericTouchGestureDetector(ITouchActionHandler* handler, float dpi) : m_done(false), m_dpi(dpi)
   {
     RegisterHandler(handler);
   }
-  virtual ~IGenericTouchGestureDetector() { }
+  ~IGenericTouchGestureDetector() override = default;
+  static constexpr int MAX_POINTERS = 2;
 
   /*!
    * \brief Check whether the gesture recognition is finished or not
@@ -54,7 +42,7 @@ public:
    *
    * \return True if the event was handled otherwise false
    */
-  virtual bool OnTouchDown(unsigned int index, const Pointer &pointer) = 0;
+  virtual bool OnTouchDown(unsigned int index, const Pointer& pointer) = 0;
   /*!
    * \brief An active touch pointer has vanished.
    *
@@ -66,7 +54,7 @@ public:
    *
    * \return True if the event was handled otherwise false
    */
-  virtual bool OnTouchUp(unsigned int index, const Pointer &pointer) { return false; }
+  virtual bool OnTouchUp(unsigned int index, const Pointer& pointer) { return false; }
   /*!
    * \brief An active touch pointer has moved.
    *
@@ -75,17 +63,17 @@ public:
    *
    * \return True if the event was handled otherwise false
    */
-  virtual bool OnTouchMove(unsigned int index, const Pointer &pointer) { return false; }
+  virtual bool OnTouchMove(unsigned int index, const Pointer& pointer) { return false; }
   /*!
    * \brief An active touch pointer's values have been updated but no event has
-   *        occured.
+   *        occurred.
    *
    * \param index     Index of the given touch pointer
    * \param pointer   Touch pointer that has changed
    *
    * \return True if the event was handled otherwise false
    */
-  virtual bool OnTouchUpdate(unsigned int index, const Pointer &pointer) { return false; }
+  virtual bool OnTouchUpdate(unsigned int index, const Pointer& pointer) { return false; }
 
 protected:
   /*!
@@ -99,5 +87,5 @@ protected:
   /*!
    * \brief Local list of all known touch pointers
    */
-  Pointer m_pointers[TOUCH_MAX_POINTERS];
+  std::array<Pointer, MAX_POINTERS> m_pointers;
 };

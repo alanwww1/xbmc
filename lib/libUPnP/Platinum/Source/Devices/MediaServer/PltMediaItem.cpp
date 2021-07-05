@@ -256,11 +256,14 @@ PLT_MediaObject::Reset()
 
     m_Resources.Clear();
 
+    m_XbmcInfo.last_playerstate = "";
     m_XbmcInfo.date_added = "";
     m_XbmcInfo.rating = 0.0f;
-    m_XbmcInfo.votes = "";
+    m_XbmcInfo.votes = 0;
     m_XbmcInfo.artwork.Clear();
     m_XbmcInfo.unique_identifier = "";
+    m_XbmcInfo.countries.Clear();
+    m_XbmcInfo.user_rating = 0;
 
     m_Didl = "";
 
@@ -588,9 +591,9 @@ PLT_MediaObject::ToDidl(NPT_UInt64 mask, NPT_String& didl)
     }
 
     // xbmc votes
-    if (mask & PLT_FILTER_MASK_XBMC_VOTES && !m_XbmcInfo.votes.IsEmpty()) {
+    if (mask & PLT_FILTER_MASK_XBMC_VOTES && m_XbmcInfo.votes != 0) {
         didl += "<xbmc:votes>";
-        PLT_Didl::AppendXmlEscape(didl, m_XbmcInfo.votes);
+        didl += NPT_String::Format("%i", m_XbmcInfo.votes);
         didl += "</xbmc:votes>";
     }
 
@@ -604,6 +607,30 @@ PLT_MediaObject::ToDidl(NPT_UInt64 mask, NPT_String& didl)
         didl += "<xbmc:uniqueidentifier>";
         PLT_Didl::AppendXmlEscape(didl, m_XbmcInfo.unique_identifier);
         didl += "</xbmc:uniqueidentifier>";
+    }
+
+    // country
+    if (mask & PLT_FILTER_MASK_XBMC_COUNTRY) {
+      for (NPT_List<NPT_String>::Iterator it =
+        m_XbmcInfo.countries.GetFirstItem(); it; ++it) {
+        didl += "<xbmc:country>";
+        PLT_Didl::AppendXmlEscape(didl, (*it));
+        didl += "</xbmc:country>";
+      }
+    }
+
+    // user rating
+    if (mask & PLT_FILTER_MASK_XBMC_USERRATING) {
+      didl += "<xbmc:userrating>";
+      didl += NPT_String::FromInteger(m_XbmcInfo.user_rating);
+      didl += "</xbmc:userrating>";
+    }
+
+    // xbmc last playback state
+    if (mask & PLT_FILTER_MASK_XBMC_LASTPLAYERSTATE && !m_XbmcInfo.last_playerstate.IsEmpty()) {
+      didl += "<xbmc:lastPlayerState>";
+      PLT_Didl::AppendXmlEscape(didl, m_XbmcInfo.last_playerstate);
+      didl += "</xbmc:lastPlayerState>";
     }
 
     // class is required
@@ -735,7 +762,10 @@ PLT_MediaObject::FromDidl(NPT_XmlElementNode* entry)
     m_MiscInfo.original_track_number = value;
 
     PLT_XmlHelper::GetChildText(entry, "lastPlaybackPosition", str, didl_namespace_upnp);
-    if (NPT_FAILED(str.ToInteger(value))) value = 0;
+    if (NPT_FAILED(PLT_Didl::ParseTimeStamp(str, value))) {
+        // fall back to raw integer parsing
+        if (NPT_FAILED(str.ToInteger(value))) value = 0;
+    }
     m_MiscInfo.last_position = value;
 
     PLT_XmlHelper::GetChildText(entry, "lastPlaybackTime", m_MiscInfo.last_time, didl_namespace_upnp, 256);
@@ -806,6 +836,8 @@ PLT_MediaObject::FromDidl(NPT_XmlElementNode* entry)
         m_Resources.Add(resource);
     }
 
+    PLT_XmlHelper::GetChildText(entry, "lastPlayerState", m_XbmcInfo.last_playerstate, didl_namespace_xbmc, 2048);
+
     PLT_XmlHelper::GetChildText(entry, "dateadded", m_XbmcInfo.date_added, didl_namespace_xbmc, 256);
     // parse date and make sure it's valid
     for (int format=0; format<=NPT_DateTime::FORMAT_RFC_1036; format++) {
@@ -822,7 +854,10 @@ PLT_MediaObject::FromDidl(NPT_XmlElementNode* entry)
     if (NPT_FAILED(str.ToFloat(floatValue))) floatValue = 0.0;
     m_XbmcInfo.rating = floatValue;
 
-    PLT_XmlHelper::GetChildText(entry, "votes", m_XbmcInfo.votes, didl_namespace_xbmc, 256);
+    PLT_XmlHelper::GetChildText(entry, "votes", str, didl_namespace_xbmc, 256);
+    NPT_Int32 intValue;
+    if (NPT_FAILED(str.ToInteger(intValue))) intValue = 0;
+    m_XbmcInfo.votes = intValue;
 
     children.Clear();
     PLT_XmlHelper::GetChildren(entry, children, "artwork", didl_namespace_xbmc);

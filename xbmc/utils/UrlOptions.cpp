@@ -1,35 +1,18 @@
 /*
- *      Copyright (C) 2012-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2012-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include <sstream>
-
 #include "UrlOptions.h"
+
 #include "URL.h"
 #include "utils/StringUtils.h"
 #include "utils/log.h"
 
-using namespace std;
-
-CUrlOptions::CUrlOptions()
-  : m_strLead("")
-{ }
+CUrlOptions::CUrlOptions() = default;
 
 CUrlOptions::CUrlOptions(const std::string &options, const char *strLead /* = "" */)
   : m_strLead(strLead)
@@ -37,23 +20,22 @@ CUrlOptions::CUrlOptions(const std::string &options, const char *strLead /* = ""
   AddOptions(options);
 }
 
-CUrlOptions::~CUrlOptions()
-{ }
+CUrlOptions::~CUrlOptions() = default;
 
-std::string CUrlOptions::GetOptionsString(bool withLeadingSeperator /* = false */) const
+std::string CUrlOptions::GetOptionsString(bool withLeadingSeparator /* = false */) const
 {
   std::string options;
-  for (UrlOptions::const_iterator opt = m_options.begin(); opt != m_options.end(); ++opt)
+  for (const auto &opt : m_options)
   {
-    if (opt != m_options.begin())
+    if (!options.empty())
       options += "&";
 
-    options += CURL::Encode(opt->first);
-    if (!opt->second.empty())
-      options += "=" + CURL::Encode(opt->second.asString());
+    options += CURL::Encode(opt.first);
+    if (!opt.second.empty())
+      options += "=" + CURL::Encode(opt.second.asString());
   }
 
-  if (withLeadingSeperator && !options.empty())
+  if (withLeadingSeparator && !options.empty())
   {
     if (m_strLead.empty())
       options = "?" + options;
@@ -69,7 +51,7 @@ void CUrlOptions::AddOption(const std::string &key, const char *value)
   if (key.empty() || value == NULL)
     return;
 
-  return AddOption(key, string(value));
+  return AddOption(key, std::string(value));
 }
 
 void CUrlOptions::AddOption(const std::string &key, const std::string &value)
@@ -117,7 +99,7 @@ void CUrlOptions::AddOptions(const std::string &options)
   if (options.empty())
     return;
 
-  string strOptions = options;
+  std::string strOptions = options;
 
   // if matching the preset leading str, remove from options.
   if (!m_strLead.empty() && strOptions.compare(0, m_strLead.length(), m_strLead) == 0)
@@ -126,24 +108,23 @@ void CUrlOptions::AddOptions(const std::string &options)
   {
     // remove leading ?, #, ; or | if present
     if (!m_strLead.empty())
-      CLog::Log(LOGWARNING, "%s: original leading str %s overrided by %c", __FUNCTION__, m_strLead.c_str(), strOptions.at(0));
+      CLog::Log(LOGWARNING, "%s: original leading str %s overridden by %c", __FUNCTION__, m_strLead.c_str(), strOptions.at(0));
     m_strLead = strOptions.at(0);
     strOptions.erase(0, 1);
   }
 
   // split the options by & and process them one by one
-  vector<string> optionList = StringUtils::Split(strOptions, "&");
-  for (vector<string>::const_iterator option = optionList.begin(); option != optionList.end(); ++option)
+  for (const auto &option : StringUtils::Split(strOptions, "&"))
   {
-    if (option->empty())
+    if (option.empty())
       continue;
 
-    string key, value;
+    std::string key, value;
 
-    size_t pos = option->find('=');
-    key = CURL::Decode(option->substr(0, pos));
-    if (pos != string::npos)
-      value = CURL::Decode(option->substr(pos + 1));
+    size_t pos = option.find('=');
+    key = CURL::Decode(option.substr(0, pos));
+    if (pos != std::string::npos)
+      value = CURL::Decode(option.substr(pos + 1));
 
     // the key cannot be empty
     if (!key.empty())
@@ -161,7 +142,7 @@ void CUrlOptions::RemoveOption(const std::string &key)
   if (key.empty())
     return;
 
-  UrlOptions::iterator option = m_options.find(key);
+  auto option = m_options.find(key);
   if (option != m_options.end())
     m_options.erase(option);
 }
@@ -179,7 +160,7 @@ bool CUrlOptions::GetOption(const std::string &key, CVariant &value) const
   if (key.empty())
     return false;
 
-  UrlOptions::const_iterator option = m_options.find(key);
+  auto option = m_options.find(key);
   if (option == m_options.end())
     return false;
 

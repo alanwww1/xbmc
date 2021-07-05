@@ -1,31 +1,21 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2020 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "PlayListXML.h"
-#include "filesystem/File.h"
+
 #include "Util.h"
-#include "utils/RegExp.h"
-#include "utils/log.h"
+#include "filesystem/File.h"
+#include "media/MediaLockState.h"
+#include "utils/StringUtils.h"
 #include "utils/URIUtils.h"
-#include "utils/XMLUtils.h"
 #include "utils/Variant.h"
+#include "utils/XMLUtils.h"
+#include "utils/log.h"
 
 using namespace PLAYLIST;
 using namespace XFILE;
@@ -63,11 +53,9 @@ using namespace XFILE;
 */
 
 
-CPlayListXML::CPlayListXML(void)
-{}
+CPlayListXML::CPlayListXML(void) = default;
 
-CPlayListXML::~CPlayListXML(void)
-{}
+CPlayListXML::~CPlayListXML(void) = default;
 
 
 static inline std::string GetString( const TiXmlElement* pRootElement, const char *tagName )
@@ -98,7 +86,7 @@ bool CPlayListXML::Load( const std::string& strFileName )
   TiXmlElement *pRootElement = xmlDoc.RootElement();
 
   // If the stream does not contain "streams", still ok. Not an error.
-  if ( !pRootElement || stricmp( pRootElement->Value(), "streams" ) )
+  if (!pRootElement || StringUtils::CompareNoCase(pRootElement->Value(), "streams"))
   {
     CLog::Log(LOGERROR, "Playlist %s has no <streams> root", strFileName.c_str());
     return false;
@@ -149,7 +137,7 @@ bool CPlayListXML::Load( const std::string& strFileName )
        if ( !lockpass.empty() )
        {
          newItem->m_strLockCode = lockpass;
-         newItem->m_iHasLock = 2;
+         newItem->m_iHasLock = LOCK_STATE_LOCKED;
          newItem->m_iLockMode = LOCK_MODE_NUMERIC;
        }
 
@@ -194,7 +182,7 @@ void CPlayListXML::Save(const std::string& strFileName) const
     if ( !item->GetProperty("remotechannel").empty() )
       write += StringUtils::Format("    <channel>%s</channel>", item->GetProperty("remotechannel").c_str() );
 
-    if ( item->m_iHasLock > 0 )
+    if (item->m_iHasLock > LOCK_STATE_NO_LOCK)
       write += StringUtils::Format("    <lockpassword>%s<lockpassword>", item->m_strLockCode.c_str() );
 
     write += StringUtils::Format("  </stream>\n\n" );

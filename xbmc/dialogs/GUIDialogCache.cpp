@@ -1,32 +1,26 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
- 
-#include "threads/SystemClock.h"
+
 #include "GUIDialogCache.h"
-#include "ApplicationMessenger.h"
-#include "guilib/GUIWindowManager.h"
+
+#include "ServiceBroker.h"
 #include "dialogs/GUIDialogProgress.h"
+#include "guilib/GUIComponent.h"
+#include "guilib/GUIWindowManager.h"
 #include "guilib/LocalizeStrings.h"
-#include "utils/log.h"
+#include "messaging/ApplicationMessenger.h"
 #include "threads/SingleLock.h"
-#include "utils/TimeUtils.h"
+#include "threads/SystemClock.h"
+#include "utils/Variant.h"
+#include "utils/log.h"
+
+
+using namespace KODI::MESSAGING;
 
 CGUIDialogCache::CGUIDialogCache(DWORD dwDelay, const std::string& strHeader, const std::string& strMsg) : CThread("GUIDialogCache"),
   m_strHeader(strHeader),
@@ -34,7 +28,7 @@ CGUIDialogCache::CGUIDialogCache(DWORD dwDelay, const std::string& strHeader, co
 {
   bSentCancel = false;
 
-  m_pDlg = (CGUIDialogProgress*)g_windowManager.GetWindow(WINDOW_DIALOG_PROGRESS);
+  m_pDlg = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogProgress>(WINDOW_DIALOG_PROGRESS);
 
   if (!m_pDlg)
     return;
@@ -44,7 +38,7 @@ CGUIDialogCache::CGUIDialogCache(DWORD dwDelay, const std::string& strHeader, co
     dwDelay = 0;
 
   if(dwDelay == 0)
-    OpenDialog();    
+    OpenDialog();
   else
     m_endtime.Set((unsigned int)dwDelay);
 
@@ -58,9 +52,9 @@ void CGUIDialogCache::Close(bool bForceClose)
   // we cannot wait for the app thread to process the close message
   // as this might happen during player startup which leads to a deadlock
   if (m_pDlg && m_pDlg->IsDialogRunning())
-    CApplicationMessenger::Get().Close(m_pDlg,bForceClose,false);
+    CApplicationMessenger::GetInstance().PostMsg(TMSG_GUI_WINDOW_CLOSE, -1, bForceClose ? 1 : 0, static_cast<void*>(m_pDlg));
 
-  //Set stop, this will kill this object, when thread stops  
+  //Set stop, this will kill this object, when thread stops
   CThread::m_bStop = true;
 }
 
@@ -75,12 +69,12 @@ void CGUIDialogCache::OpenDialog()
   if (m_pDlg)
   {
     if (m_strHeader.empty())
-      m_pDlg->SetHeading(438);
+      m_pDlg->SetHeading(CVariant{438});
     else
-      m_pDlg->SetHeading(m_strHeader);
+      m_pDlg->SetHeading(CVariant{m_strHeader});
 
-    m_pDlg->SetLine(2, m_strLinePrev);
-    m_pDlg->StartModal();
+    m_pDlg->SetLine(2, CVariant{m_strLinePrev});
+    m_pDlg->Open();
   }
   bSentCancel = false;
 }
@@ -99,12 +93,12 @@ void CGUIDialogCache::SetMessage(const std::string& strMessage)
 {
   if (m_pDlg)
   {
-    m_pDlg->SetLine(0, m_strLinePrev2);
-    m_pDlg->SetLine(1, m_strLinePrev);
-    m_pDlg->SetLine(2, strMessage);
+    m_pDlg->SetLine(0, CVariant{m_strLinePrev2});
+    m_pDlg->SetLine(1, CVariant{m_strLinePrev});
+    m_pDlg->SetLine(2, CVariant{strMessage});
   }
   m_strLinePrev2 = m_strLinePrev;
-  m_strLinePrev = strMessage; 
+  m_strLinePrev = strMessage;
 }
 
 bool CGUIDialogCache::OnFileCallback(void* pContext, int ipercent, float avgSpeed)
@@ -115,7 +109,7 @@ bool CGUIDialogCache::OnFileCallback(void* pContext, int ipercent, float avgSpee
     m_pDlg->SetPercentage(ipercent);
   }
 
-  if( IsCanceled() ) 
+  if( IsCanceled() )
     return false;
   else
     return true;
@@ -128,18 +122,18 @@ void CGUIDialogCache::Process()
 
   while( true )
   {
-    
+
     { //Section to make the lock go out of scope before sleep
-      
+
       if( CThread::m_bStop ) break;
 
-      try 
+      try
       {
-        CSingleLock lock(g_graphicsContext);
+        CSingleLock lock(CServiceBroker::GetWinSystem()->GetGfxContext());
         m_pDlg->Progress();
         if( bSentCancel )
         {
-          Sleep(10);
+          CThread::Sleep(10);
           continue;
         }
 
@@ -147,8 +141,8 @@ void CGUIDialogCache::Process()
         {
           bSentCancel = true;
         }
-        else if( !m_pDlg->IsDialogRunning() && m_endtime.IsTimePast() 
-              && !g_windowManager.IsWindowActive(WINDOW_DIALOG_YES_NO) )
+        else if( !m_pDlg->IsDialogRunning() && m_endtime.IsTimePast()
+              && !CServiceBroker::GetGUI()->GetWindowManager().IsWindowActive(WINDOW_DIALOG_YES_NO) )
           OpenDialog();
       }
       catch(...)
@@ -157,18 +151,18 @@ void CGUIDialogCache::Process()
       }
     }
 
-    Sleep(10);
+    CThread::Sleep(10);
   }
 }
 
-void CGUIDialogCache::ShowProgressBar(bool bOnOff) 
+void CGUIDialogCache::ShowProgressBar(bool bOnOff)
 {
   if (m_pDlg)
     m_pDlg->ShowProgressBar(bOnOff);
 }
 
-void CGUIDialogCache::SetPercentage(int iPercentage) 
-{ 
+void CGUIDialogCache::SetPercentage(int iPercentage)
+{
   if (m_pDlg)
     m_pDlg->SetPercentage(iPercentage);
 }

@@ -1,27 +1,17 @@
-#pragma once
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
+
+#include "utils/UrlOptions.h"
 
 #include <stdlib.h>
 #include <string>
-#include "utils/UrlOptions.h"
 
 #ifdef TARGET_WINDOWS
 #undef SetPort // WIN32INCLUDES this is defined as SetPortA in WinSpool.h which is being included _somewhere_
@@ -30,8 +20,12 @@
 class CURL
 {
 public:
-  explicit CURL(const std::string& strURL);
-  CURL();
+  explicit CURL(const std::string& strURL)
+  {
+    Parse(strURL);
+  }
+
+  CURL() = default;
   virtual ~CURL(void);
 
   // explicit equals operator for std::string comparison
@@ -40,33 +34,102 @@ public:
   void Reset();
   void Parse(const std::string& strURL);
   void SetFileName(const std::string& strFileName);
-  void SetHostName(const std::string& strHostName);
-  void SetUserName(const std::string& strUserName);
-  void SetPassword(const std::string& strPassword);
+  void SetHostName(const std::string& strHostName)
+  {
+    m_strHostName = strHostName;
+  }
+
+  void SetUserName(const std::string& strUserName)
+  {
+    m_strUserName = strUserName;
+  }
+
+  void SetDomain(const std::string& strDomain)
+  {
+    m_strDomain = strDomain;
+  }
+
+  void SetPassword(const std::string& strPassword)
+  {
+    m_strPassword = strPassword;
+  }
+
   void SetProtocol(const std::string& strProtocol);
   void SetOptions(const std::string& strOptions);
   void SetProtocolOptions(const std::string& strOptions);
-  void SetPort(int port);
+  void SetPort(int port)
+  {
+    m_iPort = port;
+  }
 
-  bool HasPort() const;
+  bool HasPort() const
+  {
+    return (m_iPort != 0);
+  }
 
-  int GetPort() const;
-  const std::string& GetHostName() const;
-  const std::string& GetDomain() const;
-  const std::string& GetUserName() const;
-  const std::string& GetPassWord() const;
-  const std::string& GetFileName() const;
-  const std::string& GetProtocol() const;
+  int GetPort() const
+  {
+    return m_iPort;
+  }
+
+  const std::string& GetHostName() const
+  {
+    return m_strHostName;
+  }
+
+  const std::string& GetDomain() const
+  {
+    return m_strDomain;
+  }
+
+  const std::string& GetUserName() const
+  {
+    return m_strUserName;
+  }
+
+  const std::string& GetPassWord() const
+  {
+    return m_strPassword;
+  }
+
+  const std::string& GetFileName() const
+  {
+    return m_strFileName;
+  }
+
+  const std::string& GetProtocol() const
+  {
+    return m_strProtocol;
+  }
+
   const std::string GetTranslatedProtocol() const;
-  const std::string& GetFileType() const;
-  const std::string& GetShareName() const;
-  const std::string& GetOptions() const;
-  const std::string& GetProtocolOptions() const;
+
+  const std::string& GetFileType() const
+  {
+    return m_strFileType;
+  }
+
+  const std::string& GetShareName() const
+  {
+      return m_strShareName;
+  }
+
+  const std::string& GetOptions() const
+  {
+    return m_strOptions;
+  }
+
+  const std::string& GetProtocolOptions() const
+  {
+    return m_strProtocolOptions;
+  }
+
   const std::string GetFileNameWithoutPath() const; /* return the filename excluding path */
 
   char GetDirectorySeparator() const;
 
   std::string Get() const;
+  std::string GetWithoutOptions() const;
   std::string GetWithoutUserDetails(bool redact = false) const;
   std::string GetWithoutFilename() const;
   std::string GetRedacted() const;
@@ -123,7 +186,7 @@ public:
   void RemoveProtocolOption(const std::string &key);
 
 protected:
-  int m_iPort;
+  int m_iPort = 0;
   std::string m_strHostName;
   std::string m_strShareName;
   std::string m_strDomain;

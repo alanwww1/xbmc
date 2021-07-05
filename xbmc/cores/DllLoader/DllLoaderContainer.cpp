@@ -1,21 +1,9 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "DllLoaderContainer.h"
@@ -33,17 +21,27 @@
 #include "utils/log.h"
 #include "URL.h"
 
-#define ENV_PARTIAL_PATH "special://xbmcbin/system/;" \
+#if defined(TARGET_WINDOWS)
+#define ENV_PARTIAL_PATH \
+                 "special://xbmcbin/;" \
+                 "special://xbmcbin/system/;" \
+                 "special://xbmcbin/system/python/;" \
+                 "special://xbmc/;" \
+                 "special://xbmc/system/;" \
+                 "special://xbmc/system/python/"
+#else
+#define ENV_PARTIAL_PATH \
+                 "special://xbmcbin/system/;" \
                  "special://xbmcbin/system/players/mplayer/;" \
-                 "special://xbmcbin/system/players/dvdplayer/;" \
+                 "special://xbmcbin/system/players/VideoPlayer/;" \
                  "special://xbmcbin/system/players/paplayer/;" \
                  "special://xbmcbin/system/python/;" \
                  "special://xbmc/system/;" \
                  "special://xbmc/system/players/mplayer/;" \
-                 "special://xbmc/system/players/dvdplayer/;" \
+                 "special://xbmc/system/players/VideoPlayer/;" \
                  "special://xbmc/system/players/paplayer/;" \
                  "special://xbmc/system/python/"
-
+#endif
 #if defined(TARGET_DARWIN)
 #define ENV_PATH ENV_PARTIAL_PATH \
                  ";special://frameworks/"
@@ -74,8 +72,11 @@ LibraryLoader* DllLoaderContainer::GetModule(const char* sName)
 {
   for (int i = 0; i < m_iNrOfDlls && m_dlls[i] != NULL; i++)
   {
-    if (stricmp(m_dlls[i]->GetName(), sName) == 0) return m_dlls[i];
-    if (!m_dlls[i]->IsSystemDll() && stricmp(m_dlls[i]->GetFileName(), sName) == 0) return m_dlls[i];
+    if (StringUtils::CompareNoCase(m_dlls[i]->GetName(), sName) == 0)
+      return m_dlls[i];
+    if (!m_dlls[i]->IsSystemDll() &&
+        StringUtils::CompareNoCase(m_dlls[i]->GetFileName(), sName) == 0)
+      return m_dlls[i];
   }
 
   return NULL;
@@ -159,9 +160,9 @@ LibraryLoader* DllLoaderContainer::FindModule(const char* sName, const char* sCu
   std::vector<std::string> vecEnv;
 
 #if defined(TARGET_ANDROID)
-  std::string systemLibs = getenv("XBMC_ANDROID_SYSTEM_LIBS");
+  std::string systemLibs = getenv("KODI_ANDROID_SYSTEM_LIBS");
   vecEnv = StringUtils::Split(systemLibs, ':');
-  std::string localLibs = getenv("XBMC_ANDROID_LIBS");
+  std::string localLibs = getenv("KODI_ANDROID_LIBS");
   vecEnv.insert(vecEnv.begin(),localLibs);
 #else
   vecEnv = StringUtils::Split(ENV_PATH, ';');
@@ -239,16 +240,12 @@ LibraryLoader* DllLoaderContainer::LoadDll(const char* sName, bool bLoadSymbols)
 
   LibraryLoader* pLoader;
 #ifdef TARGET_POSIX
-  if (strstr(sName, ".so") != NULL || strstr(sName, ".vis") != NULL || strstr(sName, ".xbs") != NULL
-      || strstr(sName, ".mvis") != NULL || strstr(sName, ".dylib") != NULL || strstr(sName, ".framework") != NULL || strstr(sName, ".pvr") != NULL)
-    pLoader = new SoLoader(sName, bLoadSymbols);
-  else
+  pLoader = new SoLoader(sName, bLoadSymbols);
 #elif defined(TARGET_WINDOWS)
-  if (1)
-    pLoader = new Win32DllLoader(sName);
-  else
+  pLoader = new Win32DllLoader(sName, false);
+#else
+  pLoader = new DllLoader(sName, m_bTrack, false, bLoadSymbols);
 #endif
-    pLoader = new DllLoader(sName, m_bTrack, false, bLoadSymbols);
 
   if (!pLoader)
   {
@@ -269,7 +266,8 @@ bool DllLoaderContainer::IsSystemDll(const char* sName)
 {
   for (int i = 0; i < m_iNrOfDlls && m_dlls[i] != NULL; i++)
   {
-    if (m_dlls[i]->IsSystemDll() && stricmp(m_dlls[i]->GetName(), sName) == 0) return true;
+    if (m_dlls[i]->IsSystemDll() && StringUtils::CompareNoCase(m_dlls[i]->GetName(), sName) == 0)
+      return true;
   }
 
   return false;
@@ -288,11 +286,11 @@ LibraryLoader* DllLoaderContainer::GetModule(int iPos)
 
 void DllLoaderContainer::RegisterDll(LibraryLoader* pDll)
 {
-  for (int i = 0; i < 64; i++)
+  for (LibraryLoader*& dll : m_dlls)
   {
-    if (m_dlls[i] == NULL)
+    if (dll == NULL)
     {
-      m_dlls[i] = pDll;
+      dll = pDll;
       m_iNrOfDlls++;
       break;
     }

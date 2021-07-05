@@ -1,40 +1,34 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
-#include "system.h" //HAS_ZEROCONF define
-#include <assert.h>
 #include "Zeroconf.h"
-#include "settings/Settings.h"
 
-#if defined(HAS_AVAHI)
-#include "linux/ZeroconfAvahi.h"
-#elif defined(TARGET_DARWIN)
-//on osx use the native implementation
-#include "osx/ZeroconfOSX.h"
-#elif defined(HAS_MDNS)
+#include "ServiceBroker.h"
+#if defined(HAS_MDNS)
 #include "mdns/ZeroconfMDNS.h"
 #endif
-
+#include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
+#include "threads/Atomics.h"
 #include "threads/CriticalSection.h"
 #include "threads/SingleLock.h"
-#include "threads/Atomics.h"
 #include "utils/JobManager.h"
+
+#if defined(TARGET_ANDROID)
+#include "platform/android/network/ZeroconfAndroid.h"
+#elif defined(TARGET_DARWIN)
+//on osx use the native implementation
+#include "platform/darwin/network/ZeroconfDarwin.h"
+#elif defined(HAS_AVAHI)
+#include "platform/linux/network/zeroconf/ZeroconfAvahi.h"
+#endif
+
+#include <cassert>
+#include <utility>
 
 #ifndef HAS_ZEROCONF
 //dummy implementation used if no zeroconf is present
@@ -46,16 +40,16 @@ class CZeroconfDummy : public CZeroconf
     return false;
   }
 
-  virtual bool doForceReAnnounceService(const std::string&){return false;} 
+  virtual bool doForceReAnnounceService(const std::string&){return false;}
   virtual bool doRemoveService(const std::string& fcr_ident){return false;}
   virtual void doStop(){}
 };
 #endif
 
-long CZeroconf::sm_singleton_guard = 0;
+std::atomic_flag CZeroconf::sm_singleton_guard = ATOMIC_FLAG_INIT;
 CZeroconf* CZeroconf::smp_instance = 0;
 
-CZeroconf::CZeroconf():mp_crit_sec(new CCriticalSection),m_started(false)
+CZeroconf::CZeroconf():mp_crit_sec(new CCriticalSection)
 {
 }
 
@@ -71,7 +65,7 @@ bool CZeroconf::PublishService(const std::string& fcr_identifier,
                                std::vector<std::pair<std::string, std::string> > txt /* = std::vector<std::pair<std::string, std::string> >() */)
 {
   CSingleLock lock(*mp_crit_sec);
-  CZeroconf::PublishInfo info = {fcr_type, fcr_name, f_port, txt};
+  CZeroconf::PublishInfo info = {fcr_type, fcr_name, f_port, std::move(txt)};
   std::pair<tServiceMap::const_iterator, bool> ret = m_service_map.insert(std::make_pair(fcr_identifier, info));
   if(!ret.second) //identifier exists
     return false;
@@ -114,9 +108,10 @@ bool CZeroconf::Start()
   CSingleLock lock(*mp_crit_sec);
   if(!IsZCdaemonRunning())
   {
-    CSettings::Get().SetBool("services.zeroconf", false);
-    if (CSettings::Get().GetBool("services.airplay"))
-      CSettings::Get().SetBool("services.airplay", false);
+    const std::shared_ptr<CSettings> settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+    settings->SetBool(CSettings::SETTING_SERVICES_ZEROCONF, false);
+    if (settings->GetBool(CSettings::SETTING_SERVICES_AIRPLAY))
+      settings->SetBool(CSettings::SETTING_SERVICES_AIRPLAY, false);
     return false;
   }
   if(m_started)
@@ -145,9 +140,11 @@ CZeroconf*  CZeroconf::GetInstance()
     smp_instance = new CZeroconfDummy;
 #else
 #if defined(TARGET_DARWIN)
-    smp_instance = new CZeroconfOSX;
+    smp_instance = new CZeroconfDarwin;
 #elif defined(HAS_AVAHI)
     smp_instance  = new CZeroconfAvahi;
+#elif defined(TARGET_ANDROID)
+    smp_instance  = new CZeroconfAndroid;
 #elif defined(HAS_MDNS)
     smp_instance  = new CZeroconfMDNS;
 #endif
@@ -169,15 +166,16 @@ CZeroconf::CPublish::CPublish(const std::string& fcr_identifier, const PublishIn
   m_servmap.insert(std::make_pair(fcr_identifier, pubinfo));
 }
 
-CZeroconf::CPublish::CPublish(const tServiceMap& servmap) 
+CZeroconf::CPublish::CPublish(const tServiceMap& servmap)
   : m_servmap(servmap)
 {
 }
 
 bool CZeroconf::CPublish::DoWork()
 {
-  for(tServiceMap::const_iterator it = m_servmap.begin(); it != m_servmap.end(); ++it)
-    CZeroconf::GetInstance()->doPublishService(it->first, it->second.type, it->second.name, it->second.port, it->second.txt);
+  for (const auto& it : m_servmap)
+    CZeroconf::GetInstance()->doPublishService(it.first, it.second.type, it.second.name,
+                                               it.second.port, it.second.txt);
 
   return true;
 }

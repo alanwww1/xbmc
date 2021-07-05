@@ -1,21 +1,9 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 //
@@ -32,11 +20,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdarg.h>
-#ifdef TARGET_WINDOWS
-#include "win32-dirent.h"
-#else
 #include <dirent.h>
-#endif
 #include <dlfcn.h>
 
 #if defined(TARGET_DARWIN) || defined(TARGET_FREEBSD) || defined(TARGET_ANDROID)
@@ -45,9 +29,6 @@ typedef int64_t   off64_t;
 typedef off64_t   __off64_t;
 typedef fpos_t    fpos64_t;
 #define stat64    stat
-#if defined(TARGET_DARWIN) || defined(TARGET_ANDROID)
-#define _G_va_list va_list
-#endif
 #endif
 
 #ifdef TARGET_POSIX
@@ -117,11 +98,7 @@ struct mntent *dll_getmntent(FILE *fp);
 
 void *__wrap_dlopen(const char *filename, int flag)
 {
-#if defined(TARGET_ANDROID)
-  return dll_dlopen(filename, flag);
-#else
   return dlopen(filename, flag);
-#endif
 }
 
 FILE *__wrap_popen(const char *command, const char *mode)
@@ -174,14 +151,14 @@ ssize_t __wrap_read(int fd, void *buf, size_t count)
   return dll_read(fd, buf, count);
 }
 
-__off_t __wrap_lseek(int fildes, __off_t offset, int whence)
+__off_t __wrap_lseek(int filedes, __off_t offset, int whence)
 {
-  return dll_lseek(fildes, offset, whence);
+  return dll_lseek(filedes, offset, whence);
 }
 
-__off64_t __wrap_lseek64(int fildes, __off64_t offset, int whence)
+__off64_t __wrap_lseek64(int filedes, __off64_t offset, int whence)
 {
-  __off64_t seekRes = dll_lseeki64(fildes, offset, whence);
+  __off64_t seekRes = dll_lseeki64(filedes, offset, whence);
   return seekRes;
 }
 
@@ -197,7 +174,7 @@ int __wrap_ferror(FILE *stream)
 
 void __wrap_clearerr(FILE *stream)
 {
-  return dll_clearerr(stream);
+  dll_clearerr(stream);
 }
 
 int __wrap_feof(FILE *stream)
@@ -220,9 +197,9 @@ FILE *__wrap_fopen64(const char *path, const char *mode)
   return dll_fopen(path, mode);
 }
 
-FILE *__wrap_fdopen(int fildes, const char *mode)
+FILE *__wrap_fdopen(int filedes, const char *mode)
 {
-  return dll_fdopen(fildes, mode);
+  return dll_fdopen(filedes, mode);
 }
 
 FILE *__wrap_freopen(const char *path, const char *mode, FILE *stream)
@@ -398,7 +375,7 @@ int __wrap_ioctl(int d, unsigned long int request, ...)
     res = dll_ioctl(d, request, va);
     va_end(va);
     return res;
-} 
+}
 
 int __wrap__stat(const char *path, struct _stat *buffer)
 {
@@ -408,6 +385,11 @@ int __wrap__stat(const char *path, struct _stat *buffer)
 int __wrap_stat(const char *path, struct _stat *buffer)
 {
   return dll_stat(path, buffer);
+}
+
+int __wrap___xstat(int __ver, const char *__filename, struct stat *__stat_buf)
+{
+  return dll_stat(__filename, __stat_buf);
 }
 
 int __wrap___xstat64(int __ver, const char *__filename, struct stat64 *__stat_buf)
@@ -440,6 +422,11 @@ int __wrap___fxstat64(int ver, int fd, struct stat64 *buf)
   return dll_fstat64(fd, buf);
 }
 
+int __wrap___fxstat(int ver, int fd, struct stat *buf)
+{
+  return dll_fstat(fd, buf);
+}
+
 int __wrap_fstat(int fd, struct _stat *buf)
 {
   return dll_fstat(fd, buf);
@@ -458,10 +445,10 @@ struct mntent *__wrap_getmntent(FILE *fp)
   return NULL;
 }
 
-// GCC 4.3 in Ubuntu 8.10 defines _FORTIFY_SOURCE=2 which means, that fread, read etc 
+// GCC 4.3 in Ubuntu 8.10 defines _FORTIFY_SOURCE=2 which means, that fread, read etc
 // are actually #defines which are inlined when compiled with -O. Those defines
-// actally call __*chk (for example, __fread_chk). We need to bypass this whole
-// thing to actually call our wrapped functions. 
+// actually call __*chk (for example, __fread_chk). We need to bypass this whole
+// thing to actually call our wrapped functions.
 #if _FORTIFY_SOURCE > 1
 
 size_t __wrap___fread_chk(void * ptr, size_t ptrlen, size_t size, size_t n, FILE * stream)
@@ -479,7 +466,7 @@ int __wrap___printf_chk(int flag, const char *format, ...)
   return res;
 }
 
-int __wrap___vfprintf_chk(FILE* stream, int flag, const char *format, _G_va_list ap)
+int __wrap___vfprintf_chk(FILE* stream, int flag, const char *format, va_list ap)
 {
   return dll_vfprintf(stream, format, ap);
 }

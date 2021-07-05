@@ -1,9 +1,9 @@
 include ../../Makefile.include
-DEPS= ../../Makefile.include Makefile
+DEPS= ../../Makefile.include Makefile 01-all-disable-tests-docs.patch
 
 # lib name, version
 LIBNAME=libxslt
-VERSION=1.1.28
+VERSION=1.1.34
 SOURCE=$(LIBNAME)-$(VERSION)
 ARCHIVE=$(SOURCE).tar.gz
 
@@ -13,8 +13,6 @@ CONFIGURE=cp -f $(CONFIG_SUB) $(CONFIG_GUESS) .; \
 
 LIBDYLIB=$(PLATFORM)/$(LIBNAME)/.libs/$(LIBNAME).a
 
-CLEAN_FILES=$(ARCHIVE) $(PLATFORM)
-
 all: .installed-$(PLATFORM)
 
 $(TARBALLS_LOCATION)/$(ARCHIVE):
@@ -23,13 +21,12 @@ $(TARBALLS_LOCATION)/$(ARCHIVE):
 $(PLATFORM): $(TARBALLS_LOCATION)/$(ARCHIVE) $(DEPS)
 	rm -rf $(PLATFORM)/*; mkdir -p $(PLATFORM)
 	cd $(PLATFORM); $(ARCHIVE_TOOL) $(ARCHIVE_TOOL_FLAGS) $(TARBALLS_LOCATION)/$(ARCHIVE)
-	sed -ie "s|runtest$$(EXEEXT)||" "$(PLATFORM)/Makefile.in"
-	sed -ie "s|testrecurse$$(EXEEXT)||" "$(PLATFORM)/Makefile.in"
-	sed -ie "s|xsltproc||" "$(PLATFORM)/Makefile.in"
+	cd $(PLATFORM); patch -p1 -i ../01-all-disable-tests-docs.patch
 	cd $(PLATFORM); $(CONFIGURE)
 
 $(LIBDYLIB): $(PLATFORM)
 	$(MAKE) -C $(PLATFORM)
+	touch $@
 
 .installed-$(PLATFORM): $(LIBDYLIB)
 	$(MAKE) -C $(PLATFORM) install

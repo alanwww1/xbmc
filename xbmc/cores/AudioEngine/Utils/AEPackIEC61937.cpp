@@ -1,26 +1,15 @@
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include <cassert>
-#include "system.h"
 #include "AEPackIEC61937.h"
+
+#include <cassert>
+#include <string.h>
 
 #define IEC61937_PREAMBLE1  0xF872
 #define IEC61937_PREAMBLE2  0x4E1F
@@ -210,9 +199,37 @@ int CAEPackIEC61937::PackDTS(uint8_t *data, unsigned int size, uint8_t *dest, bo
     size += size & 0x1;
     SwapEndian((uint16_t*)dataTo, (uint16_t*)data, size >> 1);
   }
-  
+
   if (size != frameSize)
     memset(packet->m_data + size, 0, frameSize - IEC61937_DATA_OFFSET - size);
 
   return frameSize;
+}
+
+int CAEPackIEC61937::PackPause(uint8_t *dest, unsigned int millis, unsigned int framesize, unsigned int samplerate, unsigned int rep_period, unsigned int encodedRate)
+{
+  int periodInBytes = rep_period * framesize;
+  double periodInTime = (double)rep_period / samplerate * 1000;
+  int periodsNeeded = millis / periodInTime;
+  int maxPeriods = MAX_IEC61937_PACKET / periodInBytes;
+  if (periodsNeeded > maxPeriods)
+    periodsNeeded = maxPeriods;
+  uint16_t gap = encodedRate * millis / 1000;
+
+  struct IEC61937Packet *packet = (struct IEC61937Packet*)dest;
+  packet->m_preamble1 = IEC61937_PREAMBLE1;
+  packet->m_preamble2 = IEC61937_PREAMBLE2;
+  packet->m_type = 3;
+  packet->m_length = 32;
+  memset(packet->m_data, 0, periodInBytes - 8);
+
+  for (int i=1; i<periodsNeeded; i++)
+  {
+    memcpy(dest+i*periodInBytes, dest, periodInBytes);
+  }
+
+  uint16_t *gapPtr = reinterpret_cast<uint16_t*>(packet->m_data);
+  *gapPtr = gap;
+
+  return periodsNeeded * periodInBytes;
 }

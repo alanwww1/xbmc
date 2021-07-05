@@ -22,6 +22,7 @@
 RELEASEV=${RELEASEV:-"auto"}
 VERSION_PREFIX=${VERSION_PREFIX:-""}
 TAG=${TAG}
+TAGREV=${TAGREV:-""}
 REPO_DIR=${WORKSPACE:-$(cd "$(dirname $0)/../../../" ; pwd)}
 [[ $(which lsb_release) ]] && DISTS=${DISTS:-$(lsb_release -cs)} || DISTS=${DISTS:-"stable"}
 ARCHS=${ARCHS:-$(dpkg --print-architecture)}
@@ -34,8 +35,8 @@ DEBIAN=${DEBIAN:-"https://github.com/xbmc/xbmc-packaging/archive/master.tar.gz"}
 BUILD_DATE=$(date '+%Y%m%d.%H%M')
 
 function usage {
-    echo "$0: this script builds a Kodi debian package from a git repository."
-    echo "The build is controlled by ENV variables, which van be overridden as appropriate:"
+    echo "$0: This script builds a Kodi debian package from a git repository."
+    echo "The build is controlled by ENV variables, which can be overridden as appropriate:"
     echo "BUILDER is either debuild(default) or pdebuild(needs a proper pbuilder setup)"
     checkEnv
 }
@@ -45,6 +46,7 @@ function checkEnv {
     echo "REPO_DIR: $REPO_DIR"
     getVersion
     echo "RELEASEV: $RELEASEV"
+    echo "REVISION: $TAGREV"
     [[ -n $TAG ]] && echo "TAG: $TAG"
     echo "DISTS: $DISTS"
     echo "ARCHS: $ARCHS"
@@ -73,7 +75,7 @@ function checkEnv {
 function getVersion {
     getGitRev
     if [[ $RELEASEV == "auto" ]]
-    then 
+    then
         local MAJORVER=$(grep VERSION_MAJOR $REPO_DIR/version.txt | awk '{ print $2 }')
         local MINORVER=$(grep VERSION_MINOR $REPO_DIR/version.txt | awk '{ print $2 }')
         RELEASEV=${MAJORVER}.${MINORVER}
@@ -104,7 +106,7 @@ function archiveRepo {
     DEST="kodi-${RELEASEV}~git${BUILD_DATE}-${TAG}"
     [[ -d debian ]] && rm -rf debian
     cd ..
-    tar -czf ${DEST}.tar.gz -h --exclude .git $(basename $REPO_DIR)
+    tar -czf ${DEST}.tar.gz --exclude .git $(basename $REPO_DIR)
     ln -s ${DEST}.tar.gz ${DEST/-/_}.orig.tar.gz
     echo "Output Archive: ${DEST}.tar.gz"
 

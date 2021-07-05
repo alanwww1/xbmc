@@ -2,13 +2,16 @@ WORKSPACE=${WORKSPACE:-$( cd $(dirname $0)/../../.. ; pwd -P )}
 XBMC_PLATFORM_DIR=android
 . $WORKSPACE/tools/buildsteps/defaultenv
 
-if [ "x$BUILD_OBB" == "xtrue" ]
-then
-  cd $WORKSPACE;make apk-obb-unsigned
+if [ "x$BUILD_OBB" == "xtrue" ]; then
+  TARGET=apk-obb-unsigned
 else
-  cd $WORKSPACE;make apk-unsigned
+  TARGET=apk-unsigned
 fi
+
+cd $WORKSPACE/build;make -j$BUILDTHREADS $TARGET
 $RUN_SIGNSTEP
+
+cd $WORKSPACE
 
 #rename for upload
 #e.x. xbmc-20130314-8c2fb31-Frodo-armeabi-v7a.apk

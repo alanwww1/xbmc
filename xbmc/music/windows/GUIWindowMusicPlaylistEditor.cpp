@@ -1,42 +1,30 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
-#include "system.h"
 #include "GUIWindowMusicPlaylistEditor.h"
-#include "Util.h"
-#include "utils/URIUtils.h"
-#include "utils/StringUtils.h"
+
 #include "Autorun.h"
-#include "dialogs/GUIDialogFileBrowser.h"
-#include "filesystem/PlaylistFileDirectory.h"
-#include "filesystem/File.h"
-#include "filesystem/SpecialProtocol.h"
-#include "filesystem/Directory.h"
-#include "playlists/PlayListM3U.h"
-#include "guilib/GUIWindowManager.h"
-#include "guilib/GUIKeyboardFactory.h"
 #include "FileItem.h"
-#include "settings/Settings.h"
 #include "GUIUserMessages.h"
-#include "guilib/Key.h"
+#include "ServiceBroker.h"
+#include "Util.h"
+#include "dialogs/GUIDialogFileBrowser.h"
+#include "dialogs/GUIDialogKaiToast.h"
+#include "filesystem/PlaylistFileDirectory.h"
+#include "guilib/GUIKeyboardFactory.h"
 #include "guilib/LocalizeStrings.h"
+#include "input/Key.h"
+#include "playlists/PlayListM3U.h"
+#include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
+#include "utils/StringUtils.h"
+#include "utils/URIUtils.h"
+#include "utils/Variant.h"
 
 #define CONTROL_LABELFILES        12
 
@@ -44,13 +32,13 @@
 #define CONTROL_SAVE_PLAYLIST      7
 #define CONTROL_CLEAR_PLAYLIST     8
 
+#define CONTROL_LIST              50
 #define CONTROL_PLAYLIST         100
 #define CONTROL_LABEL_PLAYLIST   101
 
 CGUIWindowMusicPlaylistEditor::CGUIWindowMusicPlaylistEditor(void)
     : CGUIWindowMusicBase(WINDOW_MUSIC_PLAYLIST_EDITOR, "MyMusicPlaylistEditor.xml")
 {
-  m_thumbLoader.SetObserver(this);
   m_playlistThumbLoader.SetObserver(this);
   m_playlist = new CFileItemList;
 }
@@ -65,6 +53,40 @@ bool CGUIWindowMusicPlaylistEditor::OnBack(int actionID)
   if (actionID == ACTION_NAV_BACK && !m_viewControl.HasControl(GetFocusedControlID()))
     return CGUIWindow::OnBack(actionID); // base class goes up a folder, but none to go up
   return CGUIWindowMusicBase::OnBack(actionID);
+}
+
+bool CGUIWindowMusicPlaylistEditor::OnAction(const CAction &action)
+{
+  if (action.GetID() == ACTION_CONTEXT_MENU)
+  {
+    int iControl = GetFocusedControlID();
+    if (iControl == CONTROL_PLAYLIST)
+    {
+      OnPlaylistContext();
+      return true;
+    }
+    else if (iControl == CONTROL_LIST)
+    {
+      OnSourcesContext();
+      return true;
+    }
+  }
+  return CGUIWindow::OnAction(action);
+}
+
+bool CGUIWindowMusicPlaylistEditor::OnClick(int iItem, const std::string& player /* = "" */)
+{
+  if (iItem < 0 || iItem >= m_vecItems->Size()) return false;
+  CFileItemPtr item = m_vecItems->Get(iItem);  
+
+  // Expand .m3u files in sources list when clicked on regardless of <playlistasfolders>
+  if (item->IsFileFolder(EFILEFOLDER_MASK_ONBROWSE))
+    return Update(item->GetPath());
+  // Avoid playback (default click behaviour) of media files
+  if (!item->m_bIsFolder)
+    return false;
+
+  return CGUIWindowMusicBase::OnClick(iItem, player);
 }
 
 bool CGUIWindowMusicPlaylistEditor::OnMessage(CGUIMessage& message)
@@ -108,13 +130,23 @@ bool CGUIWindowMusicPlaylistEditor::OnMessage(CGUIMessage& message)
         int action = message.GetParam1();
         if (action == ACTION_CONTEXT_MENU || action == ACTION_MOUSE_RIGHT_CLICK)
           OnPlaylistContext();
-        else if (action == ACTION_QUEUE_ITEM || action == ACTION_DELETE_ITEM || action == ACTION_MOUSE_MIDDLE_CLICK)
+        else if (action == ACTION_QUEUE_ITEM || action == ACTION_DELETE_ITEM ||
+                 action == ACTION_MOUSE_MIDDLE_CLICK)
           OnDeletePlaylistItem(item);
         else if (action == ACTION_MOVE_ITEM_UP)
           OnMovePlaylistItem(item, -1);
         else if (action == ACTION_MOVE_ITEM_DOWN)
           OnMovePlaylistItem(item, 1);
         return true;
+      }
+      else if (control == CONTROL_LIST)
+      {
+        int action = message.GetParam1();
+        if (action == ACTION_CONTEXT_MENU || action == ACTION_MOUSE_RIGHT_CLICK)
+        {
+          OnSourcesContext();
+          return true;
+        }
       }
       else if (control == CONTROL_LOAD_PLAYLIST)
       { // load a playlist
@@ -143,17 +175,26 @@ bool CGUIWindowMusicPlaylistEditor::GetDirectory(const std::string &strDirectory
   items.Clear();
   if (strDirectory.empty())
   { // root listing - list files:// and musicdb://
-    CFileItemPtr files(new CFileItem("files://", true));
+    CFileItemPtr files(new CFileItem("sources://music/", true));
     files->SetLabel(g_localizeStrings.Get(744));
-    files->SetLabelPreformated(true);
+    files->SetLabelPreformatted(true);
     files->m_bIsShareOrDrive = true;
     items.Add(files);
-    CFileItemPtr db(new CFileItem("musicdb://", true));
-    db->SetLabel(g_localizeStrings.Get(14022));
-    db->SetLabelPreformated(true);
-    db->m_bIsShareOrDrive = true;
+
+    CFileItemPtr mdb(new CFileItem("library://music/", true));
+    mdb->SetLabel(g_localizeStrings.Get(14022));
+    mdb->SetLabelPreformatted(true);
+    mdb->m_bIsShareOrDrive = true;
     items.SetPath("");
-    items.Add(db);
+    items.Add(mdb);
+
+    CFileItemPtr vdb(new CFileItem("videodb://musicvideos/", true));
+    vdb->SetLabel(g_localizeStrings.Get(20389));
+    vdb->SetLabelPreformatted(true);
+    vdb->m_bIsShareOrDrive = true;
+    items.SetPath("");
+    items.Add(vdb);
+
     return true;
   }
 
@@ -205,7 +246,7 @@ void CGUIWindowMusicPlaylistEditor::PlayItem(int iItem)
     CGUIWindowMusicBase::PlayItem(iItem);
 }
 
-void CGUIWindowMusicPlaylistEditor::OnQueueItem(int iItem)
+void CGUIWindowMusicPlaylistEditor::OnQueueItem(int iItem, bool)
 {
   if (iItem < 0 || iItem >= m_vecItems->Size())
     return;
@@ -293,78 +334,13 @@ void CGUIWindowMusicPlaylistEditor::OnMovePlaylistItem(int item, int direction)
   OnMessage(msg);
 }
 
-void CGUIWindowMusicPlaylistEditor::GetContextButtons(int itemNumber, CContextButtons &buttons)
-{
-  CFileItemPtr item;
-  if (itemNumber >= 0 && itemNumber < m_vecItems->Size())
-    item = m_vecItems->Get(itemNumber);
-
-  if (GetFocusedControlID() == CONTROL_PLAYLIST)
-  {
-    int playlistItem = GetCurrentPlaylistItem();
-    if (playlistItem > 0)
-      buttons.Add(CONTEXT_BUTTON_MOVE_ITEM_UP, 13332);
-    if (playlistItem >= 0 && playlistItem < m_playlist->Size())
-      buttons.Add(CONTEXT_BUTTON_MOVE_ITEM_DOWN, 13333);
-    if (playlistItem >= 0)
-      buttons.Add(CONTEXT_BUTTON_DELETE, 1210);
-  }
-  else if (item && !item->IsParentFolder() && !m_vecItems->IsVirtualDirectoryRoot())
-    buttons.Add(CONTEXT_BUTTON_QUEUE_ITEM, 15019);
-
-  if (m_playlist->Size())
-  {
-    buttons.Add(CONTEXT_BUTTON_SAVE, 190);
-    buttons.Add(CONTEXT_BUTTON_CLEAR, 192);
-  }
-  buttons.Add(CONTEXT_BUTTON_LOAD, 21385);
-}
-
-bool CGUIWindowMusicPlaylistEditor::OnContextButton(int itemNumber, CONTEXT_BUTTON button)
-{
-  switch (button)
-  {
-  case CONTEXT_BUTTON_MOVE_ITEM_UP:
-    OnMovePlaylistItem(GetCurrentPlaylistItem(), -1);
-    return true;
-
-  case CONTEXT_BUTTON_MOVE_ITEM_DOWN:
-    OnMovePlaylistItem(GetCurrentPlaylistItem(), 1);
-    return true;
-
-  case CONTEXT_BUTTON_SAVE:
-    OnSavePlaylist();
-    return true;
-
-  case CONTEXT_BUTTON_CLEAR:
-    ClearPlaylist();
-    return true;
-
-  case CONTEXT_BUTTON_LOAD:
-    OnLoadPlaylist();
-    return true;
-  case CONTEXT_BUTTON_DELETE:
-    OnDeletePlaylistItem(GetCurrentPlaylistItem());
-    return true;
-  default:
-    break;
-  }
-  return CGUIWindowMusicBase::OnContextButton(itemNumber, button);
-}
-
 void CGUIWindowMusicPlaylistEditor::OnLoadPlaylist()
 {
-  // prompt user for file to load
+  // Prompt user for file to load from music playlists folder
   std::string playlist;
-  VECSOURCES shares;
-  m_rootDir.GetSources(shares);
-  // add the playlist share
-  CMediaSource share;
-  share.strName = g_localizeStrings.Get(20011);
-  share.strPath = "special://musicplaylists/";
-  if (find(shares.begin(), shares.end(), share) == shares.end())
-    shares.push_back(share);
-  if (CGUIDialogFileBrowser::ShowAndGetFile(shares, ".m3u|.pls|.b4s|.wpl", g_localizeStrings.Get(656), playlist))
+  if (CGUIDialogFileBrowser::ShowAndGetFile("special://musicplaylists/",
+                                            ".m3u|.pls|.b4s|.wpl|.xspf", g_localizeStrings.Get(656),
+                                            playlist))
     LoadPlaylist(playlist);
 }
 
@@ -394,30 +370,63 @@ void CGUIWindowMusicPlaylistEditor::OnSavePlaylist()
   std::string name = URIUtils::GetFileName(m_strLoadedPlaylist);
   URIUtils::RemoveExtension(name);
 
-  if (CGUIKeyboardFactory::ShowAndGetInput(name, g_localizeStrings.Get(16012), false))
+  if (CGUIKeyboardFactory::ShowAndGetInput(name, CVariant{g_localizeStrings.Get(16012)}, false))
   { // save playlist as an .m3u
     PLAYLIST::CPlayListM3U playlist;
     playlist.Add(*m_playlist);
-    std::string strBase = URIUtils::AddFileToFolder(CSettings::Get().GetString("system.playlistspath"), "music");
-    std::string path = URIUtils::AddFileToFolder(strBase, name + ".m3u");
+    std::string path = URIUtils::AddFileToFolder(
+      CServiceBroker::GetSettingsComponent()->GetSettings()->GetString(CSettings::SETTING_SYSTEM_PLAYLISTSPATH),
+      "music",
+      name + ".m3u");
+
     playlist.Save(path);
     m_strLoadedPlaylist = name;
+    CGUIDialogKaiToast::QueueNotification(CGUIDialogKaiToast::Info,
+                                          g_localizeStrings.Get(559), // "Playlist"
+                                          g_localizeStrings.Get(35259)); // "Saved"
   }
 }
 
 void CGUIWindowMusicPlaylistEditor::AppendToPlaylist(CFileItemList &newItems)
 {
   OnRetrieveMusicInfo(newItems);
-  FormatItemLabels(newItems, LABEL_MASKS(CSettings::Get().GetString("musicfiles.trackformat"), CSettings::Get().GetString("musicfiles.trackformatright"), "%L", ""));
+  FormatItemLabels(newItems, LABEL_MASKS(CServiceBroker::GetSettingsComponent()->GetSettings()->GetString(CSettings::SETTING_MUSICFILES_TRACKFORMAT), "%D", "%L", ""));
   m_playlist->Append(newItems);
   UpdatePlaylist();
+}
+
+void CGUIWindowMusicPlaylistEditor::OnSourcesContext()
+{
+  CFileItemPtr item = GetCurrentListItem();
+  CContextButtons buttons;
+  if (item->IsFileFolder(EFILEFOLDER_MASK_ONBROWSE))
+    buttons.Add(CONTEXT_BUTTON_BROWSE_INTO, 37015); //Browse into
+  if (item && !item->IsParentFolder() && !m_vecItems->IsVirtualDirectoryRoot())
+    buttons.Add(CONTEXT_BUTTON_QUEUE_ITEM, 15019); // Add (to playlist)
+
+  int btnid = CGUIDialogContextMenu::ShowAndGetChoice(buttons);
+  if (btnid == CONTEXT_BUTTON_QUEUE_ITEM)
+    OnQueueItem(m_viewControl.GetSelectedItem(), false);
+  else if (btnid == CONTEXT_BUTTON_BROWSE_INTO)
+    Update(item->GetPath());
 }
 
 void CGUIWindowMusicPlaylistEditor::OnPlaylistContext()
 {
   int item = GetCurrentPlaylistItem();
+  CContextButtons buttons;
+  if (item > 0)
+    buttons.Add(CONTEXT_BUTTON_MOVE_ITEM_UP, 13332);
+  if (item >= 0 && item < m_playlist->Size() - 1)
+    buttons.Add(CONTEXT_BUTTON_MOVE_ITEM_DOWN, 13333);
   if (item >= 0)
-    m_playlist->Get(item)->Select(true);
-  if (!OnPopupMenu(-1) && item >= 0 && item < m_playlist->Size())
-    m_playlist->Get(item)->Select(false);
+      buttons.Add(CONTEXT_BUTTON_DELETE, 1210);
+
+  int btnid = CGUIDialogContextMenu::ShowAndGetChoice(buttons);
+  if (btnid == CONTEXT_BUTTON_MOVE_ITEM_UP)
+    OnMovePlaylistItem(item, -1);
+  else if (btnid == CONTEXT_BUTTON_MOVE_ITEM_DOWN)
+    OnMovePlaylistItem(item, 1);
+  else if (btnid == CONTEXT_BUTTON_DELETE)
+    OnDeletePlaylistItem(item);
 }
